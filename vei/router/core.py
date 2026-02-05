@@ -1646,7 +1646,9 @@ class Router:
         obs = self.snapshot_observation(focus)
         return {"result": result, "observation": obs.model_dump()}
 
-    def inject(self, target: str, payload: Dict[str, Any], dt_ms: int = 0) -> Dict[str, Any]:
+    def inject(
+        self, target: str, payload: Dict[str, Any], dt_ms: int = 0
+    ) -> Dict[str, Any]:
         """Inject an external event into the bus."""
         self.bus.schedule(dt_ms=dt_ms, target=target, payload=payload)
         return {"ok": True}

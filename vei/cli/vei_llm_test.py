@@ -377,32 +377,59 @@ async def run_episode(
                     print(f"\n--- Step {step} ---")
                     print(f"Observation: {json.dumps(obs, indent=2)}")
                     while True:
-                        import sys
-                        print("Press Enter to continue, or 'i' to inject event...", file=sys.stderr)
+                        print(
+                            "Press Enter to continue, or 'i' to inject event...",
+                            file=sys.stderr,
+                        )
                         cmd = input("> ").strip()
-                        if cmd == 'i':
-                            target = input("Target (slack/mail) [slack]: ").strip() or "slack"
+                        if cmd == "i":
+                            target = (
+                                input("Target (slack/mail) [slack]: ").strip()
+                                or "slack"
+                            )
                             if target == "slack":
                                 text = input("Message text: ").strip()
                                 user_id = input("User [cfo]: ").strip() or "cfo"
-                                channel = input("Channel [#procurement]: ").strip() or "#procurement"
-                                payload = {"channel": channel, "text": text, "user": user_id}
+                                channel = (
+                                    input("Channel [#procurement]: ").strip()
+                                    or "#procurement"
+                                )
+                                payload = {
+                                    "channel": channel,
+                                    "text": text,
+                                    "user": user_id,
+                                }
                             elif target == "mail":
                                 subj = input("Subject: ").strip()
                                 body = input("Body: ").strip()
-                                sender = input("From [human@example.com]: ").strip() or "human@example.com"
-                                payload = {"from": sender, "subj": subj, "body_text": body}
+                                sender = (
+                                    input("From [human@example.com]: ").strip()
+                                    or "human@example.com"
+                                )
+                                payload = {
+                                    "from": sender,
+                                    "subj": subj,
+                                    "body_text": body,
+                                }
                             else:
                                 print("Unknown target")
                                 continue
 
                             try:
-                                await call_mcp_tool(session, "vei.inject", {"target": target, "payload": payload, "dt_ms": 0})
+                                await call_mcp_tool(
+                                    session,
+                                    "vei.inject",
+                                    {"target": target, "payload": payload, "dt_ms": 0},
+                                )
                                 print(f"Injected event to {target}.")
                                 # Re-observe to capture the effect
-                                obs_raw = await call_mcp_tool(session, "vei.observe", {})
+                                obs_raw = await call_mcp_tool(
+                                    session, "vei.observe", {}
+                                )
                                 obs = _normalize_result(obs_raw)
-                                print(f"Updated Observation: {json.dumps(obs, indent=2)}")
+                                print(
+                                    f"Updated Observation: {json.dumps(obs, indent=2)}"
+                                )
                             except Exception as e:
                                 print(f"Injection failed: {e}")
                         else:
@@ -762,7 +789,9 @@ def run(
         0,
         help="If >0, limit prompt-visible tools to top-K retrieved via vei.tools.search (baseline tools always included).",
     ),
-    interactive: bool = typer.Option(False, help="Run in interactive mode to allow manual event injection."),
+    interactive: bool = typer.Option(
+        False, help="Run in interactive mode to allow manual event injection."
+    ),
 ) -> None:
     load_dotenv(override=True)
     eff_provider = auto_provider_for_model(model, provider)
