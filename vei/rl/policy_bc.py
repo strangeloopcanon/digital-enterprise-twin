@@ -58,9 +58,15 @@ class BCPPolicy:
         data = json.loads(path.read_text(encoding="utf-8"))
         return cls(
             tool_counts={k: int(v) for k, v in data.get("tool_counts", {}).items()},
-            arg_templates={k: dict(v) for k, v in data.get("arg_templates", {}).items()},
+            arg_templates={
+                k: dict(v) for k, v in data.get("arg_templates", {}).items()
+            },
         )
-def run_policy(router, policy: BCPPolicy, max_steps: int = 20) -> List[Dict[str, object]]:
+
+
+def run_policy(
+    router, policy: BCPPolicy, max_steps: int = 20
+) -> List[Dict[str, object]]:
     transcript: List[Dict[str, object]] = []
     for _ in range(max_steps):
         obs = router.observe()

@@ -10,7 +10,9 @@ import typer
 from vei.world.state import StateStore
 
 
-app = typer.Typer(add_completion=False, help="Inspect VEI state snapshots and receipts.")
+app = typer.Typer(
+    add_completion=False, help="Inspect VEI state snapshots and receipts."
+)
 
 
 def _resolve_root(state_dir: Optional[Path]) -> Path:
@@ -107,14 +109,20 @@ def list_snapshots(
                 "path": str(path),
             }
         )
-    typer.echo(json.dumps({"branch": branch, "head": store.head, "snapshots": summary}, indent=2))
+    typer.echo(
+        json.dumps(
+            {"branch": branch, "head": store.head, "snapshots": summary}, indent=2
+        )
+    )
 
 
 @app.command("show")
 def show_snapshot(
     state_dir: Optional[Path] = typer.Option(None, help="Root VEI state directory"),
     branch: str = typer.Option("main", help="Branch name"),
-    snapshot: Optional[int] = typer.Option(None, help="Snapshot index (default: latest)"),
+    snapshot: Optional[int] = typer.Option(
+        None, help="Snapshot index (default: latest)"
+    ),
     include_state: bool = typer.Option(False, help="Include full state payload"),
     receipts_tail: int = typer.Option(0, help="Include last N receipts"),
 ) -> None:
@@ -167,7 +175,12 @@ def diff_snapshots(
     snap_from = _load_snapshot(paths[key_from])
     snap_to = _load_snapshot(paths[key_to])
     diff = _diff_snapshots(snap_from, snap_to)
-    typer.echo(json.dumps({"branch": branch, "from": snapshot_from, "to": snapshot_to, "diff": diff}, indent=2))
+    typer.echo(
+        json.dumps(
+            {"branch": branch, "from": snapshot_from, "to": snapshot_to, "diff": diff},
+            indent=2,
+        )
+    )
 
 
 @app.command("receipts")

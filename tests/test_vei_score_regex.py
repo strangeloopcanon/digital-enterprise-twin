@@ -31,7 +31,15 @@ def test_score_parses_all_vendor_variants(tmp_path: Path):
     for i, body in enumerate(variants):
         art = tmp_path / f"case_{i}"
         records = [
-            {"type": "event", "target": "mail", "payload": {"from": "vendor@example", "subj": "Re: Quote", "body_text": body}},
+            {
+                "type": "event",
+                "target": "mail",
+                "payload": {
+                    "from": "vendor@example",
+                    "subj": "Re: Quote",
+                    "body_text": body,
+                },
+            },
         ]
         write_trace(art, records)
         data = run_score(art)
@@ -43,7 +51,15 @@ def test_score_requires_both_price_and_eta(tmp_path: Path):
     # Missing ETA -> should not count as parsed, success False
     art = tmp_path / "missing_eta"
     records = [
-        {"type": "event", "target": "mail", "payload": {"from": "vendor@example", "subj": "Re: Quote", "body_text": "Price: $3199"}},
+        {
+            "type": "event",
+            "target": "mail",
+            "payload": {
+                "from": "vendor@example",
+                "subj": "Re: Quote",
+                "body_text": "Price: $3199",
+            },
+        },
     ]
     write_trace(art, records)
     data = run_score(art)
@@ -56,9 +72,27 @@ def test_score_other_subgoals_independent_of_success(tmp_path: Path):
     # still hinges on email_parsed which will be False here due to missing ETA
     art = tmp_path / "subgoals"
     records = [
-        {"type": "call", "tool": "browser.read", "args": {}, "response": {"url": "u", "title": "t"}},
-        {"type": "call", "tool": "mail.compose", "args": {"to": "vendor@example", "subj": "Q", "body_text": "x"}, "response": {"id": "m1"}},
-        {"type": "event", "target": "mail", "payload": {"from": "vendor@example", "subj": "Re: Q", "body_text": "total: $3,199"}},
+        {
+            "type": "call",
+            "tool": "browser.read",
+            "args": {},
+            "response": {"url": "u", "title": "t"},
+        },
+        {
+            "type": "call",
+            "tool": "mail.compose",
+            "args": {"to": "vendor@example", "subj": "Q", "body_text": "x"},
+            "response": {"id": "m1"},
+        },
+        {
+            "type": "event",
+            "target": "mail",
+            "payload": {
+                "from": "vendor@example",
+                "subj": "Re: Q",
+                "body_text": "total: $3,199",
+            },
+        },
     ]
     write_trace(art, records)
     data = run_score(art)
@@ -66,4 +100,3 @@ def test_score_other_subgoals_independent_of_success(tmp_path: Path):
     assert data["subgoals"]["email_sent"] == 1
     assert data["subgoals"]["email_parsed"] == 0
     assert data["success"] is False
-

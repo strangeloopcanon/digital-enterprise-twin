@@ -19,7 +19,11 @@ def test_generate_scenario_and_derail(monkeypatch):
             {
                 "dt_ms": 2000,
                 "target": "slack",
-                "payload": {"channel": "#procurement", "text": "off topic", "thread_ts": None},
+                "payload": {
+                    "channel": "#procurement",
+                    "text": "off topic",
+                    "thread_ts": None,
+                },
             }
         ],
     }
@@ -27,11 +31,15 @@ def test_generate_scenario_and_derail(monkeypatch):
     r = Router(seed=123, artifacts_dir=None, scenario=scen)
 
     # Trigger vendor reply
-    r.call_and_step("mail.compose", {"to": "sales@example", "subj": "quote", "body_text": "hi"})
+    r.call_and_step(
+        "mail.compose", {"to": "sales@example", "subj": "quote", "body_text": "hi"}
+    )
     for _ in range(20):
         r.observe("mail")
     inbox = r.mail.list()
-    assert any("VendorA" in m["body_text"] or "VendorB" in m["body_text"] for m in inbox)
+    assert any(
+        "VendorA" in m["body_text"] or "VendorB" in m["body_text"] for m in inbox
+    )
 
     # Ensure derail event delivered
     r.observe("slack")
@@ -64,7 +72,5 @@ def test_config_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("VEI_SCENARIO_CONFIG", str(path))
     cfg = Config.from_env()
     assert cfg.scenario is not None
-    assert any(
-        "CfgVendor" in v for v in (cfg.scenario.vendor_reply_variants or [])
-    )
+    assert any("CfgVendor" in v for v in (cfg.scenario.vendor_reply_variants or []))
     monkeypatch.delenv("VEI_SCENARIO_CONFIG", raising=False)

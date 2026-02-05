@@ -191,12 +191,26 @@ def _flow_events_from_transcript_entry(entry: Dict[str, Any]) -> List[Dict[str, 
         elif isinstance(plan, str):
             raw = plan
         label = _shorten(str(raw) if raw else "Plan drafted", 72)
-        events.append({"channel": "Plan", "label": label, "tool": "llm_plan", "time_ms": meta_time})
+        events.append(
+            {
+                "channel": "Plan",
+                "label": label,
+                "tool": "llm_plan",
+                "time_ms": meta_time,
+            }
+        )
         return events
 
     if "plan_error" in entry:
         label = _shorten(str(entry["plan_error"]), 72)
-        events.append({"channel": "Plan", "label": f"Plan error: {label}", "tool": "llm_plan_error", "time_ms": meta_time})
+        events.append(
+            {
+                "channel": "Plan",
+                "label": f"Plan error: {label}",
+                "tool": "llm_plan_error",
+                "time_ms": meta_time,
+            }
+        )
         return events
 
     if "tool_search" in entry:
@@ -205,13 +219,22 @@ def _flow_events_from_transcript_entry(entry: Dict[str, Any]) -> List[Dict[str, 
         if isinstance(detail, dict):
             query = detail.get("query", "")
         label = f"Tool search: {_shorten(str(query), 64)}"
-        events.append({"channel": "Plan", "label": label, "tool": "tool_search", "time_ms": meta_time})
+        events.append(
+            {
+                "channel": "Plan",
+                "label": label,
+                "tool": "tool_search",
+                "time_ms": meta_time,
+            }
+        )
         return events
 
     if "help" in entry:
         detail = entry["help"]
         label = _shorten(str(detail), 72)
-        events.append({"channel": "Help", "label": label, "tool": "help", "time_ms": meta_time})
+        events.append(
+            {"channel": "Help", "label": label, "tool": "help", "time_ms": meta_time}
+        )
         return events
 
     if "action" in entry:
@@ -220,7 +243,9 @@ def _flow_events_from_transcript_entry(entry: Dict[str, Any]) -> List[Dict[str, 
             tool = str(action.get("tool", ""))
             channel = _flow_channel_from_tool(tool)
             label = _shorten(_format_action(tool, action), 90)
-            events.append({"channel": channel, "label": label, "tool": tool, "time_ms": meta_time})
+            events.append(
+                {"channel": channel, "label": label, "tool": tool, "time_ms": meta_time}
+            )
             return events
 
     if "observation" in entry:
@@ -228,7 +253,9 @@ def _flow_events_from_transcript_entry(entry: Dict[str, Any]) -> List[Dict[str, 
         if isinstance(obs, dict):
             time_ms = obs.get("time_ms", meta_time)
             focus = obs.get("focus")
-            channel = _flow_channel_from_focus(focus if isinstance(focus, str) else None)
+            channel = _flow_channel_from_focus(
+                focus if isinstance(focus, str) else None
+            )
             summary = obs.get("summary")
             if isinstance(summary, str) and summary.strip():
                 label = _shorten(summary, 90)
@@ -239,18 +266,34 @@ def _flow_events_from_transcript_entry(entry: Dict[str, Any]) -> List[Dict[str, 
                     label = f"Pending events: {counts}"
                 else:
                     label = "Observation"
-            events.append({"channel": channel, "label": label, "tool": "vei.observe", "time_ms": time_ms})
+            events.append(
+                {
+                    "channel": channel,
+                    "label": label,
+                    "tool": "vei.observe",
+                    "time_ms": time_ms,
+                }
+            )
             return events
 
     if "error" in entry:
         err = entry["error"]
         label = _shorten(str(err), 72)
-        events.append({"channel": "Misc", "label": f"Error: {label}", "tool": "error", "time_ms": meta_time})
+        events.append(
+            {
+                "channel": "Misc",
+                "label": f"Error: {label}",
+                "tool": "error",
+                "time_ms": meta_time,
+            }
+        )
         return events
 
     # Fallback: treat as misc note
     label = _shorten(str(entry), 72)
-    events.append({"channel": "Misc", "label": label, "tool": "unknown", "time_ms": meta_time})
+    events.append(
+        {"channel": "Misc", "label": label, "tool": "unknown", "time_ms": meta_time}
+    )
     return events
 
 
@@ -287,15 +330,28 @@ def _flow_events_from_trace_record(record: Dict[str, Any]) -> List[Dict[str, Any
         channel = _flow_channel_from_tool(tool)
         action = {"tool": tool, "args": record.get("args", {})}
         label = _shorten(_format_action(tool, action), 90)
-        events.append({"channel": channel, "label": label, "tool": tool, "time_ms": time_ms})
+        events.append(
+            {"channel": channel, "label": label, "tool": tool, "time_ms": time_ms}
+        )
         return events
 
     if record.get("type") == "event":
         target = str(record.get("target", "")).lower()
         channel = TRACE_TARGET_CHANNEL_MAP.get(target)
         if channel:
-            label = _flow_channel_from_focus(target) if target not in TRACE_TARGET_CHANNEL_MAP else _format_trace_event(record)
-            events.append({"channel": channel, "label": label, "tool": f"{target}.event", "time_ms": time_ms})
+            label = (
+                _flow_channel_from_focus(target)
+                if target not in TRACE_TARGET_CHANNEL_MAP
+                else _format_trace_event(record)
+            )
+            events.append(
+                {
+                    "channel": channel,
+                    "label": label,
+                    "tool": f"{target}.event",
+                    "time_ms": time_ms,
+                }
+            )
             return events
 
     return events
@@ -320,7 +376,14 @@ def _build_flow_steps(raw_events: List[Dict[str, Any]]) -> List[FlowStep]:
             continue
         tool = event.get("tool")
         time_ms = event.get("time_ms")
-        step = FlowStep(index=idx, channel=channel, label=str(label), tool=str(tool) if tool else None, prev_channel=prev_channel, time_ms=time_ms if isinstance(time_ms, int) else None)
+        step = FlowStep(
+            index=idx,
+            channel=channel,
+            label=str(label),
+            tool=str(tool) if tool else None,
+            prev_channel=prev_channel,
+            time_ms=time_ms if isinstance(time_ms, int) else None,
+        )
         steps.append(step)
         prev_channel = channel
     return steps
@@ -386,13 +449,17 @@ def _load_flow_dataset(source: Path, *, label: str | None = None) -> FlowDataset
                     steps = _flow_steps_from_trace(records)
                     effective_source = trace
         else:
-            raise typer.BadParameter(f"Unsupported file type for visualization: {source}")
+            raise typer.BadParameter(
+                f"Unsupported file type for visualization: {source}"
+            )
 
     if not steps:
         raise typer.BadParameter(f"No visualisable steps found for {source}")
 
     dataset_label = label or _default_dataset_label(effective_source)
-    question = _discover_question(effective_source if effective_source.is_dir() else effective_source.parent)
+    question = _discover_question(
+        effective_source if effective_source.is_dir() else effective_source.parent
+    )
     return FlowDataset(
         key=_dataset_key(dataset_label),
         label=dataset_label,
@@ -438,7 +505,9 @@ def _render_flow_html(
     step_ms = max(50, step_ms)
 
     question_block = (
-        f'<p class="question"><span>Scenario:</span> {safe_question}</p>' if safe_question else ""
+        f'<p class="question"><span>Scenario:</span> {safe_question}</p>'
+        if safe_question
+        else ""
     )
 
     return f"""<!DOCTYPE html>
@@ -1232,7 +1301,12 @@ def _format_action(tool: str, action: Dict[str, Any]) -> str:
         if isinstance(summary, str):
             return f"{tool} :: { _shorten(summary, 55) }"
     if tool.startswith("crm."):
-        name = args.get("company") or args.get("contact") or args.get("email") or args.get("id")
+        name = (
+            args.get("company")
+            or args.get("contact")
+            or args.get("email")
+            or args.get("id")
+        )
         if isinstance(name, str):
             return f"{tool} :: { _shorten(name, 55) }"
     if tool == "vei.tick":
@@ -1279,14 +1353,18 @@ def _classify_entry(index: int, entry: Dict[str, Any]) -> Iterable[ReplayStep]:
         return
     if "help" in entry:
         help_data = entry["help"]
-        yield ReplayStep(index=index, channel="Help", message=_shorten(str(help_data), 60))
+        yield ReplayStep(
+            index=index, channel="Help", message=_shorten(str(help_data), 60)
+        )
         return
     if "action" in entry:
         action = entry["action"]
         if isinstance(action, dict):
             tool = str(action.get("tool") or "unknown")
             channel = _channel_for_tool(tool)
-            yield ReplayStep(index=index, channel=channel, message=_format_action(tool, action))
+            yield ReplayStep(
+                index=index, channel=channel, message=_format_action(tool, action)
+            )
             return
     if "observation" in entry:
         obs = entry["observation"]
@@ -1303,7 +1381,11 @@ def _classify_entry(index: int, entry: Dict[str, Any]) -> Iterable[ReplayStep]:
         query = ""
         if isinstance(search, dict):
             query = search.get("query", "")
-        yield ReplayStep(index=index, channel="Plan", message=f"tool search :: {_shorten(str(query), 50)}")
+        yield ReplayStep(
+            index=index,
+            channel="Plan",
+            message=f"tool search :: {_shorten(str(query), 50)}",
+        )
         return
     yield ReplayStep(index=index, channel="Other", message=_shorten(str(entry), 60))
 
@@ -1331,7 +1413,9 @@ def _build_panels(
             rendered.append(f"{prefix} {step.message}")
         if not rendered:
             rendered.append(" idle")
-        border_style = "bright_green" if current and current.channel == channel else "dim"
+        border_style = (
+            "bright_green" if current and current.channel == channel else "dim"
+        )
         panels.append(
             Panel(
                 "\n".join(rendered),
@@ -1368,28 +1452,52 @@ def _render_frame(
 
 @app.command()
 def replay(
-    transcript: Path = typer.Argument(..., exists=True, file_okay=True, dir_okay=False, readable=True, help="Transcript JSON/JSONL to replay"),
+    transcript: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Transcript JSON/JSONL to replay",
+    ),
     delay: float = typer.Option(0.8, min=0.05, help="Seconds to wait between steps"),
-    max_rows: int = typer.Option(6, min=3, max=12, help="Max lines to display per channel"),
+    max_rows: int = typer.Option(
+        6, min=3, max=12, help="Max lines to display per channel"
+    ),
 ) -> None:
     """Animate a transcript so the environment boxes light up as work completes."""
 
     entries = _load_transcript(transcript)
     steps = _gather_steps(entries)
     if not steps:
-        raise typer.BadParameter("Transcript contained no recognisable steps to display.")
+        raise typer.BadParameter(
+            "Transcript contained no recognisable steps to display."
+        )
 
     console = Console()
-    channel_history: Dict[str, List[ReplayStep]] = {ch: [] for ch in DEFAULT_CHANNEL_ORDER}
+    channel_history: Dict[str, List[ReplayStep]] = {
+        ch: [] for ch in DEFAULT_CHANNEL_ORDER
+    }
 
     try:
         with Live(console=console, refresh_per_second=8) as live:
             for step in steps:
                 channel_history.setdefault(step.channel, []).append(step)
-                live.update(_render_frame(channel_history, step, total_steps=len(steps), max_rows=max_rows))
+                live.update(
+                    _render_frame(
+                        channel_history, step, total_steps=len(steps), max_rows=max_rows
+                    )
+                )
                 time.sleep(delay)
             # Show final state for a brief moment so the user can capture it.
-            live.update(_render_frame(channel_history, steps[-1], total_steps=len(steps), max_rows=max_rows))
+            live.update(
+                _render_frame(
+                    channel_history,
+                    steps[-1],
+                    total_steps=len(steps),
+                    max_rows=max_rows,
+                )
+            )
             time.sleep(delay)
     except KeyboardInterrupt:
         console.print(Text("Visualization interrupted.", style="dim"))
@@ -1403,12 +1511,23 @@ def _suggest_flow_output(source: Path, dataset: FlowDataset | None = None) -> Pa
 
 @app.command()
 def flow(
-    source: Path = typer.Argument(..., exists=True, readable=True, help="Transcript JSON/JSONL, trace.jsonl, or run directory"),
-    out: Path | None = typer.Option(None, help="HTML output path (defaults to <run>/flow.html)"),
+    source: Path = typer.Argument(
+        ...,
+        exists=True,
+        readable=True,
+        help="Transcript JSON/JSONL, trace.jsonl, or run directory",
+    ),
+    out: Path | None = typer.Option(
+        None, help="HTML output path (defaults to <run>/flow.html)"
+    ),
     autoplay: bool = typer.Option(True, help="Start playing automatically"),
-    step_ms: int = typer.Option(600, min=60, help="Delay between steps in milliseconds"),
+    step_ms: int = typer.Option(
+        600, min=60, help="Delay between steps in milliseconds"
+    ),
     title: str | None = typer.Option(None, help="Page title override"),
-    question: str | None = typer.Option(None, help="Scenario question override to surface in the header"),
+    question: str | None = typer.Option(
+        None, help="Scenario question override to surface in the header"
+    ),
 ) -> None:
     """Render a fixed-layout flow visualization as an interactive HTML page."""
 
@@ -1428,12 +1547,24 @@ def flow(
 
 @app.command()
 def dashboard(
-    run_dir: Path = typer.Argument(..., exists=True, file_okay=False, readable=True, help="Run directory containing per-model artifacts"),
-    out: Path | None = typer.Option(None, help="HTML output path (defaults to <run>/flow_dashboard.html)"),
+    run_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        readable=True,
+        help="Run directory containing per-model artifacts",
+    ),
+    out: Path | None = typer.Option(
+        None, help="HTML output path (defaults to <run>/flow_dashboard.html)"
+    ),
     autoplay: bool = typer.Option(True, help="Start playing automatically"),
-    step_ms: int = typer.Option(600, min=60, help="Delay between steps in milliseconds"),
+    step_ms: int = typer.Option(
+        600, min=60, help="Delay between steps in milliseconds"
+    ),
     title: str | None = typer.Option(None, help="Page title override"),
-    question: str | None = typer.Option(None, help="Scenario question override for the shared layout"),
+    question: str | None = typer.Option(
+        None, help="Scenario question override for the shared layout"
+    ),
 ) -> None:
     """Bundle multiple runs into one HTML page with a run selector."""
 
@@ -1469,14 +1600,29 @@ def dashboard(
 
 @app.command()
 def export(
-    source: Path = typer.Argument(..., exists=True, readable=True, help="Transcript JSON/JSONL, trace.jsonl, or run directory"),
+    source: Path = typer.Argument(
+        ...,
+        exists=True,
+        readable=True,
+        help="Transcript JSON/JSONL, trace.jsonl, or run directory",
+    ),
     out: Path = typer.Argument(..., writable=True, help="Output animated GIF path"),
-    step_ms: int = typer.Option(600, min=60, help="Delay between steps in milliseconds"),
+    step_ms: int = typer.Option(
+        600, min=60, help="Delay between steps in milliseconds"
+    ),
     question: str | None = typer.Option(None, help="Scenario question override"),
-    width: int = typer.Option(1100, min=720, max=1400, help="Viewport width for capture"),
-    height: int = typer.Option(720, min=480, max=1200, help="Viewport height for capture"),
-    duration_ms: int = typer.Option(420, min=80, help="Frame duration in the output GIF"),
-    stride: int = typer.Option(1, min=1, max=5, help="Capture every Nth step to shrink file size"),
+    width: int = typer.Option(
+        1100, min=720, max=1400, help="Viewport width for capture"
+    ),
+    height: int = typer.Option(
+        720, min=480, max=1200, help="Viewport height for capture"
+    ),
+    duration_ms: int = typer.Option(
+        420, min=80, help="Frame duration in the output GIF"
+    ),
+    stride: int = typer.Option(
+        1, min=1, max=5, help="Capture every Nth step to shrink file size"
+    ),
 ) -> None:
     """Capture the flow visualization as an animated GIF (requires playwright + Pillow)."""
 
@@ -1513,10 +1659,14 @@ def export(
         frames: List[Image.Image] = []
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=1)
+            page = browser.new_page(
+                viewport={"width": width, "height": height}, device_scale_factor=1
+            )
             page.goto(html_path.as_uri(), wait_until="networkidle")
             # Ensure deterministic starting state
-            page.evaluate("pause(); resetView(); updateDatasetInfo(); updateProgress();")
+            page.evaluate(
+                "pause(); resetView(); updateDatasetInfo(); updateProgress();"
+            )
             page.wait_for_timeout(200)
 
             total_steps = len(dataset.steps)

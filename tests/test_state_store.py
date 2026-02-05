@@ -24,7 +24,9 @@ def test_snapshot_and_branch_are_isolated(tmp_path: Path) -> None:
     snap = store.take_snapshot()
 
     branched = store.branch_from(snap, branch="dev")
-    branched.append("mutate", {"foo": 2}, reducer=lambda state: state.__setitem__("foo", 2))
+    branched.append(
+        "mutate", {"foo": 2}, reducer=lambda state: state.__setitem__("foo", 2)
+    )
 
     # Original store remains unchanged.
     assert store.materialised_state()["foo"] == 1
@@ -52,4 +54,3 @@ def test_rebuild_state_uses_registered_reducers() -> None:
 
     partial = store.rebuild_state(upto=1)
     assert partial == {"items": ["a", "b"]}
-

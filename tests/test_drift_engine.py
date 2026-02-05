@@ -11,7 +11,9 @@ def test_drift_schedules_and_repeats(monkeypatch) -> None:
 
     state = router.state_store.materialised_state()
     drift_state = state.get("drift", {})
-    assert drift_state.get("scheduled"), "drift schedules should be recorded when enabled"
+    assert drift_state.get(
+        "scheduled"
+    ), "drift schedules should be recorded when enabled"
 
     # Advance time to ensure at least one drift event fires.
     router.tick(120000)

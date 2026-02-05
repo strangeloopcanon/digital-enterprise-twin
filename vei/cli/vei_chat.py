@@ -23,7 +23,7 @@ app = typer.Typer(add_completion=False)
 SYSTEM_PROMPT = (
     "You are an assistant controlling tools via MCP in a synthetic enterprise world. "
     "Each step: first call 'vei.observe' to see the action_menu, then pick exactly one tool to call. "
-    "Return STRICTLY a JSON object with fields {\"tool\": str, \"args\": object}."
+    'Return STRICTLY a JSON object with fields {"tool": str, "args": object}.'
 )
 
 
@@ -37,6 +37,7 @@ def _normalize_result(res: Any) -> dict:
         content = getattr(res, "content", None)
         if content and isinstance(content, list) and getattr(content[0], "text", None):
             import json as _json
+
             txt = content[0].text
             try:
                 return _json.loads(txt)
@@ -46,12 +47,15 @@ def _normalize_result(res: Any) -> dict:
     except Exception:
         return {"result": str(res)}
 
+
 async def call_mcp_tool(session: ClientSession, tool: str, args: dict) -> dict:
     r = await session.call_tool(tool, args)
     return _normalize_result(r)
 
 
-def extract_plan(raw: str) -> dict[str, Any]:  # Backward shim; delegate to helper with default tool
+def extract_plan(
+    raw: str,
+) -> dict[str, Any]:  # Backward shim; delegate to helper with default tool
     return _extract_plan(raw, default_tool="vei.observe")
 
 
@@ -65,10 +69,11 @@ async def loop(
     openai_api_key: str | None,
     task: str | None,
     timeout_s: int,
-    ) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]]:
     transport = (transport or "stdio").strip().lower()
     if transport == "stdio":
         import sys as _sys
+
         env = os.environ.copy()
         # Keep the child stdio server deterministic and quiet (no background SSE)
         env["VEI_DISABLE_AUTOSTART"] = "1"
@@ -82,7 +87,9 @@ async def loop(
         ):
             if os.environ.get(key):
                 env[key] = os.environ[key]
-        params = StdioServerParameters(command=_sys.executable or "python3", args=["-m", "vei.router"], env=env)
+        params = StdioServerParameters(
+            command=_sys.executable or "python3", args=["-m", "vei.router"], env=env
+        )
         ctx = stdio_client(params, errlog=_sys.stderr)
     else:
         ctx = sse_client(sse_url)
@@ -99,7 +106,9 @@ async def loop(
         if task:
             messages.append({"role": "user", "content": f"Task: {task}"})
         transcript: list[dict[str, Any]] = []
-        run_id = os.environ.get("VEI_RUN_ID") or str(int(asyncio.get_running_loop().time() * 1000))
+        run_id = os.environ.get("VEI_RUN_ID") or str(
+            int(asyncio.get_running_loop().time() * 1000)
+        )
 
         # Show help to the model
         try:
@@ -110,10 +119,20 @@ async def loop(
 
         for _ in range(max_steps):
             obs = await call_mcp_tool(session, "vei.observe", {})
-            transcript.append({"observation": obs, "meta": {"run_id": run_id, "step": _, "time_ms": obs.get("time_ms")}})
+            transcript.append(
+                {
+                    "observation": obs,
+                    "meta": {
+                        "run_id": run_id,
+                        "step": _,
+                        "time_ms": obs.get("time_ms"),
+                    },
+                }
+            )
             menu = obs.get("action_menu", [])
             menu_text = "\n".join(
-                f"- {m.get('tool')} {json.dumps(m.get('args', m.get('args_schema', {})))}" for m in menu
+                f"- {m.get('tool')} {json.dumps(m.get('args', m.get('args_schema', {})))}"
+                for m in menu
             )
             user = (
                 f"Time: {obs.get('time_ms')}\n"
@@ -121,7 +140,7 @@ async def loop(
                 f"Summary: {obs.get('summary')}\n"
                 f"Pending: {json.dumps(obs.get('pending_events'))}\n"
                 f"Action menu (choose ONE):\n{menu_text}\n"
-                "Reply strictly as JSON {\"tool\": str, \"args\": object}."
+                'Reply strictly as JSON {"tool": str, "args": object}.'
             )
             messages.append({"role": "user", "content": user})
 
@@ -132,22 +151,52 @@ async def loop(
                 )
                 content = chat.choices[0].message.content or "{}"
             except asyncio.TimeoutError:
-                transcript.append({"error": {"type": "llm_timeout", "timeout_s": timeout_s}})
+                transcript.append(
+                    {"error": {"type": "llm_timeout", "timeout_s": timeout_s}}
+                )
                 break
             plan = extract_plan(content)
-            transcript.append({"llm_plan": {"raw": content, "parsed": plan}, "meta": {"run_id": run_id, "step": _, "time_ms": obs.get("time_ms")}})
+            transcript.append(
+                {
+                    "llm_plan": {"raw": content, "parsed": plan},
+                    "meta": {
+                        "run_id": run_id,
+                        "step": _,
+                        "time_ms": obs.get("time_ms"),
+                    },
+                }
+            )
 
             tool = plan.get("tool", "vei.observe")
             args = plan.get("args", {})
             res = await call_mcp_tool(session, tool, args)
-            transcript.append({"action": {"tool": tool, "args": args, "result": res}, "meta": {"run_id": run_id, "step": _, "time_ms": obs.get("time_ms")}})
+            transcript.append(
+                {
+                    "action": {"tool": tool, "args": args, "result": res},
+                    "meta": {
+                        "run_id": run_id,
+                        "step": _,
+                        "time_ms": obs.get("time_ms"),
+                    },
+                }
+            )
             messages.append({"role": "assistant", "content": json.dumps(plan)})
             # Auto-drain after key actions to ensure bounded runs
             if tool in {"mail.compose", "slack.send_message"}:
                 try:
                     await call_mcp_tool(session, "vei.tick", {"dt_ms": 20000})
                     obs2 = await call_mcp_tool(session, "vei.observe", {})
-                    transcript.append({"observation": obs2, "meta": {"run_id": run_id, "step": _, "time_ms": obs2.get("time_ms"), "autodrain": True}})
+                    transcript.append(
+                        {
+                            "observation": obs2,
+                            "meta": {
+                                "run_id": run_id,
+                                "step": _,
+                                "time_ms": obs2.get("time_ms"),
+                                "autodrain": True,
+                            },
+                        }
+                    )
                 except Exception:
                     ...
 
@@ -158,30 +207,48 @@ async def loop(
 def run(
     model: str = typer.Option("gpt-5", help="OpenAI model id"),
     transport: str = typer.Option("stdio", help="Transport: sse or stdio"),
-    sse_url: str = typer.Option(os.environ.get("VEI_SSE_URL", "http://127.0.0.1:3001/sse"), help="MCP SSE endpoint"),
+    sse_url: str = typer.Option(
+        os.environ.get("VEI_SSE_URL", "http://127.0.0.1:3001/sse"),
+        help="MCP SSE endpoint",
+    ),
     max_steps: int = typer.Option(12, help="Max tool steps"),
-    artifacts_dir: str | None = typer.Option(None, help="Artifacts directory for server trace (set VEI_ARTIFACTS_DIR too)"),
-    openai_base_url: str | None = typer.Option(None, help="Override OPENAI_BASE_URL for SDK (OpenAI-compatible)"),
-    openai_api_key: str | None = typer.Option(None, help="Override OPENAI_API_KEY for SDK"),
-    task: str | None = typer.Option(None, help="High-level goal for the LLM (prefixed as 'Task: ...')"),
-    autostart: bool = typer.Option(True, help="Auto-start local VEI SSE server if not reachable"),
+    artifacts_dir: str | None = typer.Option(
+        None, help="Artifacts directory for server trace (set VEI_ARTIFACTS_DIR too)"
+    ),
+    openai_base_url: str | None = typer.Option(
+        None, help="Override OPENAI_BASE_URL for SDK (OpenAI-compatible)"
+    ),
+    openai_api_key: str | None = typer.Option(
+        None, help="Override OPENAI_API_KEY for SDK"
+    ),
+    task: str | None = typer.Option(
+        None, help="High-level goal for the LLM (prefixed as 'Task: ...')"
+    ),
+    autostart: bool = typer.Option(
+        True, help="Auto-start local VEI SSE server if not reachable"
+    ),
     timeout_s: int = typer.Option(45, help="Per-LLM-call timeout seconds"),
-    transcript_out: str | None = typer.Option(None, help="Save transcript JSON to file"),
+    transcript_out: str | None = typer.Option(
+        None, help="Save transcript JSON to file"
+    ),
 ) -> None:
     load_dotenv(override=True)
     if not os.getenv("OPENAI_API_KEY"):
         raise typer.BadParameter("OPENAI_API_KEY not set (put it in .env)")
     if artifacts_dir:
         os.environ["VEI_ARTIFACTS_DIR"] = artifacts_dir
+
     # Ensure SSE server is up when using SSE
     def _port_open(host: str, port: int) -> bool:
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
             try:
                 return s.connect_ex((host, port)) == 0
             except Exception:
                 return False
+
     if transport.strip().lower() == "sse":
         parsed = urlparse(sse_url)
         host = parsed.hostname or "127.0.0.1"
@@ -191,7 +258,10 @@ def run(
             env.setdefault("VEI_HOST", host)
             env.setdefault("VEI_PORT", str(port))
             import sys as _sys
-            subprocess.Popen([_sys.executable or "python3", "-m", "vei.router.sse"], env=env)
+
+            subprocess.Popen(
+                [_sys.executable or "python3", "-m", "vei.router.sse"], env=env
+            )
             for _ in range(20):
                 if _port_open(host, port):
                     break

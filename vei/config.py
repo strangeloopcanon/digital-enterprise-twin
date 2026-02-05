@@ -37,7 +37,11 @@ class Config:
         state_dir = os.environ.get("VEI_STATE_DIR")
         fault_profile = os.environ.get("VEI_FAULT_PROFILE", "off")
         drift_seed_raw = os.environ.get("VEI_DRIFT_SEED")
-        drift_mode = os.environ.get("VEI_DRIFT_MODE") or os.environ.get("VEI_DRIFT_RATE") or "off"
+        drift_mode = (
+            os.environ.get("VEI_DRIFT_MODE")
+            or os.environ.get("VEI_DRIFT_RATE")
+            or "off"
+        )
         monitors = os.environ.get("VEI_MONITORS")
         scenario_pack = os.environ.get("VEI_SCENARIO_PACK")
 

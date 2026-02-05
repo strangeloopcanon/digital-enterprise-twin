@@ -16,9 +16,7 @@ import asyncio
 import json
 import os
 import socket
-import subprocess
 import sys
-import time
 from typing import Any
 
 
@@ -36,7 +34,11 @@ async def _run_stdio(seed: int = 42042) -> list[dict[str, Any]]:
     from mcp.client.stdio import StdioServerParameters, stdio_client
     import sys as _sys
 
-    params = StdioServerParameters(command=_sys.executable or "python3", args=["-m", "vei.router"], env={"VEI_SEED": str(seed)})
+    params = StdioServerParameters(
+        command=_sys.executable or "python3",
+        args=["-m", "vei.router"],
+        env={"VEI_SEED": str(seed)},
+    )
     out: list[dict[str, Any]] = []
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as s:
@@ -44,8 +46,18 @@ async def _run_stdio(seed: int = 42042) -> list[dict[str, Any]]:
             obs = await s.call_tool("vei.observe", {})
             out.append({"observation": obs})
             await s.call_tool("browser.read", {})
-            await s.call_tool("slack.send_message", {"channel": "#procurement", "text": "Summary: budget $3200"})
-            await s.call_tool("mail.compose", {"to": "sales@macrocompute.example", "subj": "Quote", "body_text": "Please advise."})
+            await s.call_tool(
+                "slack.send_message",
+                {"channel": "#procurement", "text": "Summary: budget $3200"},
+            )
+            await s.call_tool(
+                "mail.compose",
+                {
+                    "to": "sales@macrocompute.example",
+                    "subj": "Quote",
+                    "body_text": "Please advise.",
+                },
+            )
             # Drain
             for _ in range(12):
                 obs = await s.call_tool("vei.observe", {})
@@ -67,8 +79,18 @@ async def _run_sse(url: str) -> list[dict[str, Any]]:
             obs = await s.call_tool("vei.observe", {})
         out.append({"observation": obs})
         await s.call_tool("browser.read", {})
-        await s.call_tool("slack.send_message", {"channel": "#procurement", "text": "Summary: budget $3200"})
-        await s.call_tool("mail.compose", {"to": "sales@macrocompute.example", "subj": "Quote", "body_text": "Please advise."})
+        await s.call_tool(
+            "slack.send_message",
+            {"channel": "#procurement", "text": "Summary: budget $3200"},
+        )
+        await s.call_tool(
+            "mail.compose",
+            {
+                "to": "sales@macrocompute.example",
+                "subj": "Quote",
+                "body_text": "Please advise.",
+            },
+        )
         for _ in range(12):
             obs = await s.call_tool("vei.observe", {})
             out.append({"observation": obs})
@@ -96,11 +118,22 @@ def main() -> int:
         # Fallback: direct Router integration test (no MCP dependency)
         try:
             from vei.router.core import Router
+
             r = Router(seed=seed)
             o1 = r.observe().model_dump()
             r.call_and_step("browser.read", {})
-            r.call_and_step("slack.send_message", {"channel": "#procurement", "text": "Summary: budget $3200"})
-            r.call_and_step("mail.compose", {"to": "sales@macrocompute.example", "subj": "Quote", "body_text": "Please advise."})
+            r.call_and_step(
+                "slack.send_message",
+                {"channel": "#procurement", "text": "Summary: budget $3200"},
+            )
+            r.call_and_step(
+                "mail.compose",
+                {
+                    "to": "sales@macrocompute.example",
+                    "subj": "Quote",
+                    "body_text": "Please advise.",
+                },
+            )
             r.tick(20000)
             o2 = r.observe().model_dump()
             print(json.dumps({"router": {"start": o1, "end": o2}}, indent=2))

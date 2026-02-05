@@ -8,7 +8,11 @@ app = typer.Typer(add_completion=False)
 
 
 @app.command()
-def build(out: Path = typer.Option(..., exists=False, file_okay=False, dir_okay=True, writable=True)) -> None:
+def build(
+    out: Path = typer.Option(
+        ..., exists=False, file_okay=False, dir_okay=True, writable=True
+    )
+) -> None:
     out.mkdir(parents=True, exist_ok=True)
     sample = {
         "budget_cap_usd": 3500,
@@ -28,4 +32,3 @@ def build(out: Path = typer.Option(..., exists=False, file_okay=False, dir_okay=
 
 if __name__ == "__main__":
     app()
-

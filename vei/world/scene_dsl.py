@@ -126,4 +126,3 @@ class SceneSpec(BaseModel):
         if value is None:
             return None
         return dict(value)
-

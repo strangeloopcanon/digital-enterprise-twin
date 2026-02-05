@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import json
 import typer
 
@@ -11,13 +10,18 @@ app = typer.Typer(add_completion=False)
 
 
 @app.command()
-def run(seed: int = typer.Option(42042, help="Deterministic seed"), artifacts_dir: str | None = typer.Option(None, help="Artifacts output dir")) -> None:
+def run(
+    seed: int = typer.Option(42042, help="Deterministic seed"),
+    artifacts_dir: str | None = typer.Option(None, help="Artifacts output dir"),
+) -> None:
     os.environ["VEI_SEED"] = str(seed)
     if artifacts_dir:
         os.environ["VEI_ARTIFACTS_DIR"] = artifacts_dir
     router = Router(seed=seed, artifacts_dir=artifacts_dir)
     # Simple interactive loop for manual testing
-    typer.echo("VEI interactive. Type tool name and JSON args. Example: browser.read {}")
+    typer.echo(
+        "VEI interactive. Type tool name and JSON args. Example: browser.read {}"
+    )
     while True:
         try:
             raw = input("> ").strip()
@@ -43,4 +47,3 @@ def run(seed: int = typer.Option(42042, help="Deterministic seed"), artifacts_di
 
 if __name__ == "__main__":
     app()
-

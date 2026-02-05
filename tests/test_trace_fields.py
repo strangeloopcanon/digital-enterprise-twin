@@ -18,9 +18,12 @@ def test_trace_entries_have_version_and_time(tmp_path: Path):
 
     trace_path = out / "trace.jsonl"
     assert trace_path.exists()
-    lines = [json.loads(s) for s in trace_path.read_text(encoding="utf-8").splitlines() if s.strip()]
+    lines = [
+        json.loads(s)
+        for s in trace_path.read_text(encoding="utf-8").splitlines()
+        if s.strip()
+    ]
     assert lines, "trace should not be empty"
     for rec in lines:
         assert rec.get("trace_version") == 1
         assert isinstance(rec.get("time_ms"), int)
-

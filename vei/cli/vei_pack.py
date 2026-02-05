@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -18,7 +17,9 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def slack(
-    export_path: str = typer.Option(..., "--export-path", "-e", help="Slack export directory"),
+    export_path: str = typer.Option(
+        ..., "--export-path", "-e", help="Slack export directory"
+    ),
     channel: str = typer.Option("#general", help="Channel name to annotate"),
     actor: str = typer.Option("user", help="Nominal actor"),
     output: str = typer.Option("-", help="Destination dataset path or '-' for stdout"),
@@ -37,7 +38,9 @@ def slack(
 
 @app.command()
 def mail(
-    mail_dir: str = typer.Option(..., "--mail-dir", help="Directory with JSON mail messages"),
+    mail_dir: str = typer.Option(
+        ..., "--mail-dir", help="Directory with JSON mail messages"
+    ),
     folder: str = typer.Option("INBOX", help="Mail folder name"),
     output: str = typer.Option("-", help="Destination dataset path or '-' for stdout"),
 ) -> None:
@@ -55,7 +58,9 @@ def mail(
 
 @app.command()
 def tickets(
-    tickets_dir: str = typer.Option(..., "--tickets-dir", help="Directory with ticket JSON updates"),
+    tickets_dir: str = typer.Option(
+        ..., "--tickets-dir", help="Directory with ticket JSON updates"
+    ),
     output: str = typer.Option("-", help="Destination dataset path or '-' for stdout"),
 ) -> None:
     path = Path(tickets_dir)
@@ -72,7 +77,9 @@ def tickets(
 
 @app.command()
 def docs(
-    docs_dir: str = typer.Option(..., "--docs-dir", help="Directory with document JSON entries"),
+    docs_dir: str = typer.Option(
+        ..., "--docs-dir", help="Directory with document JSON entries"
+    ),
     output: str = typer.Option("-", help="Destination dataset path or '-' for stdout"),
 ) -> None:
     path = Path(docs_dir)

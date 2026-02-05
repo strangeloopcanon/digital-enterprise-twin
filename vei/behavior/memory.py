@@ -28,7 +28,9 @@ class MemoryStore:
                 )
                 """
             )
-            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_facts_kind_key ON facts(kind, fact_key)")
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_facts_kind_key ON facts(kind, fact_key)"
+            )
 
     def remember(self, *, kind: str, key: str, value: str) -> None:
         now_ms = int(time.time() * 1000)
@@ -38,7 +40,9 @@ class MemoryStore:
                 (kind, key, value, now_ms),
             )
 
-    def recall(self, *, kind: str, key: Optional[str] = None, limit: int = 5) -> list[str]:
+    def recall(
+        self, *, kind: str, key: Optional[str] = None, limit: int = 5
+    ) -> list[str]:
         sql = "SELECT fact_value FROM facts WHERE kind = ?"
         params: list[object] = [kind]
         if key is not None:

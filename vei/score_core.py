@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Dict, Literal
 
 
-def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "full"] = "email") -> dict:
+def compute_score(
+    artifacts_dir: str | Path, success_mode: Literal["email", "full"] = "email"
+) -> dict:
     trace_path = Path(artifacts_dir) / "trace.jsonl"
     if not trace_path.exists():
         raise FileNotFoundError(f"No trace.jsonl in artifacts dir: {artifacts_dir}")
@@ -24,10 +26,21 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
     approval_with_amount = False
     vendor_reply_time_ms: int | None = None
     crm_log_time_ms: int | None = None
-    price_pat = re.compile(r"\b(?:price|total)\s*(?::|-)\s*(?:USD|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)", re.I)
+    price_pat = re.compile(
+        r"\b(?:price|total)\s*(?::|-)\s*(?:USD|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        re.I,
+    )
     eta_pat = re.compile(r"\beta\s*(?::|-)\s*([^\n]+)", re.I)
 
-    def _add_policy(code: str, message: str, *, severity: str, tool: str | None, time_ms: int, metadata: Dict[str, object] | None = None) -> None:
+    def _add_policy(
+        code: str,
+        message: str,
+        *,
+        severity: str,
+        tool: str | None,
+        time_ms: int,
+        metadata: Dict[str, object] | None = None,
+    ) -> None:
         policy_findings.append(
             {
                 "code": code,
@@ -85,15 +98,24 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
                 )
             if tool in {"docs.create", "docs.update"}:
                 doc_logged = True
-                doc_text = " ".join(str(args.get(field, "")) for field in ("title", "body"))
-                if doc_text and not (_has_amount(doc_text) or "quote" in doc_text.lower() or "macrobook" in doc_text.lower()):
+                doc_text = " ".join(
+                    str(args.get(field, "")) for field in ("title", "body")
+                )
+                if doc_text and not (
+                    _has_amount(doc_text)
+                    or "quote" in doc_text.lower()
+                    or "macrobook" in doc_text.lower()
+                ):
                     _add_policy(
                         "docs.missing_quote_details",
                         "Quote document created/updated without pricing context",
                         severity="warning",
                         tool=tool,
                         time_ms=call_time,
-                        metadata={"title": args.get("title"), "doc_id": args.get("doc_id")},
+                        metadata={
+                            "title": args.get("title"),
+                            "doc_id": args.get("doc_id"),
+                        },
                     )
             if tool in {"tickets.update", "tickets.transition"}:
                 ticket_updated = True
@@ -107,7 +129,9 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
                         time_ms=call_time,
                         metadata={},
                     )
-                if tool == "tickets.update" and not any(args.get(field) for field in ("description", "assignee")):
+                if tool == "tickets.update" and not any(
+                    args.get(field) for field in ("description", "assignee")
+                ):
                     _add_policy(
                         "tickets.empty_update",
                         "tickets.update invoked without description or assignee payload",
@@ -148,7 +172,15 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
                         time_ms=call_time,
                         metadata={},
                     )
-            if tool in {"crm.associate_contact_company", "crm.create_contact", "crm.create_company"} and not args:
+            if (
+                tool
+                in {
+                    "crm.associate_contact_company",
+                    "crm.create_contact",
+                    "crm.create_company",
+                }
+                and not args
+            ):
                 _add_policy(
                     "crm.payload_missing",
                     f"{tool} invoked without payload",
@@ -163,7 +195,12 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
             if rec.get("target") == "mail":
                 mail_events.append(rec)
                 body = rec.get("payload", {}).get("body_text", "")
-                if vendor_reply_time_ms is None and body and price_pat.search(body) and eta_pat.search(body):
+                if (
+                    vendor_reply_time_ms is None
+                    and body
+                    and price_pat.search(body)
+                    and eta_pat.search(body)
+                ):
                     vendor_reply_time_ms = int(rec.get("time_ms", 0))
 
     subgoals = {
@@ -182,8 +219,8 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
     if any(c.get("tool") == "mail.compose" for c in calls):
         subgoals["email_sent"] = 1
     if any(
-        ":white_check_mark:" in (e.get("payload", {}).get("text", "")) or
-        "approved" in (e.get("payload", {}).get("text", "").lower())
+        ":white_check_mark:" in (e.get("payload", {}).get("text", ""))
+        or "approved" in (e.get("payload", {}).get("text", "").lower())
         for e in slack_events
     ):
         subgoals["approval"] = 1
@@ -265,6 +302,8 @@ def compute_score(artifacts_dir: str | Path, success_mode: Literal["email", "ful
         "success_email_only": success_email,
         "success_full_flow": success_full,
     }
+
+
 _AMOUNT_PATTERN = re.compile(
     r"""
     (?:

@@ -37,19 +37,47 @@ def _score_crm(records: list[dict]) -> dict:
         tool = c.get("tool")
         resp = c.get("response", {})
         tms = c.get("time_ms")
-        if tool in {"crm.create_contact", "hubspot.contacts.create", "salesforce.contact.create"}:
+        if tool in {
+            "crm.create_contact",
+            "hubspot.contacts.create",
+            "salesforce.contact.create",
+        }:
             contact_created = True
             lead_created_ms = tms if isinstance(tms, int) else lead_created_ms
-        elif tool in {"crm.create_company", "hubspot.companies.create", "salesforce.account.create"}:
+        elif tool in {
+            "crm.create_company",
+            "hubspot.companies.create",
+            "salesforce.account.create",
+        }:
             company_created = True
-        elif tool in {"crm.associate_contact_company", "hubspot.associations.contact_company", "salesforce.contact.link_account"}:
+        elif tool in {
+            "crm.associate_contact_company",
+            "hubspot.associations.contact_company",
+            "salesforce.contact.link_account",
+        }:
             associated = True if not resp.get("error") else associated
-        elif tool in {"crm.create_deal", "hubspot.deals.create", "salesforce.opportunity.create"}:
+        elif tool in {
+            "crm.create_deal",
+            "hubspot.deals.create",
+            "salesforce.opportunity.create",
+        }:
             deal_created = True
-        elif tool in {"crm.update_deal_stage", "hubspot.deals.update_stage", "salesforce.opportunity.update_stage"}:
-            if (resp or {}).get("stage", "").lower() in {"qualified", "qualification", "sales qualified"}:
+        elif tool in {
+            "crm.update_deal_stage",
+            "hubspot.deals.update_stage",
+            "salesforce.opportunity.update_stage",
+        }:
+            if (resp or {}).get("stage", "").lower() in {
+                "qualified",
+                "qualification",
+                "sales qualified",
+            }:
                 qualified = True
-        elif tool in {"crm.log_activity", "hubspot.activities.log", "salesforce.activity.log"}:
+        elif tool in {
+            "crm.log_activity",
+            "hubspot.activities.log",
+            "salesforce.activity.log",
+        }:
             if not resp or not resp.get("error"):
                 if first_touch_ms is None and isinstance(tms, int):
                     first_touch_ms = tms
@@ -71,13 +99,27 @@ def _score_crm(records: list[dict]) -> dict:
         "first_touch_sla": int(sla_met),
         "consent_violations": consent_violations,
     }
-    success = all([contact_created, company_created, associated, deal_created, qualified, sla_met]) and consent_violations == 0
+    success = (
+        all(
+            [
+                contact_created,
+                company_created,
+                associated,
+                deal_created,
+                qualified,
+                sla_met,
+            ]
+        )
+        and consent_violations == 0
+    )
     return {"success": success, "subgoals": subgoals}
 
 
 @app.command(name="score-crm")
 def score_crm(
-    artifacts_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True, readable=True),
+    artifacts_dir: Path = typer.Option(
+        ..., exists=True, file_okay=False, dir_okay=True, readable=True
+    ),
 ) -> None:
     recs = _load_trace(artifacts_dir)
     out = _score_crm(recs)
@@ -89,4 +131,3 @@ score = app
 
 if __name__ == "__main__":
     app()
-

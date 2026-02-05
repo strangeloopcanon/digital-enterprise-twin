@@ -11,7 +11,9 @@ def test_scenario_budget_cap_overridden():
     ch = "#procurement"
 
     # Ask for approval with budget 2000 (over cap)
-    r.call_and_step("slack.send_message", {"channel": ch, "text": "Request approval, budget $2000"})
+    r.call_and_step(
+        "slack.send_message", {"channel": ch, "text": "Request approval, budget $2000"}
+    )
 
     # Advance time to allow scheduled response (10s)
     for _ in range(15):
@@ -19,4 +21,3 @@ def test_scenario_budget_cap_overridden():
 
     msgs = r.slack.channels[ch]["messages"]
     assert any("over cap" in m.get("text", "").lower() for m in msgs)
-

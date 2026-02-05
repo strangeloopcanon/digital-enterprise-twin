@@ -35,7 +35,8 @@ async def observe_plan_act(
     obs = await call_mcp_tool(session, "vei.observe", {})
     menu = obs.get("action_menu", [])
     menu_text = "\n".join(
-        f"- {m.get('tool')} {json.dumps(m.get('args', m.get('args_schema', {})))}" for m in menu
+        f"- {m.get('tool')} {json.dumps(m.get('args', m.get('args_schema', {})))}"
+        for m in menu
     )
     user = (
         f"Time: {obs.get('time_ms')}\n"
@@ -43,13 +44,15 @@ async def observe_plan_act(
         f"Summary: {obs.get('summary')}\n"
         f"Pending: {json.dumps(obs.get('pending_events'))}\n"
         f"Action menu (choose ONE):\n{menu_text}\n"
-        "Reply strictly as JSON {\"tool\": str, \"args\": object}."
+        'Reply strictly as JSON {"tool": str, "args": object}.'
     )
     if not messages:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user})
 
-    chat = await client.chat.completions.create(model="gpt-5", messages=messages, temperature=0)
+    chat = await client.chat.completions.create(
+        model="gpt-5", messages=messages, temperature=0
+    )
     raw = chat.choices[0].message.content or "{}"
     plan = extract_plan(raw)
     tool = plan.get("tool", "vei.observe")
@@ -57,5 +60,3 @@ async def observe_plan_act(
     res = await call_mcp_tool(session, tool, args)
     messages.append({"role": "assistant", "content": json.dumps(plan)})
     return {"observation": obs, "action": {"tool": tool, "args": args, "result": res}}
-
-

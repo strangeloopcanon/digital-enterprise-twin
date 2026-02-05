@@ -43,6 +43,9 @@ def test_simple_vector_env_runs_multiple_envs() -> None:
 
 
 def test_default_args_helper_handles_schema() -> None:
-    entry = {"tool": "calendar.create_event", "args_schema": {"title": "str", "start_ms": "int", "attendees": "[str]?"}}
+    entry = {
+        "tool": "calendar.create_event",
+        "args_schema": {"title": "str", "start_ms": "int", "attendees": "[str]?"},
+    }
     args = default_args_for(entry)
     assert "title" in args and args["attendees"] == []

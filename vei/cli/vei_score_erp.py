@@ -34,7 +34,13 @@ def _score_p2p(records: list[dict]) -> dict:
     for c in calls:
         tool = c.get("tool")
         resp = c.get("response", {})
-        if tool in {"erp.create_po", "xero.create_purchase_order", "netsuite.po.create", "dynamics.po.create", "quickbooks.purchaseorder.create"}:
+        if tool in {
+            "erp.create_po",
+            "xero.create_purchase_order",
+            "netsuite.po.create",
+            "dynamics.po.create",
+            "quickbooks.purchaseorder.create",
+        }:
             pid = (resp or {}).get("id") or (resp or {}).get("po_id")
             if pid:
                 po_ids.add(str(pid))
@@ -42,14 +48,26 @@ def _score_p2p(records: list[dict]) -> dict:
             rid = (resp or {}).get("id")
             if rid:
                 rcpt_ids.add(str(rid))
-        elif tool in {"erp.submit_invoice", "xero.create_invoice", "netsuite.invoice.create", "dynamics.invoice.create", "quickbooks.invoice.create"}:
+        elif tool in {
+            "erp.submit_invoice",
+            "xero.create_invoice",
+            "netsuite.invoice.create",
+            "dynamics.invoice.create",
+            "quickbooks.invoice.create",
+        }:
             iid = (resp or {}).get("id")
             if iid:
                 inv_ids.add(str(iid))
         elif tool == "erp.match_three_way":
             if (resp or {}).get("status") == "MATCH":
                 matched = True
-        elif tool in {"erp.post_payment", "xero.post_payment", "netsuite.payment.apply", "dynamics.payment.post", "quickbooks.payment.create"}:
+        elif tool in {
+            "erp.post_payment",
+            "xero.post_payment",
+            "netsuite.payment.apply",
+            "dynamics.payment.post",
+            "quickbooks.payment.create",
+        }:
             if (resp or {}).get("status") == "PAID":
                 paid = True
 
@@ -61,12 +79,22 @@ def _score_p2p(records: list[dict]) -> dict:
         "paid": int(paid),
     }
     success = all(subgoals.values())
-    return {"success": success, "subgoals": subgoals, "objects": {"pos": list(po_ids), "receipts": list(rcpt_ids), "invoices": list(inv_ids)}}
+    return {
+        "success": success,
+        "subgoals": subgoals,
+        "objects": {
+            "pos": list(po_ids),
+            "receipts": list(rcpt_ids),
+            "invoices": list(inv_ids),
+        },
+    }
 
 
 @app.command(name="score-erp")
 def score_erp(
-    artifacts_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True, readable=True),
+    artifacts_dir: Path = typer.Option(
+        ..., exists=True, file_okay=False, dir_okay=True, readable=True
+    ),
 ) -> None:
     recs = _load_trace(artifacts_dir)
     score = _score_p2p(recs)
@@ -78,4 +106,3 @@ score = app
 
 if __name__ == "__main__":
     app()
-

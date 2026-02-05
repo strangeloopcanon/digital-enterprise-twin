@@ -43,7 +43,9 @@ def test_multi_channel_compliance_has_audit_assets():
     assert scen.tickets
     ticket_ids = {ticket.ticket_id for ticket in scen.tickets.values()}
     assert {"TCK-42", "TCK-88"}.issubset(ticket_ids)
-    assert scen.participants and any(p.participant_id == "auditor-li" for p in scen.participants)
+    assert scen.participants and any(
+        p.participant_id == "auditor-li" for p in scen.participants
+    )
     assert scen.derail_events and len(scen.derail_events) >= 2
 
     r = Router(seed=101, artifacts_dir=None, scenario=scen)
@@ -97,6 +99,8 @@ def test_f5_vendor_comparison_scenario_loads_correctly():
     obs = r.call_and_step("vei.observe", {})
     affordances = obs.get("action_menu", [])
     assert len(affordances) >= 3
-    vendor_links = [a.get("name") for a in affordances if a.get("tool") == "browser.click"]
+    vendor_links = [
+        a.get("name") for a in affordances if a.get("tool") == "browser.click"
+    ]
     assert "MacroCompute Store" in vendor_links
     assert "Dell Business" in vendor_links

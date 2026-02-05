@@ -32,8 +32,13 @@ async def run_once(
             if sc is not None:
                 return sc
             content = getattr(res, "content", None)
-            if content and isinstance(content, list) and getattr(content[0], "text", None):
+            if (
+                content
+                and isinstance(content, list)
+                and getattr(content[0], "text", None)
+            ):
                 import json as _json
+
                 txt = content[0].text
                 try:
                     return _json.loads(txt)
@@ -42,15 +47,20 @@ async def run_once(
             return {"result": res}
         except Exception:
             return {"result": str(res)}
+
     transport = (transport or "stdio").strip().lower()
     if transport == "sse":
         # Ensure server is up if a URL is given
         if sse_url:
             _ensure_sse_available(sse_url, autostart=True)
-        ctx = sse_client(sse_url or os.getenv("VEI_SSE_URL", "http://127.0.0.1:3001/sse"))
+        ctx = sse_client(
+            sse_url or os.getenv("VEI_SSE_URL", "http://127.0.0.1:3001/sse")
+        )
     else:
         py = sys.executable or "python3"
-        params = StdioServerParameters(command=py, args=["-m", "vei.router"], env={"VEI_SEED": str(seed)})
+        params = StdioServerParameters(
+            command=py, args=["-m", "vei.router"], env={"VEI_SEED": str(seed)}
+        )
         ctx = stdio_client(params)
 
     async with ctx as (read, write):
@@ -72,7 +82,10 @@ async def run_once(
             typer.echo(json.dumps({"browser.read": res}))
 
             # Send slack summary
-            res_raw = await session.call_tool("slack.send_message", {"channel": "#procurement", "text": "Posting summary for approval"})
+            res_raw = await session.call_tool(
+                "slack.send_message",
+                {"channel": "#procurement", "text": "Posting summary for approval"},
+            )
             res = _normalize_result(res_raw)
             out["steps"].append({"slack.send_message": res})
             typer.echo(json.dumps({"slack.send_message": res}))
@@ -80,7 +93,11 @@ async def run_once(
             # Compose email
             res_raw = await session.call_tool(
                 "mail.compose",
-                {"to": "sales@macrocompute.example", "subj": "Quote request", "body_text": "Please send latest price and ETA."},
+                {
+                    "to": "sales@macrocompute.example",
+                    "subj": "Quote request",
+                    "body_text": "Please send latest price and ETA.",
+                },
             )
             res = _normalize_result(res_raw)
             out["steps"].append({"mail.compose": res})
@@ -102,12 +119,14 @@ async def run_once(
 def _ensure_sse_available(sse_url: str, autostart: bool) -> None:
     def _port_open(host: str, port: int) -> bool:
         import socket
+
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)
             try:
                 return s.connect_ex((host, port)) == 0
             except Exception:
                 return False
+
     parsed = urlparse(sse_url)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 3001
@@ -130,10 +149,14 @@ def run(
     seed: int = typer.Option(42042),
     timeout_s: int = typer.Option(30),
     transport: str = typer.Option("stdio", help="MCP transport: stdio or sse"),
-    sse_url: str = typer.Option(os.environ.get("VEI_SSE_URL", "http://127.0.0.1:3001/sse"), help="SSE URL when transport=sse"),
+    sse_url: str = typer.Option(
+        os.environ.get("VEI_SSE_URL", "http://127.0.0.1:3001/sse"),
+        help="SSE URL when transport=sse",
+    ),
 ) -> None:
     async def _runner():
         return await run_once(seed, transport=transport, sse_url=sse_url)
+
     res: dict | None = None
     try:
         res = asyncio.run(asyncio.wait_for(_runner(), timeout=timeout_s))

@@ -17,10 +17,20 @@ def test_compile_scene_renders_synthetic_assets() -> None:
             }
         ],
         "participants": [
-            {"participant_id": "approver", "name": "Sam", "role": "manager", "email": "sam@example.com"}
+            {
+                "participant_id": "approver",
+                "name": "Sam",
+                "role": "manager",
+                "email": "sam@example.com",
+            }
         ],
         "documents": [
-            {"doc_id": "DOC-1", "title": "Budget Policy", "body": "All purchases need approval.", "tags": ["policy"]}
+            {
+                "doc_id": "DOC-1",
+                "title": "Budget Policy",
+                "body": "All purchases need approval.",
+                "tags": ["policy"],
+            }
         ],
         "calendar_events": [
             {
@@ -32,7 +42,12 @@ def test_compile_scene_renders_synthetic_assets() -> None:
             }
         ],
         "tickets": [
-            {"ticket_id": "TCK-1", "title": "Laptop approval", "status": "open", "assignee": "approver"}
+            {
+                "ticket_id": "TCK-1",
+                "title": "Laptop approval",
+                "status": "open",
+                "assignee": "approver",
+            }
         ],
         "triggers": [
             {"at_ms": 5_000, "target": "slack", "payload": {"text": "Reminder"}},
@@ -44,9 +59,14 @@ def test_compile_scene_renders_synthetic_assets() -> None:
     assert scenario.budget_cap_usd == 3300
     assert scenario.derail_prob == 0.05
     assert scenario.slack_initial_message.startswith("Remember")
-    assert scenario.vendor_reply_variants and "MacroCompute" in scenario.vendor_reply_variants[0]
+    assert (
+        scenario.vendor_reply_variants
+        and "MacroCompute" in scenario.vendor_reply_variants[0]
+    )
 
-    assert scenario.participants and scenario.participants[0].participant_id == "approver"
+    assert (
+        scenario.participants and scenario.participants[0].participant_id == "approver"
+    )
     assert scenario.documents and "DOC-1" in scenario.documents
     assert scenario.documents["DOC-1"].title == "Budget Policy"
 
