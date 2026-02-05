@@ -39,4 +39,3 @@ def test_update_overwrites_selected_fields() -> None:
     assert spec is not None
     assert spec.default_latency_ms == 500
     assert spec.nominal_cost == 0.01
-

@@ -54,7 +54,9 @@ class TicketsSim:
             ticket.description = description
         if assignee is not None:
             ticket.assignee = assignee
-        ticket.history = list(ticket.history or []) + [{"status": ticket.status, "update": "fields"}]
+        ticket.history = list(ticket.history or []) + [
+            {"status": ticket.status, "update": "fields"}
+        ]
         self.tickets[ticket_id] = ticket
         return {"ticket_id": ticket_id}
 
@@ -77,6 +79,44 @@ class TicketsSim:
             "history": list(ticket.history or []),
         }
 
+    def deliver(self, event: Dict[str, object]) -> Dict[str, object]:
+        """Apply a scheduled ticket event using tickets tool semantics."""
+        payload = dict(event or {})
+        ticket_id = payload.get("ticket_id")
+        if isinstance(ticket_id, str) and ticket_id in self.tickets:
+            if isinstance(payload.get("status"), str):
+                return self.transition(ticket_id=ticket_id, status=payload["status"])
+            return self.update(
+                ticket_id=ticket_id,
+                description=(
+                    payload.get("description")
+                    if isinstance(payload.get("description"), str)
+                    else None
+                ),
+                assignee=(
+                    payload.get("assignee")
+                    if isinstance(payload.get("assignee"), str)
+                    else None
+                ),
+            )
+
+        title = payload.get("title")
+        if not isinstance(title, str):
+            raise ValueError("tickets delivery requires title for create")
+        return self.create(
+            title=title,
+            description=(
+                payload.get("description")
+                if isinstance(payload.get("description"), str)
+                else None
+            ),
+            assignee=(
+                payload.get("assignee")
+                if isinstance(payload.get("assignee"), str)
+                else None
+            ),
+        )
+
     def _init_seq(self) -> int:
         seq = 1
         for ticket_id in self.tickets.keys():
@@ -86,4 +126,3 @@ class TicketsSim:
             except ValueError:
                 continue
         return seq
-

@@ -38,7 +38,9 @@ def load_scene_spec(payload: Any) -> SceneSpec:
     raise TypeError(f"unsupported scene spec payload: {type(payload)!r}")
 
 
-def compile_scene(spec: SceneSpec | Dict[str, Any], seed: Optional[int] = None) -> Scenario:
+def compile_scene(
+    spec: SceneSpec | Dict[str, Any], seed: Optional[int] = None
+) -> Scenario:
     """Compile a SceneSpec into a Scenario consumable by the router."""
 
     scene = load_scene_spec(spec)
@@ -77,14 +79,18 @@ def compile_scene(spec: SceneSpec | Dict[str, Any], seed: Optional[int] = None) 
     return scenario
 
 
-def _render_vendor_variants(vendors: Iterable[VendorSpec], rng: random.Random) -> List[str]:
+def _render_vendor_variants(
+    vendors: Iterable[VendorSpec], rng: random.Random
+) -> List[str]:
     variants: List[str] = []
     for vendor in vendors:
         price = _sample_number(vendor.price, rng)
         eta = int(_sample_number(vendor.eta_days, rng))
         if vendor.templates:
             template = rng.choice(vendor.templates)
-            variants.append(template.format(price=int(price), eta=eta, vendor=vendor.name))
+            variants.append(
+                template.format(price=int(price), eta=eta, vendor=vendor.name)
+            )
         else:
             variants.append(f"{vendor.name} quote: ${int(price)}, ETA: {eta} days.")
     return variants
@@ -108,7 +114,9 @@ def _sample_number(source: Any, rng: random.Random) -> float:
     raise ValueError(f"unsupported numeric source: {source!r}")
 
 
-def _build_participants(items: Iterable[ParticipantSpec]) -> Optional[List[Participant]]:
+def _build_participants(
+    items: Iterable[ParticipantSpec],
+) -> Optional[List[Participant]]:
     data = [
         Participant(
             participant_id=item.participant_id,
@@ -135,7 +143,9 @@ def _build_documents(items: Iterable[DocumentSpec]) -> Optional[Dict[str, Docume
     return docs or None
 
 
-def _build_calendar(items: Iterable[CalendarEventSpec]) -> Optional[List[CalendarEvent]]:
+def _build_calendar(
+    items: Iterable[CalendarEventSpec],
+) -> Optional[List[CalendarEvent]]:
     events = [
         CalendarEvent(
             event_id=item.event_id,
@@ -164,4 +174,3 @@ def _build_tickets(items: Iterable[TicketSpec]) -> Optional[Dict[str, Ticket]]:
         for item in items
     }
     return tickets or None
-

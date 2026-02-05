@@ -14,17 +14,23 @@ class MenuIndexWrapper:
 
     def reset(self, *args: Any, **kwargs: Any) -> Tuple[dict, dict]:
         obs, info = self.env.reset(*args, **kwargs)
-        self._last_menu = list(obs.get("action_menu", [])) if isinstance(obs, dict) else []
+        self._last_menu = (
+            list(obs.get("action_menu", [])) if isinstance(obs, dict) else []
+        )
         return obs, info
 
     def step(self, action: Any) -> Tuple[dict, float, bool, bool, dict]:
         menu = self._last_menu
         tool_action = self._translate_action(action, menu)
         obs, reward, terminated, truncated, info = self.env.step(tool_action)
-        self._last_menu = list(obs.get("action_menu", [])) if isinstance(obs, dict) else []
+        self._last_menu = (
+            list(obs.get("action_menu", [])) if isinstance(obs, dict) else []
+        )
         return obs, reward, terminated, truncated, info
 
-    def _translate_action(self, action: Any, menu: list[Dict[str, Any]]) -> Dict[str, Any]:
+    def _translate_action(
+        self, action: Any, menu: list[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         if isinstance(action, tuple):
             idx, overrides = action
         else:

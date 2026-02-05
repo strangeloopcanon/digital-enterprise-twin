@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, List
+from typing import List
 
 from ..models import BaseEvent
 from ..anonymize import pseudonymize_email
@@ -40,7 +40,11 @@ def load_slack_export(path: str | Path, *, channel: str, actor: str) -> List[Bas
                         actor_id=email,
                         channel="slack",
                         type="thread",
-                        payload={"channel": channel, "thread_ts": thread_ts, "text": text},
+                        payload={
+                            "channel": channel,
+                            "thread_ts": thread_ts,
+                            "text": text,
+                        },
                     )
                 )
     return sorted(records, key=lambda e: e.time_ms)

@@ -153,4 +153,3 @@ class DriftEngine:
                 "payload": template,
             },
         )
-

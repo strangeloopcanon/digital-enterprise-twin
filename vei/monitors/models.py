@@ -16,4 +16,3 @@ class MonitorFinding:
     time_ms: int
     tool: str | None = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-

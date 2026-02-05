@@ -24,7 +24,12 @@ def write_trace(dirpath: Path, records: list[dict]) -> None:
 def test_score_citations_triggered_by_browser_read(tmp_path: Path):
     art = tmp_path / "citations"
     records = [
-        {"type": "call", "tool": "browser.read", "args": {}, "response": {"url": "u", "title": "t"}},
+        {
+            "type": "call",
+            "tool": "browser.read",
+            "args": {},
+            "response": {"url": "u", "title": "t"},
+        },
     ]
     write_trace(art, records)
     data = run_score(art)
@@ -36,7 +41,11 @@ def test_score_citations_triggered_by_browser_read(tmp_path: Path):
 def test_score_approval_detected_via_emoji(tmp_path: Path):
     art = tmp_path / "approval_emoji"
     records = [
-        {"type": "event", "target": "slack", "payload": {"text": ":white_check_mark: Approved"}},
+        {
+            "type": "event",
+            "target": "slack",
+            "payload": {"text": ":white_check_mark: Approved"},
+        },
     ]
     write_trace(art, records)
     data = run_score(art)
@@ -61,7 +70,11 @@ def test_score_approval_detected_via_text_only(tmp_path: Path):
 def test_score_no_approval_for_irrelevant_slack(tmp_path: Path):
     art = tmp_path / "no_approval"
     records = [
-        {"type": "event", "target": "slack", "payload": {"text": "What is the budget amount?"}},
+        {
+            "type": "event",
+            "target": "slack",
+            "payload": {"text": "What is the budget amount?"},
+        },
     ]
     write_trace(art, records)
     data = run_score(art)
@@ -77,7 +90,10 @@ def test_score_policy_findings_detect_missing_budget(tmp_path: Path) -> None:
             "type": "call",
             "time_ms": 5000,
             "tool": "slack.send_message",
-            "args": {"channel": "#procurement", "text": "Please approve the laptop purchase"},
+            "args": {
+                "channel": "#procurement",
+                "text": "Please approve the laptop purchase",
+            },
             "response": {"ts": "2"},
         }
     ]
@@ -95,47 +111,78 @@ def test_score_policy_findings_detect_missing_budget(tmp_path: Path) -> None:
 def test_score_enterprise_subgoals_complete(tmp_path: Path) -> None:
     art = tmp_path / "enterprise_full"
     records = [
-        {"type": "call", "time_ms": 1000, "tool": "browser.read", "args": {}, "response": {"url": "u", "title": "t"}},
+        {
+            "type": "call",
+            "time_ms": 1000,
+            "tool": "browser.read",
+            "args": {},
+            "response": {"url": "u", "title": "t"},
+        },
         {
             "type": "call",
             "time_ms": 1500,
             "tool": "mail.compose",
-            "args": {"to": "vendor@example", "subj": "Quote request", "body_text": "Need MacroBook quote"},
+            "args": {
+                "to": "vendor@example",
+                "subj": "Quote request",
+                "body_text": "Need MacroBook quote",
+            },
             "response": {"id": "m1"},
         },
         {
             "type": "call",
             "time_ms": 2000,
             "tool": "slack.send_message",
-            "args": {"channel": "#procurement", "text": ":white_check_mark: Approved at $3199"},
+            "args": {
+                "channel": "#procurement",
+                "text": ":white_check_mark: Approved at $3199",
+            },
             "response": {"ts": "2"},
         },
-        {"type": "event", "time_ms": 2100, "target": "slack", "payload": {"text": ":white_check_mark: Approved at $3199"}},
+        {
+            "type": "event",
+            "time_ms": 2100,
+            "target": "slack",
+            "payload": {"text": ":white_check_mark: Approved at $3199"},
+        },
         {
             "type": "event",
             "time_ms": 5000,
             "target": "mail",
-            "payload": {"from": "vendor@example", "subj": "Re: Quote", "body_text": "Formal quote — Total: $3,199. ETA: 5 business days."},
+            "payload": {
+                "from": "vendor@example",
+                "subj": "Re: Quote",
+                "body_text": "Formal quote — Total: $3,199. ETA: 5 business days.",
+            },
         },
         {
             "type": "call",
             "time_ms": 6000,
             "tool": "docs.create",
-            "args": {"title": "MacroBook Quote", "body": "Quote $3199, ETA 5 business days"},
+            "args": {
+                "title": "MacroBook Quote",
+                "body": "Quote $3199, ETA 5 business days",
+            },
             "response": {"doc_id": "DOC-1"},
         },
         {
             "type": "call",
             "time_ms": 6500,
             "tool": "tickets.update",
-            "args": {"ticket_id": "TCK-42", "description": "Logged vendor quote $3199 ETA 5 days"},
+            "args": {
+                "ticket_id": "TCK-42",
+                "description": "Logged vendor quote $3199 ETA 5 days",
+            },
             "response": {"ok": True},
         },
         {
             "type": "call",
             "time_ms": 7000,
             "tool": "crm.log_activity",
-            "args": {"kind": "note", "note": "Logged MacroBook quote $3199 with ETA 5 business days"},
+            "args": {
+                "kind": "note",
+                "note": "Logged MacroBook quote $3199 with ETA 5 business days",
+            },
             "response": {"id": "ACT-1"},
         },
     ]

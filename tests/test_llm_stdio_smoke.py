@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,10 @@ import pytest
 
 @pytest.mark.anyio("asyncio")
 @pytest.mark.timeout(120)
-@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="Requires OPENAI_API_KEY in environment/.env")
+@pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="Requires OPENAI_API_KEY in environment/.env",
+)
 async def test_llm_stdio_smoke(tmp_path: Path) -> None:
     """Live LLM + stdio MCP smoke: one plan + one tool call.
 
@@ -21,6 +23,7 @@ async def test_llm_stdio_smoke(tmp_path: Path) -> None:
     """
     try:
         from dotenv import load_dotenv  # type: ignore
+
         load_dotenv(override=True)
     except Exception:
         ...
@@ -62,7 +65,10 @@ async def test_llm_stdio_smoke(tmp_path: Path) -> None:
             await session.initialize()
 
             # Construct a deterministic LLM prompt to select a simple tool
-            client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"), base_url=os.environ.get("OPENAI_BASE_URL"))
+            client = AsyncOpenAI(
+                api_key=os.environ.get("OPENAI_API_KEY"),
+                base_url=os.environ.get("OPENAI_BASE_URL"),
+            )
             # Hard-pin smoke test to gpt-5-mini by default for speed/predictability.
             # Respect VEI_MODEL if explicitly set.
             model = os.environ.get("VEI_MODEL", "gpt-5-mini")
@@ -77,7 +83,9 @@ async def test_llm_stdio_smoke(tmp_path: Path) -> None:
             obs = await session.call_tool("vei.observe", {})
             assert obs is not None
 
-            resp = await client.responses.create(model=model, input=system + "\nReturn a JSON object only.")
+            resp = await client.responses.create(
+                model=model, input=system + "\nReturn a JSON object only."
+            )
             content = getattr(resp, "output_text", None)
             if not content:
                 try:

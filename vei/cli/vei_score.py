@@ -10,7 +10,9 @@ app = typer.Typer(add_completion=False)
 
 
 def _score_impl(
-    artifacts_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True, readable=True),
+    artifacts_dir: Path = typer.Option(
+        ..., exists=True, file_okay=False, dir_okay=True, readable=True
+    ),
     success_mode: str = typer.Option(
         "email",
         help="Success criteria: 'email' (default, only email_parsed) or 'full' (all subgoals)",
@@ -31,7 +33,9 @@ def _score_impl(
 
 @app.command(name="score")
 def _score_command(
-    artifacts_dir: Path = typer.Option(..., exists=True, file_okay=False, dir_okay=True, readable=True),
+    artifacts_dir: Path = typer.Option(
+        ..., exists=True, file_okay=False, dir_okay=True, readable=True
+    ),
     success_mode: str = typer.Option(
         "email",
         help="Success criteria: 'email' (default, only email_parsed) or 'full' (all subgoals)",

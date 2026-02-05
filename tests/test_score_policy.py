@@ -8,13 +8,21 @@ from vei.score_core import compute_score
 
 def write_trace(dirpath: Path, records: list[dict]) -> None:
     dirpath.mkdir(parents=True, exist_ok=True)
-    (dirpath / "trace.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    (dirpath / "trace.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8"
+    )
 
 
 def test_compute_score_promotes_monitor_to_policy(tmp_path: Path) -> None:
     art = tmp_path / "run"
     records = [
-        {"type": "call", "tool": "slack.send_message", "args": {"channel": "#procurement", "text": "Please approve"}, "response": {"ts": "2"}, "time_ms": 1000},
+        {
+            "type": "call",
+            "tool": "slack.send_message",
+            "args": {"channel": "#procurement", "text": "Please approve"},
+            "response": {"ts": "2"},
+            "time_ms": 1000,
+        },
     ]
     write_trace(art, records)
 
@@ -31,7 +39,10 @@ def test_compute_score_accepts_budget_amount(tmp_path: Path) -> None:
         {
             "type": "call",
             "tool": "slack.send_message",
-            "args": {"channel": "#procurement", "text": "Please approve with budget $3,200."},
+            "args": {
+                "channel": "#procurement",
+                "text": "Please approve with budget $3,200.",
+            },
             "response": {"ts": "3"},
             "time_ms": 1000,
         },

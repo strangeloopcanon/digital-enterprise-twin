@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-from typing import Iterable
 
 
 def deterministic_hash(value: str, *, salt: str = "vei") -> str:

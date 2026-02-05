@@ -26,7 +26,11 @@ def dump(name: str, indent: int = typer.Option(2, help="Pretty indent")) -> None
 
 
 @app.command()
-def compile(path: str, indent: int = typer.Option(2, help="Pretty indent"), seed: int = typer.Option(42042, help="Seed for deterministic sampling")) -> None:
+def compile(
+    path: str,
+    indent: int = typer.Option(2, help="Pretty indent"),
+    seed: int = typer.Option(42042, help="Seed for deterministic sampling"),
+) -> None:
     spec = load_scene_spec(path)
     scen = compile_scene(spec, seed=seed)
     typer.echo(json.dumps(asdict(scen), indent=indent))

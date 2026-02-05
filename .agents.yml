@@ -1,0 +1,19 @@
+mode: baseline
+coverage:
+  global: 0.80
+  changed_lines: 0.90
+llm:
+  cost_ceiling_usd: 3
+  latency_p95_ms: 3000
+  provider: openai
+  model: "gpt-5"
+  temperature: 0
+  top_p: 1
+  retry_attempts: 3
+  max_calls_per_job: 9
+security:
+  sast_block_high: false
+deps:
+  audit_block: false
+mutation_tests:
+  schedule: weekly

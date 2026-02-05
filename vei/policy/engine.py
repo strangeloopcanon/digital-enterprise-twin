@@ -34,7 +34,9 @@ class PolicyRule:
 class PromoteMonitorRule(PolicyRule):
     """Promote a monitor finding directly to a policy severity."""
 
-    def __init__(self, monitor_code: str, severity: str = "warning", message: str | None = None) -> None:
+    def __init__(
+        self, monitor_code: str, severity: str = "warning", message: str | None = None
+    ) -> None:
         self.monitor_code = monitor_code
         self.severity = severity
         self.message = message or f"Policy violation: {monitor_code}"

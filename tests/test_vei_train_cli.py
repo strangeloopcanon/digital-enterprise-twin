@@ -9,7 +9,13 @@ from vei.cli.vei_train import bc
 def test_bc_cli_loads_dataset(tmp_path: Path) -> None:
     dataset = {
         "events": [
-            {"time_ms": 1, "actor_id": "agent", "channel": "tool", "type": "slack.send_message", "payload": {"args": {}}}
+            {
+                "time_ms": 1,
+                "actor_id": "agent",
+                "channel": "tool",
+                "type": "slack.send_message",
+                "payload": {"args": {}},
+            }
         ]
     }
     path = tmp_path / "dataset.json"

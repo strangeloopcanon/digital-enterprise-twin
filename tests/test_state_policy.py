@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import os
 
 from vei.router.core import Router
 
@@ -13,7 +12,9 @@ def test_policy_findings_persist(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("VEI_MONITORS", "tool_aware")
     router = Router(seed=1, artifacts_dir=None)
 
-    router.call_and_step("slack.send_message", {"channel": "#procurement", "text": "Please approve"})
+    router.call_and_step(
+        "slack.send_message", {"channel": "#procurement", "text": "Please approve"}
+    )
 
     snapshot = router.state_snapshot(tool_tail=5)
     policy_codes = {f["code"] for f in snapshot.get("policy_findings", [])}
@@ -53,7 +54,11 @@ def test_policy_promote_env_overrides_severity(tmp_path: Path, monkeypatch) -> N
         router.call_and_step("browser.read", {})
 
     snapshot = router.state_snapshot(tool_tail=10)
-    policy_entries = [p for p in snapshot.get("policy_findings", []) if p["code"] == "usage.repetition"]
+    policy_entries = [
+        p
+        for p in snapshot.get("policy_findings", [])
+        if p["code"] == "usage.repetition"
+    ]
     assert policy_entries, "Expected policy entry for usage.repetition"
     assert policy_entries[-1]["severity"] == "error"
 

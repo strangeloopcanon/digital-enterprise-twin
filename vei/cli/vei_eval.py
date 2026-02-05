@@ -45,10 +45,14 @@ def scripted(
 
 @app.command()
 def bc(
-    model: Path = typer.Option(..., "--model", "-m", exists=True, readable=True, help="Trained BC policy"),
+    model: Path = typer.Option(
+        ..., "--model", "-m", exists=True, readable=True, help="Trained BC policy"
+    ),
     seed: int = typer.Option(42042, help="Router seed"),
     dataset: Path = typer.Option(Path("-"), help="Optional dataset JSON for replay"),
-    artifacts: Path = typer.Option(Path("_vei_out/eval_bc"), help="Artifacts directory"),
+    artifacts: Path = typer.Option(
+        Path("_vei_out/eval_bc"), help="Artifacts directory"
+    ),
     max_steps: int = typer.Option(12, help="Max policy steps"),
 ) -> None:
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -66,7 +70,9 @@ def bc(
             del os.environ["VEI_DATASET"]
     policy = BCPPolicy.load(model)
     transcript = run_policy(router, policy, max_steps=max_steps)
-    (artifacts / "transcript.json").write_text(json.dumps(transcript, indent=2), encoding="utf-8")
+    (artifacts / "transcript.json").write_text(
+        json.dumps(transcript, indent=2), encoding="utf-8"
+    )
     score = compute_score(artifacts, success_mode="email")
     (artifacts / "score.json").write_text(json.dumps(score, indent=2), encoding="utf-8")
     typer.echo(json.dumps(score, indent=2))

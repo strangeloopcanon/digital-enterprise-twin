@@ -18,7 +18,9 @@ class SimpleVectorEnv:
             infos.append(info)
         return observations, infos
 
-    def step(self, actions: Iterable[Any]) -> Tuple[List[dict], List[float], List[bool], List[bool], List[dict]]:
+    def step(
+        self, actions: Iterable[Any]
+    ) -> Tuple[List[dict], List[float], List[bool], List[bool], List[dict]]:
         obs_list: List[dict] = []
         rewards: List[float] = []
         terms: List[bool] = []

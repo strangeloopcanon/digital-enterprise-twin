@@ -26,6 +26,12 @@ def test_vei_eval_bc(tmp_path: Path) -> None:
     train_bc(dataset=[str(dataset_path)], output=model_path)
 
     artifacts = tmp_path / "eval_bc"
-    eval_bc(model=model_path, seed=555, dataset=dataset_path, artifacts=artifacts, max_steps=10)
+    eval_bc(
+        model=model_path,
+        seed=555,
+        dataset=dataset_path,
+        artifacts=artifacts,
+        max_steps=10,
+    )
     score_path = artifacts / "score.json"
     assert score_path.exists()

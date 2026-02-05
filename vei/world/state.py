@@ -140,7 +140,9 @@ class StateStore:
         return event
 
     def take_snapshot(self) -> Snapshot:
-        snap = Snapshot(index=self.head, clock_ms=self._clock_hint(), data=self.materialised_state())
+        snap = Snapshot(
+            index=self.head, clock_ms=self._clock_hint(), data=self.materialised_state()
+        )
         self._snapshots[snap.index] = snap
         self._write_snapshot(snap)
         return snap
@@ -166,8 +168,12 @@ class StateStore:
         # Rebuild state from events so newly registered reducers apply retroactively.
         self._replay_state()
 
-    def branch_from(self, snapshot: Snapshot, *, branch: Optional[str] = None) -> "StateStore":
-        new_store = StateStore(base_dir=self.base_dir, branch=branch or f"{self.branch}@{snapshot.index}")
+    def branch_from(
+        self, snapshot: Snapshot, *, branch: Optional[str] = None
+    ) -> "StateStore":
+        new_store = StateStore(
+            base_dir=self.base_dir, branch=branch or f"{self.branch}@{snapshot.index}"
+        )
         new_store._events = [evt for evt in self._events if evt.index <= snapshot.index]
         new_store._state = json.loads(json.dumps(snapshot.data))
         new_store._snapshots = {snapshot.index: snapshot}
@@ -270,5 +276,6 @@ class _MutableStateView(MutableMapping[str, object]):
 
     def __len__(self) -> int:
         return len(self._backing)
+
 
 Reducer = Callable[[Dict[str, object], Event], None]

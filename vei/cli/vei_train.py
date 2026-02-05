@@ -13,8 +13,12 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def bc(
-    dataset: List[str] = typer.Option(..., "--dataset", "-d", help="Rollout dataset path(s)"),
-    output: Path = typer.Option(Path("bc_policy.json"), help="Path to save trained policy"),
+    dataset: List[str] = typer.Option(
+        ..., "--dataset", "-d", help="Rollout dataset path(s)"
+    ),
+    output: Path = typer.Option(
+        Path("bc_policy.json"), help="Path to save trained policy"
+    ),
 ) -> None:
     trainer = BehaviorCloningTrainer([Path(p) for p in dataset])
     policy = trainer.train()

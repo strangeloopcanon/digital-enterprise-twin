@@ -8,7 +8,9 @@ def _make_scenario() -> Scenario:
     return Scenario(
         slack_initial_message="Welcome",
         documents={
-            "DOC-1": Document(doc_id="DOC-1", title="Policy", body="Budget rules", tags=["policy"]),
+            "DOC-1": Document(
+                doc_id="DOC-1", title="Policy", body="Budget rules", tags=["policy"]
+            ),
         },
         calendar_events=[
             CalendarEvent(
@@ -41,7 +43,9 @@ def test_docs_calendar_tickets_tools_available() -> None:
     search = router.call_and_step("docs.search", {"query": "budget"})
     assert search and search[0]["doc_id"] == "DOC-1"
 
-    created = router.call_and_step("docs.create", {"title": "Minutes", "body": "Meeting notes"})
+    created = router.call_and_step(
+        "docs.create", {"title": "Minutes", "body": "Meeting notes"}
+    )
     doc_id = created["doc_id"]
     router.call_and_step("docs.update", {"doc_id": doc_id, "title": "Minutes v2"})
     updated = router.docs.read(doc_id)
@@ -49,7 +53,9 @@ def test_docs_calendar_tickets_tools_available() -> None:
 
     events = router.call_and_step("calendar.list_events", {})
     assert events and events[0]["event_id"] == "EVT-1"
-    ack = router.call_and_step("calendar.accept", {"event_id": "EVT-1", "attendee": "sam@example.com"})
+    ack = router.call_and_step(
+        "calendar.accept", {"event_id": "EVT-1", "attendee": "sam@example.com"}
+    )
     assert ack["status"] == "accepted"
 
     new_event = router.call_and_step(
@@ -65,7 +71,9 @@ def test_docs_calendar_tickets_tools_available() -> None:
 
     tickets = router.call_and_step("tickets.list", {})
     assert tickets and tickets[0]["ticket_id"] == "TCK-1"
-    router.call_and_step("tickets.transition", {"ticket_id": "TCK-1", "status": "closed"})
+    router.call_and_step(
+        "tickets.transition", {"ticket_id": "TCK-1", "status": "closed"}
+    )
     closed = router.call_and_step("tickets.get", {"ticket_id": "TCK-1"})
     assert closed["status"] == "closed"
 
@@ -74,4 +82,6 @@ def test_docs_calendar_tickets_tools_available() -> None:
     assert "docs.list" in action_names
 
     pending = router.pending()
-    assert set(["mail", "slack", "docs", "calendar", "tickets", "total"]) <= set(pending.keys())
+    assert set(["mail", "slack", "docs", "calendar", "tickets", "total"]) <= set(
+        pending.keys()
+    )

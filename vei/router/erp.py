@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from vei.world.scenario import Scenario
+from .errors import MCPError
 
 
 class ErpSim:
@@ -19,7 +20,9 @@ class ErpSim:
     Amount math is integer cents to avoid FP drift.
     """
 
-    def __init__(self, bus, scenario: Optional[Scenario] = None):  # noqa: ANN001 (bus type local)
+    def __init__(
+        self, bus, scenario: Optional[Scenario] = None
+    ):  # noqa: ANN001 (bus type local)
         self.bus = bus
         self._po_seq = 1
         self._inv_seq = 1
@@ -28,6 +31,7 @@ class ErpSim:
         # Deterministic error injection (default off). Set VEI_ERP_ERROR_RATE like '0.05' for 5%.
         try:
             import os
+
             self.error_rate = float(os.environ.get("VEI_ERP_ERROR_RATE", "0"))
         except Exception:
             self.error_rate = 0.0
@@ -48,7 +52,9 @@ class ErpSim:
         return round(c / 100.0, 2)
 
     # Tools
-    def create_po(self, vendor: str, currency: str, lines: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def create_po(
+        self, vendor: str, currency: str, lines: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         po_id = f"PO-{self._po_seq}"
         self._po_seq += 1
         total_cents = 0
@@ -83,7 +89,7 @@ class ErpSim:
     def get_po(self, id: str) -> Dict[str, Any]:
         po = self.pos.get(id)
         if not po:
-            return {"error": {"code": "unknown_po", "message": f"Unknown PO: {id}"}}
+            raise MCPError("unknown_po", f"Unknown PO: {id}")
         return po
 
     def list_pos(self) -> List[Dict[str, Any]]:
@@ -91,7 +97,7 @@ class ErpSim:
 
     def receive_goods(self, po_id: str, lines: List[Dict[str, Any]]) -> Dict[str, Any]:
         if po_id not in self.pos:
-            return {"error": {"code": "unknown_po", "message": f"Unknown PO: {po_id}"}}
+            raise MCPError("unknown_po", f"Unknown PO: {po_id}")
         rcpt_id = f"RCPT-{self._rcpt_seq}"
         self._rcpt_seq += 1
         rcpt_lines = [
@@ -110,12 +116,16 @@ class ErpSim:
         self.receipts[rcpt_id] = rcpt
         return {"id": rcpt_id}
 
-    def submit_invoice(self, vendor: str, po_id: str, lines: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def submit_invoice(
+        self, vendor: str, po_id: str, lines: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         if po_id not in self.pos:
-            return {"error": {"code": "unknown_po", "message": f"Unknown PO: {po_id}"}}
+            raise MCPError("unknown_po", f"Unknown PO: {po_id}")
         # Occasionally simulate validation error
         if self.error_rate > 0 and self.bus.rng.next_float() < self.error_rate:
-            return {"error": {"code": "validation_error", "message": "Duplicate invoice number or invalid tax."}}
+            raise MCPError(
+                "validation_error", "Duplicate invoice number or invalid tax."
+            )
         inv_id = f"INV-{self._inv_seq}"
         self._inv_seq += 1
         total_cents = 0
@@ -150,22 +160,33 @@ class ErpSim:
     def get_invoice(self, id: str) -> Dict[str, Any]:
         inv = self.invoices.get(id)
         if not inv:
-            return {"error": {"code": "unknown_invoice", "message": f"Unknown invoice: {id}"}}
+            raise MCPError("unknown_invoice", f"Unknown invoice: {id}")
         return inv
 
     def list_invoices(self) -> List[Dict[str, Any]]:
         return list(self.invoices.values())
 
-    def match_three_way(self, po_id: str, invoice_id: str, receipt_id: Optional[str] = None) -> Dict[str, Any]:
+    def match_three_way(
+        self, po_id: str, invoice_id: str, receipt_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         po = self.pos.get(po_id)
         inv = self.invoices.get(invoice_id)
         rcpt = self.receipts.get(receipt_id) if receipt_id else None
         if not po or not inv:
-            return {"error": {"code": "unknown_ref", "message": "PO or Invoice not found"}}
+            raise MCPError("unknown_ref", "PO or Invoice not found")
         # Build item->qty maps
-        po_qty = {str(l["item_id"]): int(l["qty"]) for l in po.get("lines", [])}
-        inv_qty = {str(l["item_id"]): int(l["qty"]) for l in inv.get("lines", [])}
-        rcpt_qty = {str(l["item_id"]): int(l["qty"]) for l in (rcpt.get("lines", []) if rcpt else [])}
+        po_qty = {
+            str(line_item["item_id"]): int(line_item["qty"])
+            for line_item in po.get("lines", [])
+        }
+        inv_qty = {
+            str(line_item["item_id"]): int(line_item["qty"])
+            for line_item in inv.get("lines", [])
+        }
+        rcpt_qty = {
+            str(line_item["item_id"]): int(line_item["qty"])
+            for line_item in (rcpt.get("lines", []) if rcpt else [])
+        }
         # Compare amounts (within 1 cent)
         po_amount_c = self._money_to_cents(po.get("amount", 0))
         inv_amount_c = self._money_to_cents(inv.get("amount", 0))
@@ -178,7 +199,9 @@ class ErpSim:
             iq = inv_qty.get(it, 0)
             rq = rcpt_qty.get(it, 0)
             if (pq != iq) or (rcpt is not None and iq > rq):
-                qty_mismatches.append({"item_id": it, "po": pq, "invoice": iq, "received": rq})
+                qty_mismatches.append(
+                    {"item_id": it, "po": pq, "invoice": iq, "received": rq}
+                )
         status = "MATCH" if (amount_ok and not qty_mismatches) else "MISMATCH"
         return {
             "status": status,
@@ -192,11 +215,13 @@ class ErpSim:
     def post_payment(self, invoice_id: str, amount: float) -> Dict[str, Any]:
         inv = self.invoices.get(invoice_id)
         if not inv:
-            return {"error": {"code": "unknown_invoice", "message": f"Unknown invoice: {invoice_id}"}}
+            raise MCPError("unknown_invoice", f"Unknown invoice: {invoice_id}")
         # Rarely simulate payment gateway rejection
         if self.error_rate > 0 and self.bus.rng.next_float() < (self.error_rate / 2):
-            return {"error": {"code": "payment_rejected", "message": "Bank rejected payment."}}
-        paid_c = self._money_to_cents(inv.get("paid_amount", 0.0)) + self._money_to_cents(amount)
+            raise MCPError("payment_rejected", "Bank rejected payment.")
+        paid_c = self._money_to_cents(
+            inv.get("paid_amount", 0.0)
+        ) + self._money_to_cents(amount)
         total_c = self._money_to_cents(inv.get("amount", 0.0))
         inv["paid_amount"] = self._cents_to_money(min(paid_c, total_c))
         if paid_c >= total_c:

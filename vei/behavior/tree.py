@@ -1,17 +1,32 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Protocol
 
 from vei.monitors.models import MonitorFinding
+
+if TYPE_CHECKING:
+    from .memory import MemoryStore
 
 
 Status = str
 
 
+class RouterLike(Protocol):
+    """Router-facing subset used by behavior nodes."""
+
+    def call_and_step(self, tool: str, args: Dict[str, object]) -> object: ...
+
+    def observe(self, focus_hint: Optional[str] = None) -> "ObservationLike": ...
+
+
+class ObservationLike(Protocol):
+    def model_dump(self) -> Dict[str, Any]: ...
+
+
 @dataclass
 class BehaviorContext:
-    router: any  # Router-like object with call_and_step/observe
+    router: RouterLike
     memory: "MemoryStore"
     transcript: List[Dict[str, object]]
 
@@ -57,7 +72,12 @@ class ConditionNode(BehaviorNode):
 
 
 class ToolAction(BehaviorNode):
-    def __init__(self, tool: str, args: Optional[Dict[str, object]] = None, focus: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        tool: str,
+        args: Optional[Dict[str, object]] = None,
+        focus: Optional[str] = None,
+    ) -> None:
         self.tool = tool
         self.args = args or {}
         self.focus = focus
@@ -83,7 +103,12 @@ class Observe(BehaviorNode):
 
 
 class WaitFor(BehaviorNode):
-    def __init__(self, predicate: Callable[[BehaviorContext], bool], max_ticks: int = 5, focus: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        predicate: Callable[[BehaviorContext], bool],
+        max_ticks: int = 5,
+        focus: Optional[str] = None,
+    ) -> None:
         self.predicate = predicate
         self.max_ticks = max_ticks
         self.focus = focus
@@ -97,11 +122,13 @@ class WaitFor(BehaviorNode):
                 met = True
                 break
         ctx.record({"wait_complete": True, "met": met})
-        return "success" if met else "success"
+        return "success" if met else "failure"
 
 
 class MemoriseFinding(BehaviorNode):
-    def __init__(self, kind: str, extractor: Callable[[BehaviorContext], Optional[str]]) -> None:
+    def __init__(
+        self, kind: str, extractor: Callable[[BehaviorContext], Optional[str]]
+    ) -> None:
         self.kind = kind
         self.extractor = extractor
 

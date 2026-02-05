@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        files: ^(vei|tests)/.*\.py$
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.8
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^(vei|tests)/.*\.py$
+      - id: ruff-format
+        files: ^(vei|tests)/.*\.py$
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        args:
+          - vei/router/identity.py
+          - vei/router/tool_providers.py
+          - vei/identity
+          - vei/world/api.py
+          - vei/world/replay.py
+          - vei/router/api.py
