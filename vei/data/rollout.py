@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, List
+from typing import Iterable, List
 
 from vei.behavior.policy import ScriptedProcurementPolicy
 from vei.data.models import BaseEvent, VEIDataset
-from vei.router.core import Router
+from vei.router.api import RouterAPI, create_router
 
 
 def rollout_procurement(
@@ -14,14 +14,14 @@ def rollout_procurement(
     events: List[BaseEvent] = []
     for idx in range(max(1, episodes)):
         router_seed = seed + idx
-        router = Router(seed=router_seed, artifacts_dir=None)
+        router = create_router(seed=router_seed, artifacts_dir=None)
         runner = ScriptedProcurementPolicy(router)
         runner.run()
         events.extend(_events_from_trace(router))
     return VEIDataset(events=sorted(events, key=lambda e: e.time_ms))
 
 
-def _events_from_trace(router: Router) -> Iterable[BaseEvent]:
+def _events_from_trace(router: RouterAPI) -> Iterable[BaseEvent]:
     for entry in router.trace.entries:
         time_ms = int(entry.get("time_ms", router.bus.clock_ms))
         if entry.get("type") == "event":
@@ -41,5 +41,8 @@ def _events_from_trace(router: Router) -> Iterable[BaseEvent]:
                 actor_id="agent",
                 channel="tool",
                 type=tool,
-                payload={"args": entry.get("args", {}), "response": entry.get("response")},
+                payload={
+                    "args": entry.get("args", {}),
+                    "response": entry.get("response"),
+                },
             )

@@ -94,7 +94,12 @@ class _RouterHolder:
         self.router = router
 
 
-def create_mcp_server(router: Router, host: str | None = None, port: int | None = None, mount_path: str = "/") -> fserver.FastMCP:
+def create_mcp_server(
+    router: Router,
+    host: str | None = None,
+    port: int | None = None,
+    mount_path: str = "/",
+) -> fserver.FastMCP:
     # Read host/port from args or env (defaults)
     if host is None:
         host = os.environ.get("VEI_HOST", "127.0.0.1")
@@ -106,13 +111,20 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     # Honor logging and debug via env so diagnostics show up
     log_level = os.environ.get("FASTMCP_LOG_LEVEL", "INFO").upper()
-    debug_flag = os.environ.get("FASTMCP_DEBUG", "0") in {"1", "true", "TRUE", "yes", "on"}
+    debug_flag = os.environ.get("FASTMCP_DEBUG", "0") in {
+        "1",
+        "true",
+        "TRUE",
+        "yes",
+        "on",
+    }
 
     # Relax transport security for local dev if explicitly requested
     ts = None
     if os.environ.get("FASTMCP_DISABLE_SECURITY") in {"1", "true", "TRUE", "yes", "on"}:
         try:
             from mcp.server.fastmcp.server import TransportSecuritySettings  # type: ignore
+
             ts = TransportSecuritySettings(enable_dns_rebinding_protection=False)
         except Exception:
             ts = None
@@ -133,6 +145,12 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
     def R() -> Router:
         return holder.router
 
+    def _safe_call(tool: str, args: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return R().call_and_step(tool, args)
+        except MCPError as e:
+            return {"error": {"code": e.code, "message": e.message}}
+
     @srv.tool(name="slack.list_channels", description="List Slack channels")
     def slack_list_channels() -> list[str]:
         return R().call_and_step("slack.list_channels", {})  # type: ignore[return-value]
@@ -145,23 +163,32 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="slack.send_message", description="Send a Slack message")
-    def slack_send_message(channel: str, text: str, thread_ts: str = None) -> dict[str, Any]:
+    def slack_send_message(
+        channel: str, text: str, thread_ts: str = None
+    ) -> dict[str, Any]:
         try:
-            return R().call_and_step("slack.send_message", {"channel": channel, "text": text, "thread_ts": thread_ts})
+            return R().call_and_step(
+                "slack.send_message",
+                {"channel": channel, "text": text, "thread_ts": thread_ts},
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="slack.react", description="React to a message")
     def slack_react(channel: str, ts: str, emoji: str) -> dict[str, Any]:
         try:
-            return R().call_and_step("slack.react", {"channel": channel, "ts": ts, "emoji": emoji})
+            return R().call_and_step(
+                "slack.react", {"channel": channel, "ts": ts, "emoji": emoji}
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="slack.fetch_thread", description="Fetch a thread")
     def slack_fetch_thread(channel: str, thread_ts: str) -> dict[str, Any]:
         try:
-            return R().call_and_step("slack.fetch_thread", {"channel": channel, "thread_ts": thread_ts})
+            return R().call_and_step(
+                "slack.fetch_thread", {"channel": channel, "thread_ts": thread_ts}
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
@@ -178,7 +205,9 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     @srv.tool(name="mail.compose", description="Compose a message")
     def mail_compose(to: str, subj: str, body_text: str) -> dict[str, Any]:
-        return R().call_and_step("mail.compose", {"to": to, "subj": subj, "body_text": body_text})
+        return R().call_and_step(
+            "mail.compose", {"to": to, "subj": subj, "body_text": body_text}
+        )
 
     @srv.tool(name="mail.reply", description="Reply to a message")
     def mail_reply(id: str, body_text: str) -> dict[str, Any]:
@@ -227,10 +256,14 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     @srv.tool(name="docs.create", description="Create a document")
     def docs_create(title: str, body: str, tags: list = None) -> dict[str, Any]:
-        return R().call_and_step("docs.create", {"title": title, "body": body, "tags": tags})
+        return R().call_and_step(
+            "docs.create", {"title": title, "body": body, "tags": tags}
+        )
 
     @srv.tool(name="docs.update", description="Update a document")
-    def docs_update(doc_id: str, title: str = None, body: str = None, tags: list = None) -> dict[str, Any]:
+    def docs_update(
+        doc_id: str, title: str = None, body: str = None, tags: list = None
+    ) -> dict[str, Any]:
         try:
             return R().call_and_step(
                 "docs.update",
@@ -267,14 +300,18 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
     @srv.tool(name="calendar.accept", description="Accept a calendar invite")
     def calendar_accept(event_id: str, attendee: str) -> dict[str, Any]:
         try:
-            return R().call_and_step("calendar.accept", {"event_id": event_id, "attendee": attendee})
+            return R().call_and_step(
+                "calendar.accept", {"event_id": event_id, "attendee": attendee}
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="calendar.decline", description="Decline a calendar invite")
     def calendar_decline(event_id: str, attendee: str) -> dict[str, Any]:
         try:
-            return R().call_and_step("calendar.decline", {"event_id": event_id, "attendee": attendee})
+            return R().call_and_step(
+                "calendar.decline", {"event_id": event_id, "attendee": attendee}
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
@@ -290,18 +327,26 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="tickets.create", description="Create a ticket")
-    def tickets_create(title: str, description: str = None, assignee: str = None) -> dict[str, Any]:
+    def tickets_create(
+        title: str, description: str = None, assignee: str = None
+    ) -> dict[str, Any]:
         return R().call_and_step(
             "tickets.create",
             {"title": title, "description": description, "assignee": assignee},
         )
 
     @srv.tool(name="tickets.update", description="Update a ticket")
-    def tickets_update(ticket_id: str, description: str = None, assignee: str = None) -> dict[str, Any]:
+    def tickets_update(
+        ticket_id: str, description: str = None, assignee: str = None
+    ) -> dict[str, Any]:
         try:
             return R().call_and_step(
                 "tickets.update",
-                {"ticket_id": ticket_id, "description": description, "assignee": assignee},
+                {
+                    "ticket_id": ticket_id,
+                    "description": description,
+                    "assignee": assignee,
+                },
             )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
@@ -309,7 +354,9 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
     @srv.tool(name="tickets.transition", description="Transition ticket status")
     def tickets_transition(ticket_id: str, status: str) -> dict[str, Any]:
         try:
-            return R().call_and_step("tickets.transition", {"ticket_id": ticket_id, "status": status})
+            return R().call_and_step(
+                "tickets.transition", {"ticket_id": ticket_id, "status": status}
+            )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
@@ -323,15 +370,16 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     # --- ERP twin tools ---
     @srv.tool(name="erp.create_po", description="Create a purchase order (PO)")
-    def erp_create_po(vendor: str, currency: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
-        try:
-            return R().call_and_step("erp.create_po", {"vendor": vendor, "currency": currency, "lines": lines})
-        except MCPError as e:
-            return {"error": {"code": e.code, "message": e.message}}
+    def erp_create_po(
+        vendor: str, currency: str, lines: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "erp.create_po", {"vendor": vendor, "currency": currency, "lines": lines}
+        )
 
     @srv.tool(name="erp.get_po", description="Get a PO by id")
     def erp_get_po(id: str) -> dict[str, Any]:
-        return R().call_and_step("erp.get_po", {"id": id})
+        return _safe_call("erp.get_po", {"id": id})
 
     @srv.tool(name="erp.list_pos", description="List all POs")
     def erp_list_pos() -> list[dict[str, Any]]:
@@ -339,36 +387,63 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     @srv.tool(name="erp.receive_goods", description="Receive goods against a PO")
     def erp_receive_goods(po_id: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
-        return R().call_and_step("erp.receive_goods", {"po_id": po_id, "lines": lines})
+        return _safe_call("erp.receive_goods", {"po_id": po_id, "lines": lines})
 
     @srv.tool(name="erp.submit_invoice", description="Submit an invoice for a PO")
-    def erp_submit_invoice(vendor: str, po_id: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
-        return R().call_and_step("erp.submit_invoice", {"vendor": vendor, "po_id": po_id, "lines": lines})
+    def erp_submit_invoice(
+        vendor: str, po_id: str, lines: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "erp.submit_invoice", {"vendor": vendor, "po_id": po_id, "lines": lines}
+        )
 
     @srv.tool(name="erp.get_invoice", description="Get invoice by id")
     def erp_get_invoice(id: str) -> dict[str, Any]:
-        return R().call_and_step("erp.get_invoice", {"id": id})
+        return _safe_call("erp.get_invoice", {"id": id})
 
     @srv.tool(name="erp.list_invoices", description="List invoices")
     def erp_list_invoices() -> list[dict[str, Any]]:
         return R().call_and_step("erp.list_invoices", {})  # type: ignore[return-value]
 
-    @srv.tool(name="erp.match_three_way", description="Three-way match PO vs receipt vs invoice")
-    def erp_match_three_way(po_id: str, invoice_id: str, receipt_id: str = None) -> dict[str, Any]:
-        return R().call_and_step("erp.match_three_way", {"po_id": po_id, "invoice_id": invoice_id, "receipt_id": receipt_id})
+    @srv.tool(
+        name="erp.match_three_way",
+        description="Three-way match PO vs receipt vs invoice",
+    )
+    def erp_match_three_way(
+        po_id: str, invoice_id: str, receipt_id: str = None
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "erp.match_three_way",
+            {"po_id": po_id, "invoice_id": invoice_id, "receipt_id": receipt_id},
+        )
 
     @srv.tool(name="erp.post_payment", description="Post a payment against an invoice")
     def erp_post_payment(invoice_id: str, amount: float) -> dict[str, Any]:
-        return R().call_and_step("erp.post_payment", {"invoice_id": invoice_id, "amount": amount})
+        return _safe_call(
+            "erp.post_payment", {"invoice_id": invoice_id, "amount": amount}
+        )
 
     # --- CRM twin tools ---
     @srv.tool(name="crm.create_contact", description="Create a CRM contact")
-    def crm_create_contact(email: str, first_name: str = None, last_name: str = None, do_not_contact: bool = False) -> dict[str, Any]:
-        return R().call_and_step("crm.create_contact", {"email": email, "first_name": first_name, "last_name": last_name, "do_not_contact": do_not_contact})
+    def crm_create_contact(
+        email: str,
+        first_name: str = None,
+        last_name: str = None,
+        do_not_contact: bool = False,
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "crm.create_contact",
+            {
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "do_not_contact": do_not_contact,
+            },
+        )
 
     @srv.tool(name="crm.get_contact", description="Get contact by id")
     def crm_get_contact(id: str) -> dict[str, Any]:
-        return R().call_and_step("crm.get_contact", {"id": id})
+        return _safe_call("crm.get_contact", {"id": id})
 
     @srv.tool(name="crm.list_contacts", description="List contacts")
     def crm_list_contacts() -> list[dict[str, Any]]:
@@ -376,27 +451,50 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     @srv.tool(name="crm.create_company", description="Create a company")
     def crm_create_company(name: str, domain: str = None) -> dict[str, Any]:
-        return R().call_and_step("crm.create_company", {"name": name, "domain": domain})
+        return _safe_call("crm.create_company", {"name": name, "domain": domain})
 
     @srv.tool(name="crm.get_company", description="Get company by id")
     def crm_get_company(id: str) -> dict[str, Any]:
-        return R().call_and_step("crm.get_company", {"id": id})
+        return _safe_call("crm.get_company", {"id": id})
 
     @srv.tool(name="crm.list_companies", description="List companies")
     def crm_list_companies() -> list[dict[str, Any]]:
         return R().call_and_step("crm.list_companies", {})  # type: ignore[return-value]
 
-    @srv.tool(name="crm.associate_contact_company", description="Associate contact and company")
-    def crm_associate_contact_company(contact_id: str, company_id: str) -> dict[str, Any]:
-        return R().call_and_step("crm.associate_contact_company", {"contact_id": contact_id, "company_id": company_id})
+    @srv.tool(
+        name="crm.associate_contact_company",
+        description="Associate contact and company",
+    )
+    def crm_associate_contact_company(
+        contact_id: str, company_id: str
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "crm.associate_contact_company",
+            {"contact_id": contact_id, "company_id": company_id},
+        )
 
     @srv.tool(name="crm.create_deal", description="Create a deal")
-    def crm_create_deal(name: str, amount: float, stage: str = "New", contact_id: str = None, company_id: str = None) -> dict[str, Any]:
-        return R().call_and_step("crm.create_deal", {"name": name, "amount": amount, "stage": stage, "contact_id": contact_id, "company_id": company_id})
+    def crm_create_deal(
+        name: str,
+        amount: float,
+        stage: str = "New",
+        contact_id: str = None,
+        company_id: str = None,
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "crm.create_deal",
+            {
+                "name": name,
+                "amount": amount,
+                "stage": stage,
+                "contact_id": contact_id,
+                "company_id": company_id,
+            },
+        )
 
     @srv.tool(name="crm.get_deal", description="Get deal by id")
     def crm_get_deal(id: str) -> dict[str, Any]:
-        return R().call_and_step("crm.get_deal", {"id": id})
+        return _safe_call("crm.get_deal", {"id": id})
 
     @srv.tool(name="crm.list_deals", description="List deals")
     def crm_list_deals() -> list[dict[str, Any]]:
@@ -404,11 +502,16 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
 
     @srv.tool(name="crm.update_deal_stage", description="Update deal stage")
     def crm_update_deal_stage(id: str, stage: str) -> dict[str, Any]:
-        return R().call_and_step("crm.update_deal_stage", {"id": id, "stage": stage})
+        return _safe_call("crm.update_deal_stage", {"id": id, "stage": stage})
 
     @srv.tool(name="crm.log_activity", description="Log activity (note/email_outreach)")
-    def crm_log_activity(kind: str, contact_id: str = None, deal_id: str = None, note: str = None) -> dict[str, Any]:
-        return R().call_and_step("crm.log_activity", {"kind": kind, "contact_id": contact_id, "deal_id": deal_id, "note": note})
+    def crm_log_activity(
+        kind: str, contact_id: str = None, deal_id: str = None, note: str = None
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "crm.log_activity",
+            {"kind": kind, "contact_id": contact_id, "deal_id": deal_id, "note": note},
+        )
 
     # --- Configurable alias packs (ERP) ---
     packs_env = os.environ.get("VEI_ALIAS_PACKS", "xero").strip()
@@ -418,10 +521,7 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
         # Register a thin passthrough tool dynamically
         @srv.tool(name=alias_name, description=f"Alias → {base_tool}")
         def _alias_passthrough(**kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
-            try:
-                return R().call_and_step(base_tool, dict(kwargs))
-            except MCPError as e:
-                return {"error": {"code": e.code, "message": e.message}}
+            return _safe_call(base_tool, dict(kwargs))
 
         base_spec = R().registry.get(base_tool)
         if base_spec:
@@ -454,7 +554,9 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
         for alias, base in CRM_ALIAS_PACKS.get(pack, []):
             _register_alias(alias, base)
 
-    @srv.tool(name="vei.observe", description="Get current observation summary + action menu")
+    @srv.tool(
+        name="vei.observe", description="Get current observation summary + action menu"
+    )
     def vei_observe(focus: str = None) -> dict[str, Any]:
         return R().observe(focus_hint=focus).model_dump()
 
@@ -462,51 +564,84 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
     def vei_ping() -> dict[str, Any]:
         return {"ok": True, "time_ms": R().bus.clock_ms}
 
-    @srv.tool(name="vei.reset", description="Reset the simulation deterministically (optionally with a new seed)")
+    @srv.tool(
+        name="vei.reset",
+        description="Reset the simulation deterministically (optionally with a new seed)",
+    )
     def vei_reset(seed: int = None) -> dict[str, Any]:
         old = R()
-        new_seed = int(seed) if seed is not None else int(os.environ.get("VEI_SEED", "42042"))
+        new_seed = (
+            int(seed) if seed is not None else int(os.environ.get("VEI_SEED", "42042"))
+        )
         # Preserve scenario and artifacts configuration so the environment stays consistent for the session
-        new_router = Router(seed=new_seed, artifacts_dir=old.trace.out_dir, scenario=old.scenario)
+        new_router = Router(
+            seed=new_seed, artifacts_dir=old.trace.out_dir, scenario=old.scenario
+        )
         holder.router = new_router
         return {"ok": True, "seed": new_seed, "time_ms": new_router.bus.clock_ms}
 
-    @srv.tool(name="vei.act_and_observe", description="Execute a tool and return its result and a post-action observation")
-    def vei_act_and_observe(tool: str, args: dict[str, Any] = Field(default_factory=dict)) -> dict[str, Any]:
+    @srv.tool(
+        name="vei.act_and_observe",
+        description="Execute a tool and return its result and a post-action observation",
+    )
+    def vei_act_and_observe(
+        tool: str, args: dict[str, Any] = Field(default_factory=dict)
+    ) -> dict[str, Any]:
         data = R().act_and_observe(tool, args)
         return data
 
-    @srv.tool(name="vei.call", description="Call any tool name with args via the VEI router")
-    def vei_call(tool: str, args: dict[str, Any] = Field(default_factory=dict)) -> dict[str, Any]:
+    @srv.tool(
+        name="vei.call", description="Call any tool name with args via the VEI router"
+    )
+    def vei_call(
+        tool: str, args: dict[str, Any] = Field(default_factory=dict)
+    ) -> dict[str, Any]:
         try:
             return R().call_and_step(tool, args)
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
-    @srv.tool(name="vei.tools.search", description="Search the tool catalog for relevant entries")
+    @srv.tool(
+        name="vei.tools.search",
+        description="Search the tool catalog for relevant entries",
+    )
     def vei_tools_search(query: str, top_k: int = 10) -> dict[str, Any]:
         limit = top_k if isinstance(top_k, int) else 10
         if limit < 0:
             limit = 0
         return R().search_tools(query, top_k=limit)
 
-    @srv.tool(name="vei.tick", description="Advance logical time by dt_ms and deliver due events")
+    @srv.tool(
+        name="vei.tick",
+        description="Advance logical time by dt_ms and deliver due events",
+    )
     def vei_tick(dt_ms: int = 1000) -> dict[str, Any]:
         return R().tick(dt_ms)
 
-    @srv.tool(name="vei.pending", description="Return pending event counts without advancing time")
+    @srv.tool(
+        name="vei.pending",
+        description="Return pending event counts without advancing time",
+    )
     def vei_pending() -> dict[str, int]:
         return R().pending()
 
-    @srv.tool(name="vei.state", description="Inspect state head, receipts, and recent tool calls")
-    def vei_state(include_state: bool = False, tool_tail: int = 20, include_receipts: bool = True) -> dict[str, Any]:
+    @srv.tool(
+        name="vei.state",
+        description="Inspect state head, receipts, and recent tool calls",
+    )
+    def vei_state(
+        include_state: bool = False, tool_tail: int = 20, include_receipts: bool = True
+    ) -> dict[str, Any]:
         return R().state_snapshot(
             include_state=include_state,
             tool_tail=tool_tail,
             include_receipts=include_receipts,
         )
 
-    @srv.tool(name="vei.help", description="Usage help: how to interact via MCP and example actions")
+    @srv.tool(
+        name="vei.help",
+        description="Usage help: how to interact via MCP and example actions",
+    )
     def vei_help() -> dict[str, Any]:
         return {
             "instructions": (
@@ -517,11 +652,20 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
             ),
             "tools": [
                 {"tool": "vei.observe", "args": {"focus": "browser|slack|mail?"}},
-                {"tool": "vei.act_and_observe", "args": {"tool": "str", "args": "object"}},
+                {
+                    "tool": "vei.act_and_observe",
+                    "args": {"tool": "str", "args": "object"},
+                },
                 {"tool": "vei.tick", "args": {"dt_ms": "int?"}},
                 {"tool": "vei.pending", "args": {}},
-                {"tool": "vei.state", "args": {"tool_tail": "int?", "include_state": "bool?"}},
-                {"tool": "vei.tools.search", "args": {"query": "keywords", "top_k": "int?"}},
+                {
+                    "tool": "vei.state",
+                    "args": {"tool_tail": "int?", "include_state": "bool?"},
+                },
+                {
+                    "tool": "vei.tools.search",
+                    "args": {"query": "keywords", "top_k": "int?"},
+                },
                 {"tool": "vei.reset", "args": {"seed": "int?"}},
                 {"tool": "browser.read", "args": {}},
                 {"tool": "browser.find", "args": {"query": "str", "top_k": "int?"}},
@@ -532,37 +676,126 @@ def create_mcp_server(router: Router, host: str | None = None, port: int | None 
                 {"tool": "browser.back", "args": {}},
                 {"tool": "slack.list_channels", "args": {}},
                 {"tool": "slack.open_channel", "args": {"channel": "str"}},
-                {"tool": "slack.send_message", "args": {"channel": "str", "text": "str", "thread_ts": "str?"}},
-                {"tool": "slack.react", "args": {"channel": "str", "ts": "str", "emoji": "str"}},
-                {"tool": "slack.fetch_thread", "args": {"channel": "str", "thread_ts": "str"}},
+                {
+                    "tool": "slack.send_message",
+                    "args": {"channel": "str", "text": "str", "thread_ts": "str?"},
+                },
+                {
+                    "tool": "slack.react",
+                    "args": {"channel": "str", "ts": "str", "emoji": "str"},
+                },
+                {
+                    "tool": "slack.fetch_thread",
+                    "args": {"channel": "str", "thread_ts": "str"},
+                },
                 {"tool": "mail.list", "args": {"folder": "str?"}},
                 {"tool": "mail.open", "args": {"id": "str"}},
-                {"tool": "mail.compose", "args": {"to": "str", "subj": "str", "body_text": "str"}},
+                {
+                    "tool": "mail.compose",
+                    "args": {"to": "str", "subj": "str", "body_text": "str"},
+                },
                 {"tool": "mail.reply", "args": {"id": "str", "body_text": "str"}},
-                {"tool": "erp.create_po", "args": {"vendor": "str", "currency": "str", "lines": "[{item_id,desc,qty,unit_price}]"}},
+                {
+                    "tool": "erp.create_po",
+                    "args": {
+                        "vendor": "str",
+                        "currency": "str",
+                        "lines": "[{item_id,desc,qty,unit_price}]",
+                    },
+                },
                 {"tool": "erp.list_pos", "args": {}},
-                {"tool": "erp.submit_invoice", "args": {"vendor": "str", "po_id": "str", "lines": "[{item_id,qty,unit_price}]"}},
-                {"tool": "erp.match_three_way", "args": {"po_id": "str", "invoice_id": "str", "receipt_id": "str?"}},
-                {"tool": "crm.create_contact", "args": {"email": "str", "first_name": "str?", "last_name": "str?", "do_not_contact": "bool?"}},
-                {"tool": "crm.create_company", "args": {"name": "str", "domain": "str?"}},
-                {"tool": "crm.associate_contact_company", "args": {"contact_id": "str", "company_id": "str"}},
-                {"tool": "crm.create_deal", "args": {"name": "str", "amount": "number", "stage": "str?", "contact_id": "str?", "company_id": "str?"}},
-                {"tool": "crm.update_deal_stage", "args": {"id": "str", "stage": "str"}},
-                {"tool": "crm.log_activity", "args": {"kind": "str", "contact_id": "str?", "deal_id": "str?", "note": "str?"}},
+                {
+                    "tool": "erp.submit_invoice",
+                    "args": {
+                        "vendor": "str",
+                        "po_id": "str",
+                        "lines": "[{item_id,qty,unit_price}]",
+                    },
+                },
+                {
+                    "tool": "erp.match_three_way",
+                    "args": {"po_id": "str", "invoice_id": "str", "receipt_id": "str?"},
+                },
+                {
+                    "tool": "crm.create_contact",
+                    "args": {
+                        "email": "str",
+                        "first_name": "str?",
+                        "last_name": "str?",
+                        "do_not_contact": "bool?",
+                    },
+                },
+                {
+                    "tool": "crm.create_company",
+                    "args": {"name": "str", "domain": "str?"},
+                },
+                {
+                    "tool": "crm.associate_contact_company",
+                    "args": {"contact_id": "str", "company_id": "str"},
+                },
+                {
+                    "tool": "crm.create_deal",
+                    "args": {
+                        "name": "str",
+                        "amount": "number",
+                        "stage": "str?",
+                        "contact_id": "str?",
+                        "company_id": "str?",
+                    },
+                },
+                {
+                    "tool": "crm.update_deal_stage",
+                    "args": {"id": "str", "stage": "str"},
+                },
+                {
+                    "tool": "crm.log_activity",
+                    "args": {
+                        "kind": "str",
+                        "contact_id": "str?",
+                        "deal_id": "str?",
+                        "note": "str?",
+                    },
+                },
                 {"tool": "vei.call", "args": {"tool": "str", "args": "object"}},
             ],
             "examples": [
                 {"tool": "vei.observe", "args": {}},
                 {"tool": "browser.read", "args": {}},
-                {"tool": "slack.send_message", "args": {"channel": "#procurement", "text": "Summary: budget $3200, citations included."}},
-                {"tool": "mail.compose", "args": {"to": "sales@macrocompute.example", "subj": "Quote request", "body_text": "Please send latest price and ETA."}},
+                {
+                    "tool": "slack.send_message",
+                    "args": {
+                        "channel": "#procurement",
+                        "text": "Summary: budget $3200, citations included.",
+                    },
+                },
+                {
+                    "tool": "mail.compose",
+                    "args": {
+                        "to": "sales@macrocompute.example",
+                        "subj": "Quote request",
+                        "body_text": "Please send latest price and ETA.",
+                    },
+                },
                 {"tool": "vei.state", "args": {"tool_tail": 5}},
-                {"tool": "vei.tools.search", "args": {"query": "slack approval budget", "top_k": 8}},
+                {
+                    "tool": "vei.tools.search",
+                    "args": {"query": "slack approval budget", "top_k": 8},
+                },
                 {"tool": "vei.ping", "args": {}},
                 {"tool": "vei.reset", "args": {"seed": 42042}},
-                {"tool": "vei.act_and_observe", "args": {"tool": "browser.read", "args": {}}},
+                {
+                    "tool": "vei.act_and_observe",
+                    "args": {"tool": "browser.read", "args": {}},
+                },
                 {"tool": "vei.call", "args": {"tool": "erp.list_pos", "args": {}}},
-                {"tool": packs[0] + ".list_purchase_orders" if packs else "xero.list_purchase_orders", "args": {}},
+                {
+                    "tool": (
+                        packs[0] + ".list_purchase_orders"
+                        if packs
+                        else "xero.list_purchase_orders"
+                    ),
+                    "args": {},
+                },
             ],
         }
 

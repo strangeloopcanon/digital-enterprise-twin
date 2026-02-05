@@ -33,14 +33,15 @@ def _mail_received(ctx: BehaviorContext) -> bool:
         obs = entry.get("observation")
         if not obs:
             continue
-        pending = obs.get("pending_events", {})
-        if pending.get("mail", 0) == 0:
-            continue
-        return True
+        summary = str(obs.get("summary", "")).lower()
+        if summary.startswith("mail:") and "inbox empty" not in summary:
+            return True
     return False
 
 
-def ScriptedProcurementPolicy(router, *, memory: Optional[MemoryStore] = None) -> BehaviorRunner:
+def ScriptedProcurementPolicy(
+    router, *, memory: Optional[MemoryStore] = None
+) -> BehaviorRunner:
     """Construct a simple scripted procurement behavior for baseline rollouts."""
 
     store = memory or MemoryStore()
@@ -53,10 +54,10 @@ def ScriptedProcurementPolicy(router, *, memory: Optional[MemoryStore] = None) -
             "slack.send_message",
             {
                 "channel": "#procurement",
-                "text": "Requesting approval for laptop purchase under $3200 because it meets spec.",
+                "text": "Please approve laptop purchase. Budget $3200 because it meets required specs.",
             },
         ),
-        WaitFor(_approval_arrived, max_ticks=3, focus="slack"),
+        WaitFor(_approval_arrived, max_ticks=20, focus="slack"),
         ToolAction(
             "mail.compose",
             {
@@ -65,7 +66,7 @@ def ScriptedProcurementPolicy(router, *, memory: Optional[MemoryStore] = None) -
                 "body_text": "Hello, please share the latest quote for MacroBook Pro 16 delivered in 5 business days.",
             },
         ),
-        WaitFor(_mail_received, max_ticks=5, focus="mail"),
+        WaitFor(_mail_received, max_ticks=20, focus="mail"),
     )
 
     return BehaviorRunner(root=root, context=ctx)

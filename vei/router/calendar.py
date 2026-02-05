@@ -18,7 +18,10 @@ class CalendarSim:
         self._event_seq = self._init_seq()
 
     def list_events(self) -> List[Dict[str, object]]:
-        return [self._event_payload(evt) for evt in sorted(self.events.values(), key=lambda e: e.start_ms)]
+        return [
+            self._event_payload(evt)
+            for evt in sorted(self.events.values(), key=lambda e: e.start_ms)
+        ]
 
     def create_event(
         self,
@@ -71,6 +74,40 @@ class CalendarSim:
             "responses": dict(self.responses.get(evt.event_id, {})),
         }
 
+    def deliver(self, event: Dict[str, object]) -> Dict[str, object]:
+        """Apply a scheduled calendar event as an incoming invite."""
+        payload = dict(event or {})
+        title = payload.get("title")
+        start_ms = payload.get("start_ms")
+        end_ms = payload.get("end_ms")
+        if not isinstance(title, str):
+            raise ValueError("calendar delivery requires title")
+        if not isinstance(start_ms, int) or not isinstance(end_ms, int):
+            raise ValueError("calendar delivery requires integer start_ms/end_ms")
+        attendees = (
+            payload.get("attendees")
+            if isinstance(payload.get("attendees"), list)
+            else None
+        )
+        location = (
+            payload.get("location")
+            if isinstance(payload.get("location"), str)
+            else None
+        )
+        description = (
+            payload.get("description")
+            if isinstance(payload.get("description"), str)
+            else None
+        )
+        return self.create_event(
+            title=title,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            attendees=attendees,
+            location=location,
+            description=description,
+        )
+
     def _init_seq(self) -> int:
         seq = 1
         for event_id in self.events.keys():
@@ -80,4 +117,3 @@ class CalendarSim:
             except ValueError:
                 continue
         return seq
-

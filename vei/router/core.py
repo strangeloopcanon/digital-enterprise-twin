@@ -9,12 +9,12 @@ import heapq
 import threading
 import queue
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 from vei.world.scenario import Scenario
 from vei.world.scenarios import load_from_env
 from vei.monitors.manager import MonitorManager
-from vei.monitors.models import MonitorFinding
 from vei.policy import DEFAULT_RULES, PolicyEngine, PromoteMonitorRule
 from vei.world.drift import DriftEngine
 from vei.world.state import Event as StateEvent, StateStore
@@ -100,7 +100,9 @@ class TraceLogger:
         self.out_dir = out_dir
         self.entries: List[Dict[str, Any]] = []
         # Optional: stream each entry to an external collector
-        self.post_url: Optional[str] = os.environ.get("VEI_TRACE_POST_URL")
+        self.post_url: Optional[str] = self._validated_post_url(
+            os.environ.get("VEI_TRACE_POST_URL")
+        )
         self._flush_idx = 0
         self.append_mode = os.environ.get("VEI_TRACE_APPEND", "1") == "1"
         # Background poster for streaming to avoid inline latency
@@ -108,8 +110,26 @@ class TraceLogger:
         self._poster_thread: threading.Thread | None = None
         if self.post_url:
             self._q = queue.Queue(maxsize=256)
-            self._poster_thread = threading.Thread(target=self._poster_loop, name="vei-trace-poster", daemon=True)
+            self._poster_thread = threading.Thread(
+                target=self._poster_loop, name="vei-trace-poster", daemon=True
+            )
             self._poster_thread.start()
+
+    @staticmethod
+    def _validated_post_url(raw: Optional[str]) -> Optional[str]:
+        """Allow https endpoints by default and localhost http for dev."""
+        if not raw:
+            return None
+        try:
+            parsed = urlparse(raw)
+        except Exception:
+            return None
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme == "https":
+            return raw
+        if parsed.scheme == "http" and host in {"127.0.0.1", "localhost", "::1"}:
+            return raw
+        return None
 
     def _try_stream(self, entry: Dict[str, Any]) -> None:
         if not self._q:
@@ -123,6 +143,7 @@ class TraceLogger:
     def _poster_loop(self) -> None:
         # Use stdlib to avoid extra deps
         import urllib.request
+
         while True:
             try:
                 item = self._q.get(timeout=1.0) if self._q else None
@@ -138,13 +159,15 @@ class TraceLogger:
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
-                with urllib.request.urlopen(req, timeout=1.0) as _:
+                with urllib.request.urlopen(req, timeout=1.0) as _:  # nosec B310
                     pass
             except Exception:
                 # Best-effort only
                 pass
 
-    def record_call(self, tool: str, args: Dict[str, Any], response: Any, time_ms: int) -> None:
+    def record_call(
+        self, tool: str, args: Dict[str, Any], response: Any, time_ms: int
+    ) -> None:
         entry = {
             "trace_version": 1,
             "type": "call",
@@ -156,7 +179,9 @@ class TraceLogger:
         self.entries.append(entry)
         self._try_stream(entry)
 
-    def record_event(self, target: str, payload: Dict[str, Any], emitted: Any, time_ms: int) -> None:
+    def record_event(
+        self, target: str, payload: Dict[str, Any], emitted: Any, time_ms: int
+    ) -> None:
         entry = {
             "trace_version": 1,
             "type": "event",
@@ -184,7 +209,7 @@ class TraceLogger:
             mode = "w"
             self._flush_idx = 0
         with open(path, mode, encoding="utf-8") as f:
-            for entry in self.entries[self._flush_idx : ]:
+            for entry in self.entries[self._flush_idx :]:
                 f.write(json.dumps(entry, separators=(",", ":")) + "\n")
         self._flush_idx = len(self.entries)
 
@@ -324,7 +349,9 @@ class SlackSim:
             raise MCPError("unknown_channel", f"Unknown Slack channel: {channel}")
         return {"messages": ch["messages"], "unread_count": ch["unread"]}
 
-    def send_message(self, channel: str, text: str, thread_ts: Optional[str] = None) -> Dict[str, Any]:
+    def send_message(
+        self, channel: str, text: str, thread_ts: Optional[str] = None
+    ) -> Dict[str, Any]:
         ch = self.channels.get(channel)
         if not ch:
             raise MCPError("unknown_channel", f"Unknown Slack channel: {channel}")
@@ -345,7 +372,7 @@ class SlackSim:
                 },
             )
         # Approval policy: must include a budget number and be <= budget cap
-        if ("approve" in lower or "summary" in lower or "budget" in lower):
+        if "approve" in lower or "summary" in lower or "budget" in lower:
             m = re.search(r"\$?([0-9]{3,6})", text.replace(",", ""))
             if m:
                 amount = int(m.group(1))
@@ -392,7 +419,8 @@ class SlackSim:
         msgs = [
             m
             for m in ch["messages"]
-            if m.get("thread_ts") in (thread_ts, None) and _safe_int(m.get("ts"), 0) >= base
+            if m.get("thread_ts") in (thread_ts, None)
+            and _safe_int(m.get("ts"), 0) >= base
         ]
         return {"messages": msgs}
 
@@ -403,7 +431,14 @@ class SlackSim:
         if not ch:
             raise MCPError("unknown_channel")
         ts = str(len(ch["messages"]) + 1)
-        ch["messages"].append({"ts": ts, "user": "cfo", "text": event["text"], "thread_ts": event.get("thread_ts")})
+        ch["messages"].append(
+            {
+                "ts": ts,
+                "user": "cfo",
+                "text": event["text"],
+                "thread_ts": event.get("thread_ts"),
+            }
+        )
         ch["unread"] += 1
         return {"ok": True}
 
@@ -414,7 +449,11 @@ class MailSim:
         self.messages: Dict[str, Dict[str, Any]] = {}
         self.inbox: List[str] = []
         self.counter = 1
-        self._variants_override = scenario.vendor_reply_variants if scenario and scenario.vendor_reply_variants else None
+        self._variants_override = (
+            scenario.vendor_reply_variants
+            if scenario and scenario.vendor_reply_variants
+            else None
+        )
 
     def list(self, folder: str = "INBOX") -> List[Dict[str, Any]]:
         return [self.messages[mid] for mid in self.inbox]
@@ -423,9 +462,19 @@ class MailSim:
         m = self.messages.get(id)
         if not m:
             raise MCPError("unknown_message", f"Unknown mail id: {id}")
-        return {"headers": m["headers"], "body_text": m["body_text"], "parts": m.get("parts", [])}
+        return {
+            "headers": m["headers"],
+            "body_text": m["body_text"],
+            "parts": m.get("parts", []),
+        }
 
-    def compose(self, to: str, subj: str, body_text: str, attachments: Optional[List[str]] = None) -> Dict[str, Any]:
+    def compose(
+        self,
+        to: str,
+        subj: str,
+        body_text: str,
+        attachments: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         mid = f"m{self.counter}"
         self.counter += 1
         self.messages[mid] = {
@@ -461,7 +510,12 @@ class MailSim:
         return {"id": mid}
 
     def reply(self, id: str, body_text: str) -> Dict[str, Any]:
-        return self.compose(to=self.messages[id]["from"], subj=f"Re: {self.messages[id]['subj']}", body_text=body_text)
+        message = self.messages.get(id)
+        if not message:
+            raise MCPError("unknown_message", f"Unknown mail id: {id}")
+        return self.compose(
+            to=message["from"], subj=f"Re: {message['subj']}", body_text=body_text
+        )
 
     def deliver(self, event: Dict[str, Any]) -> Dict[str, Any]:
         mid = f"m{self.counter}"
@@ -473,7 +527,11 @@ class MailSim:
             "subj": event["subj"],
             "time": self.bus.clock_ms,
             "unread": True,
-            "headers": {"From": event["from"], "To": "me@example", "Subject": event["subj"]},
+            "headers": {
+                "From": event["from"],
+                "To": "me@example",
+                "Subject": event["subj"],
+            },
             "body_text": event["body_text"],
         }
         self.messages[mid] = msg
@@ -491,7 +549,11 @@ class BrowserVirtual:
                 "title": "MacroCompute — Home",
                 "excerpt": "Welcome to MacroCompute. Find laptops and specs.",
                 "affordances": [
-                    {"tool": "browser.click", "args": {"node_id": "CLICK:open_pdp#0"}, "name": "Open product page"},
+                    {
+                        "tool": "browser.click",
+                        "args": {"node_id": "CLICK:open_pdp#0"},
+                        "name": "Open product page",
+                    },
                 ],
                 "next": {"CLICK:open_pdp#0": "pdp"},
             },
@@ -500,7 +562,11 @@ class BrowserVirtual:
                 "title": "MacroBook Pro 16 — Product",
                 "excerpt": "Powerful 16-inch laptop. Price $3199. See specifications.",
                 "affordances": [
-                    {"tool": "browser.click", "args": {"node_id": "CLICK:open_specs#0"}, "name": "See specifications"},
+                    {
+                        "tool": "browser.click",
+                        "args": {"node_id": "CLICK:open_specs#0"},
+                        "name": "See specifications",
+                    },
                     {"tool": "browser.back", "args": {}, "name": "Back to home"},
                 ],
                 "next": {"CLICK:open_specs#0": "specs", "BACK": "home"},
@@ -515,7 +581,11 @@ class BrowserVirtual:
                 "next": {"BACK": "pdp"},
             },
         }
-        self.nodes = scenario.browser_nodes if scenario and scenario.browser_nodes else default_nodes
+        self.nodes = (
+            scenario.browser_nodes
+            if scenario and scenario.browser_nodes
+            else default_nodes
+        )
         self.state = "home"
 
     def open(self, url: str) -> Dict[str, Any]:
@@ -523,7 +593,10 @@ class BrowserVirtual:
             self.state = "pdp"
         else:
             self.state = "home"
-        return {"url": self.nodes[self.state]["url"], "title": self.nodes[self.state]["title"]}
+        return {
+            "url": self.nodes[self.state]["url"],
+            "title": self.nodes[self.state]["title"],
+        }
 
     def find(self, query: str, top_k: int = 10) -> Dict[str, Any]:
         node = self.nodes[self.state]
@@ -536,11 +609,13 @@ class BrowserVirtual:
             if node_id is None:
                 # Skip generic affordances like browser.back that lack node_id
                 continue
-            hits.append({
-                "node_id": node_id,
-                "role": a.get("role", "button"),
-                "name": name,
-            })
+            hits.append(
+                {
+                    "node_id": node_id,
+                    "role": a.get("role", "button"),
+                    "name": name,
+                }
+            )
         return {"hits": hits[:top_k]}
 
     def click(self, node_id: str) -> Dict[str, Any]:
@@ -575,7 +650,12 @@ class BrowserVirtual:
 
 
 class Router:
-    def __init__(self, seed: int, artifacts_dir: Optional[str] = None, scenario: Optional[Scenario] = None):
+    def __init__(
+        self,
+        seed: int,
+        artifacts_dir: Optional[str] = None,
+        scenario: Optional[Scenario] = None,
+    ):
         self.bus = EventBus(seed)
 
         state_dir_env = os.environ.get("VEI_STATE_DIR")
@@ -604,7 +684,11 @@ class Router:
         self.fault_profile = fault_profile_env
         self._fault_overrides = dict(FAULT_PROFILES.get(fault_profile_env, {}))
         monitors_env = os.environ.get("VEI_MONITORS", "").strip()
-        monitor_names = [m.strip() for m in (monitors_env.split(",") if monitors_env else []) if m.strip()]
+        monitor_names = [
+            m.strip()
+            for m in (monitors_env.split(",") if monitors_env else [])
+            if m.strip()
+        ]
         self.monitor_manager = MonitorManager(self.registry, monitor_names)
         rules = list(DEFAULT_RULES)
         policy_promote_env = os.environ.get("VEI_POLICY_PROMOTE", "").strip()
@@ -615,7 +699,11 @@ class Router:
                     continue
                 if ":" in token:
                     code, severity = token.split(":", 1)
-                    rules.append(PromoteMonitorRule(code.strip(), severity=severity.strip() or "warning"))
+                    rules.append(
+                        PromoteMonitorRule(
+                            code.strip(), severity=severity.strip() or "warning"
+                        )
+                    )
                 else:
                     rules.append(PromoteMonitorRule(token, severity="warning"))
         self.policy_engine = PolicyEngine(rules)
@@ -657,12 +745,14 @@ class Router:
         # Optional ERP twin
         try:
             from .erp import ErpSim  # local import to avoid import-time failures
+
             self.erp = ErpSim(self.bus, self.scenario)
         except Exception:
             self.erp = None  # type: ignore[attr-defined]
         # Optional CRM twin
         try:
             from .crm import CrmSim
+
             self.crm = CrmSim(self.bus, self.scenario)
         except Exception:
             self.crm = None  # type: ignore[attr-defined]
@@ -680,11 +770,19 @@ class Router:
 
         drift_seed_env = os.environ.get("VEI_DRIFT_SEED")
         try:
-            drift_seed = int(drift_seed_env) if drift_seed_env is not None else (seed ^ 0xD1F7)
+            drift_seed = (
+                int(drift_seed_env) if drift_seed_env is not None else (seed ^ 0xD1F7)
+            )
         except ValueError:
             drift_seed = seed ^ 0xD1F7
-        drift_mode = os.environ.get("VEI_DRIFT_MODE") or os.environ.get("VEI_DRIFT_RATE") or "off"
-        self.drift = DriftEngine(state_store=self.state_store, bus=self.bus, seed=drift_seed, mode=drift_mode)
+        drift_mode = (
+            os.environ.get("VEI_DRIFT_MODE")
+            or os.environ.get("VEI_DRIFT_RATE")
+            or "off"
+        )
+        self.drift = DriftEngine(
+            state_store=self.state_store, bus=self.bus, seed=drift_seed, mode=drift_mode
+        )
         self.drift.prime()
 
         existing_policy = self.state_store.materialised_state().get("policy", {})
@@ -719,14 +817,19 @@ class Router:
         clock_ms: Optional[int] = None,
     ) -> Optional[StateEvent]:
         payload_map = {k: Router._jsonable(v) for k, v in dict(payload or {}).items()}
-        event = self.state_store.append(kind, payload_map, clock_ms=clock_ms or self.bus.clock_ms)
+        event_clock = self.bus.clock_ms if clock_ms is None else int(clock_ms)
+        event = self.state_store.append(kind, payload_map, clock_ms=event_clock)
         if self._snapshot_interval and event.index % self._snapshot_interval == 0:
             self.state_store.take_snapshot()
         return event
 
     def _record_router_init(self, seed: int) -> None:
         scenario_name = getattr(self.scenario, "name", None)
-        payload = {"seed": seed, "scenario": scenario_name, "branch": self.state_store.branch}
+        payload = {
+            "seed": seed,
+            "scenario": scenario_name,
+            "branch": self.state_store.branch,
+        }
         self._append_state("router.init", payload)
         if self._snapshot_interval:
             self.state_store.take_snapshot()
@@ -755,7 +858,9 @@ class Router:
 
         findings: List[Any] = []
         if self.monitor_manager.monitors():
-            snapshot = self.state_snapshot(include_state=False, tool_tail=0, include_receipts=False)
+            snapshot = self.state_snapshot(
+                include_state=False, tool_tail=0, include_receipts=False
+            )
             findings = self.monitor_manager.after_tool_call(
                 tool=tool,
                 args=args,
@@ -802,6 +907,50 @@ class Router:
             except Exception:
                 # Drift is best-effort; never break the main loop.
                 pass
+
+    def _deliver_event(self, target: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if target == "slack":
+            return self.slack.deliver(payload)
+        if target == "mail":
+            return self.mail.deliver(payload)
+        if target == "docs":
+            return self.docs.deliver(payload)
+        if target == "calendar":
+            return self.calendar.deliver(payload)
+        if target == "tickets":
+            return self.tickets.deliver(payload)
+        if target in {"erp", "crm", "servicedesk", "okta", "tool"}:
+            tool = payload.get("tool")
+            args = payload.get("args", {})
+            if not isinstance(tool, str):
+                raise MCPError(
+                    "invalid_event",
+                    f"{target} event payload must include string 'tool'",
+                )
+            if not isinstance(args, dict):
+                raise MCPError(
+                    "invalid_event", f"{target} event payload args must be an object"
+                )
+            result = self._execute(tool, args)
+            return {"tool": tool, "result": Router._jsonable(result)}
+        # Unknown targets are intentionally ignored but surfaced in trace/state.
+        return {"ignored": True, "reason": f"unsupported target '{target}'"}
+
+    def _deliver_due_event(self, evt: Event) -> Dict[str, Any]:
+        try:
+            emitted = self._deliver_event(evt.target, evt.payload)
+        except Exception as exc:
+            emitted = {
+                "error": {
+                    "type": type(exc).__name__,
+                    "message": str(exc),
+                }
+            }
+        self.trace.record_event(
+            evt.target, evt.payload, emitted, time_ms=self.bus.clock_ms
+        )
+        self._record_event_delivery(evt.target, evt.payload)
+        return emitted
 
     def _load_receipts(self) -> None:
         if not self._receipts_path or not self._receipts_path.exists():
@@ -851,10 +1000,12 @@ class Router:
             "deliveries": deliveries,
             "drift": drift_summary,
         }
-        monitor_tail = [asdict(f) for f in self.monitor_manager.findings_tail(tool_tail or 20)]
+        monitor_tail = [
+            asdict(f) for f in self.monitor_manager.findings_tail(tool_tail or 20)
+        ]
         snapshot["monitor_findings"] = monitor_tail
         policy_tail: List[Dict[str, Any]] = []
-        for item in self._policy_findings[-(tool_tail or 20):]:
+        for item in self._policy_findings[-(tool_tail or 20) :]:
             policy_tail.append(
                 {
                     "code": item.get("code"),
@@ -867,7 +1018,9 @@ class Router:
             )
         snapshot["policy_findings"] = policy_tail
         if include_receipts:
-            snapshot["receipts"] = list(self._receipts[-tool_tail:]) if tool_tail else list(self._receipts)
+            snapshot["receipts"] = (
+                list(self._receipts[-tool_tail:]) if tool_tail else list(self._receipts)
+            )
         if include_state:
             snapshot["state"] = state
         return snapshot
@@ -1116,29 +1269,113 @@ class Router:
         ]
         # ERP and CRM specs are registered lazily to avoid importing optional twins here.
         erp_specs = [
-            ToolSpec(name="erp.create_po", description="Create a purchase order.", permissions=("erp:write",)),
-            ToolSpec(name="erp.get_po", description="Retrieve a purchase order.", permissions=("erp:read",)),
-            ToolSpec(name="erp.list_pos", description="List purchase orders.", permissions=("erp:read",)),
-            ToolSpec(name="erp.receive_goods", description="Record goods receipt.", permissions=("erp:write",)),
-            ToolSpec(name="erp.submit_invoice", description="Submit a vendor invoice.", permissions=("erp:write",)),
-            ToolSpec(name="erp.get_invoice", description="Retrieve invoice detail.", permissions=("erp:read",)),
-            ToolSpec(name="erp.list_invoices", description="List invoices.", permissions=("erp:read",)),
-            ToolSpec(name="erp.match_three_way", description="Run three-way match.", permissions=("erp:write",)),
-            ToolSpec(name="erp.post_payment", description="Post a payment.", permissions=("erp:write",)),
+            ToolSpec(
+                name="erp.create_po",
+                description="Create a purchase order.",
+                permissions=("erp:write",),
+            ),
+            ToolSpec(
+                name="erp.get_po",
+                description="Retrieve a purchase order.",
+                permissions=("erp:read",),
+            ),
+            ToolSpec(
+                name="erp.list_pos",
+                description="List purchase orders.",
+                permissions=("erp:read",),
+            ),
+            ToolSpec(
+                name="erp.receive_goods",
+                description="Record goods receipt.",
+                permissions=("erp:write",),
+            ),
+            ToolSpec(
+                name="erp.submit_invoice",
+                description="Submit a vendor invoice.",
+                permissions=("erp:write",),
+            ),
+            ToolSpec(
+                name="erp.get_invoice",
+                description="Retrieve invoice detail.",
+                permissions=("erp:read",),
+            ),
+            ToolSpec(
+                name="erp.list_invoices",
+                description="List invoices.",
+                permissions=("erp:read",),
+            ),
+            ToolSpec(
+                name="erp.match_three_way",
+                description="Run three-way match.",
+                permissions=("erp:write",),
+            ),
+            ToolSpec(
+                name="erp.post_payment",
+                description="Post a payment.",
+                permissions=("erp:write",),
+            ),
         ]
         crm_specs = [
-            ToolSpec(name="crm.create_contact", description="Create a CRM contact.", permissions=("crm:write",)),
-            ToolSpec(name="crm.get_contact", description="Fetch CRM contact details.", permissions=("crm:read",)),
-            ToolSpec(name="crm.list_contacts", description="List contacts.", permissions=("crm:read",)),
-            ToolSpec(name="crm.create_company", description="Create a company record.", permissions=("crm:write",)),
-            ToolSpec(name="crm.get_company", description="Fetch company details.", permissions=("crm:read",)),
-            ToolSpec(name="crm.list_companies", description="List company records.", permissions=("crm:read",)),
-            ToolSpec(name="crm.associate_contact_company", description="Link contact to company.", permissions=("crm:write",)),
-            ToolSpec(name="crm.create_deal", description="Create a deal/opportunity.", permissions=("crm:write",)),
-            ToolSpec(name="crm.get_deal", description="Fetch deal details.", permissions=("crm:read",)),
-            ToolSpec(name="crm.list_deals", description="List deals.", permissions=("crm:read",)),
-            ToolSpec(name="crm.update_deal_stage", description="Update deal stage.", permissions=("crm:write",)),
-            ToolSpec(name="crm.log_activity", description="Log an activity.", permissions=("crm:write",)),
+            ToolSpec(
+                name="crm.create_contact",
+                description="Create a CRM contact.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
+                name="crm.get_contact",
+                description="Fetch CRM contact details.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.list_contacts",
+                description="List contacts.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.create_company",
+                description="Create a company record.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
+                name="crm.get_company",
+                description="Fetch company details.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.list_companies",
+                description="List company records.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.associate_contact_company",
+                description="Link contact to company.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
+                name="crm.create_deal",
+                description="Create a deal/opportunity.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
+                name="crm.get_deal",
+                description="Fetch deal details.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.list_deals",
+                description="List deals.",
+                permissions=("crm:read",),
+            ),
+            ToolSpec(
+                name="crm.update_deal_stage",
+                description="Update deal stage.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
+                name="crm.log_activity",
+                description="Log an activity.",
+                permissions=("crm:write",),
+            ),
         ]
         specs.extend(docs_specs)
         specs.extend(calendar_specs)
@@ -1183,15 +1420,7 @@ class Router:
         self.trace.record_call(tool, args, result, time_ms=self.bus.clock_ms)
         evt = self.bus.next_if_due()
         if evt:
-            emitted = None
-            if evt.target == "slack":
-                emitted = self.slack.deliver(evt.payload)
-            elif evt.target == "mail":
-                emitted = self.mail.deliver(evt.payload)
-            if emitted is None:
-                emitted = {}
-            self.trace.record_event(evt.target, evt.payload, emitted, time_ms=self.bus.clock_ms)
-            self._record_event_delivery(evt.target, evt.payload)
+            self._deliver_due_event(evt)
         self.bus.advance(self._tool_latency_ms(tool))
         # Persist after each step when artifacts directory is configured
         self.trace.flush()
@@ -1422,26 +1651,24 @@ class Router:
         delivered = {"slack": 0, "mail": 0, "calendar": 0, "docs": 0, "tickets": 0}
         target_time = self.bus.clock_ms + max(0, int(dt_ms))
         # Deliver in order at due timestamps
-        while (self.bus.peek_due_time() is not None) and (self.bus.peek_due_time() <= target_time):
+        while (self.bus.peek_due_time() is not None) and (
+            self.bus.peek_due_time() <= target_time
+        ):
             next_due = int(self.bus.peek_due_time() or self.bus.clock_ms)
             # advance clock to the event due time
             self.bus.clock_ms = next_due
             evt = self.bus.next_if_due()
             if evt:
-                emitted = None
-                if evt.target == "slack":
-                    emitted = self.slack.deliver(evt.payload)
-                elif evt.target == "mail":
-                    emitted = self.mail.deliver(evt.payload)
-                delivered[evt.target] += 1
-                if emitted is None:
-                    emitted = {}
-                self.trace.record_event(evt.target, evt.payload, emitted, time_ms=self.bus.clock_ms)
-                self._record_event_delivery(evt.target, evt.payload)
+                delivered[evt.target] = delivered.get(evt.target, 0) + 1
+                self._deliver_due_event(evt)
         # Advance remaining time to target_time
         self.bus.clock_ms = target_time
         self.trace.flush()
-        return {"delivered": delivered, "time_ms": self.bus.clock_ms, "pending": self.pending()}
+        return {
+            "delivered": delivered,
+            "time_ms": self.bus.clock_ms,
+            "pending": self.pending(),
+        }
 
     def observe(self, focus_hint: Optional[str] = None) -> Observation:
         """Produce an observation and drain time/event queue incrementally.
@@ -1453,15 +1680,7 @@ class Router:
         # Deliver one due event if any
         evt = self.bus.next_if_due()
         if evt:
-            emitted = None
-            if evt.target == "slack":
-                emitted = self.slack.deliver(evt.payload)
-            elif evt.target == "mail":
-                emitted = self.mail.deliver(evt.payload)
-            if emitted is None:
-                emitted = {}
-            self.trace.record_event(evt.target, evt.payload, emitted, time_ms=self.bus.clock_ms)
-            self._record_event_delivery(evt.target, evt.payload)
+            self._deliver_due_event(evt)
         # Advance time per observation to make future events become due
         self.bus.advance(1000)
         focus = focus_hint or "browser"
@@ -1505,12 +1724,14 @@ class Router:
             tickets = self.tickets.list()
             if not tickets:
                 return "Tickets: queue empty"
-            open_count = sum(1 for t in tickets if t['status'].lower() != 'closed')
+            open_count = sum(1 for t in tickets if t["status"].lower() != "closed")
             return f"Tickets: {open_count} open of {len(tickets)}"
         if focus == "erp":
             # Surface a short state summary for agents
             pos = len(getattr(self, "erp").pos) if getattr(self, "erp", None) else 0
-            invs = len(getattr(self, "erp").invoices) if getattr(self, "erp", None) else 0
+            invs = (
+                len(getattr(self, "erp").invoices) if getattr(self, "erp", None) else 0
+            )
             return f"ERP: {pos} POs, {invs} invoices"
         if focus == "crm":
             cs = len(getattr(self, "crm").contacts) if getattr(self, "crm", None) else 0
@@ -1520,12 +1741,14 @@ class Router:
 
     def _pending_counts(self) -> Dict[str, int]:
         counts = {
-            "slack": self.bus.pending_count("slack"),
-            "mail": self.bus.pending_count("mail"),
+            "slack": 0,
+            "mail": 0,
             "docs": 0,
             "calendar": 0,
             "tickets": 0,
         }
+        for _, _, event in self.bus._heap:
+            counts[event.target] = counts.get(event.target, 0) + 1
         counts["total"] = self.bus.pending_count()
         return counts
 
@@ -1555,26 +1778,50 @@ class Router:
             # Provide both concrete affordances and generic actions with schemas for LLMs
             generic: List[Dict[str, Any]] = [
                 {"tool": "browser.read", "args_schema": {}},
-                {"tool": "browser.find", "args_schema": {"query": "str", "top_k": "int?"}},
+                {
+                    "tool": "browser.find",
+                    "args_schema": {"query": "str", "top_k": "int?"},
+                },
                 {"tool": "browser.open", "args_schema": {"url": "str"}},
                 {"tool": "browser.back", "args_schema": {}},
             ]
             return [*node_aff, *generic]
         if focus == "slack":
             return [
-                {"tool": "slack.send_message", "args_schema": {"channel": "str", "text": "str", "thread_ts": "str?"}},
+                {
+                    "tool": "slack.send_message",
+                    "args_schema": {
+                        "channel": "str",
+                        "text": "str",
+                        "thread_ts": "str?",
+                    },
+                },
             ]
         if focus == "mail":
             return [
-                {"tool": "mail.compose", "args_schema": {"to": "str", "subj": "str", "body_text": "str"}},
+                {
+                    "tool": "mail.compose",
+                    "args_schema": {"to": "str", "subj": "str", "body_text": "str"},
+                },
             ]
         if focus == "docs":
             return [
                 {"tool": "docs.list", "args_schema": {}},
                 {"tool": "docs.search", "args_schema": {"query": "str"}},
                 {"tool": "docs.read", "args_schema": {"doc_id": "str"}},
-                {"tool": "docs.create", "args_schema": {"title": "str", "body": "str", "tags": "[str]?"}},
-                {"tool": "docs.update", "args_schema": {"doc_id": "str", "title": "str?", "body": "str?", "tags": "[str]?"}},
+                {
+                    "tool": "docs.create",
+                    "args_schema": {"title": "str", "body": "str", "tags": "[str]?"},
+                },
+                {
+                    "tool": "docs.update",
+                    "args_schema": {
+                        "doc_id": "str",
+                        "title": "str?",
+                        "body": "str?",
+                        "tags": "[str]?",
+                    },
+                },
             ]
         if focus == "calendar":
             return [
@@ -1590,31 +1837,109 @@ class Router:
                         "description": "str?",
                     },
                 },
-                {"tool": "calendar.accept", "args_schema": {"event_id": "str", "attendee": "str"}},
-                {"tool": "calendar.decline", "args_schema": {"event_id": "str", "attendee": "str"}},
+                {
+                    "tool": "calendar.accept",
+                    "args_schema": {"event_id": "str", "attendee": "str"},
+                },
+                {
+                    "tool": "calendar.decline",
+                    "args_schema": {"event_id": "str", "attendee": "str"},
+                },
             ]
         if focus == "tickets":
             return [
                 {"tool": "tickets.list", "args_schema": {}},
                 {"tool": "tickets.get", "args_schema": {"ticket_id": "str"}},
-                {"tool": "tickets.create", "args_schema": {"title": "str", "description": "str?", "assignee": "str?"}},
-                {"tool": "tickets.update", "args_schema": {"ticket_id": "str", "description": "str?", "assignee": "str?"}},
-                {"tool": "tickets.transition", "args_schema": {"ticket_id": "str", "status": "str"}},
+                {
+                    "tool": "tickets.create",
+                    "args_schema": {
+                        "title": "str",
+                        "description": "str?",
+                        "assignee": "str?",
+                    },
+                },
+                {
+                    "tool": "tickets.update",
+                    "args_schema": {
+                        "ticket_id": "str",
+                        "description": "str?",
+                        "assignee": "str?",
+                    },
+                },
+                {
+                    "tool": "tickets.transition",
+                    "args_schema": {"ticket_id": "str", "status": "str"},
+                },
             ]
         if focus == "erp" and getattr(self, "erp", None):
             return [
-                {"tool": "erp.create_po", "args_schema": {"vendor": "str", "currency": "str", "lines": "[{item_id,desc,qty,unit_price}]"}},
+                {
+                    "tool": "erp.create_po",
+                    "args_schema": {
+                        "vendor": "str",
+                        "currency": "str",
+                        "lines": "[{item_id,desc,qty,unit_price}]",
+                    },
+                },
                 {"tool": "erp.list_pos", "args_schema": {}},
-                {"tool": "erp.submit_invoice", "args_schema": {"vendor": "str", "po_id": "str", "lines": "[{item_id,qty,unit_price}]"}},
-                {"tool": "erp.match_three_way", "args_schema": {"po_id": "str", "invoice_id": "str", "receipt_id": "str?"}},
+                {
+                    "tool": "erp.submit_invoice",
+                    "args_schema": {
+                        "vendor": "str",
+                        "po_id": "str",
+                        "lines": "[{item_id,qty,unit_price}]",
+                    },
+                },
+                {
+                    "tool": "erp.match_three_way",
+                    "args_schema": {
+                        "po_id": "str",
+                        "invoice_id": "str",
+                        "receipt_id": "str?",
+                    },
+                },
             ]
         if focus == "crm" and getattr(self, "crm", None):
             return [
-                {"tool": "crm.create_contact", "args_schema": {"email": "str", "first_name": "str?", "last_name": "str?", "do_not_contact": "bool?"}},
-                {"tool": "crm.create_company", "args_schema": {"name": "str", "domain": "str?"}},
-                {"tool": "crm.associate_contact_company", "args_schema": {"contact_id": "str", "company_id": "str"}},
-                {"tool": "crm.create_deal", "args_schema": {"name": "str", "amount": "number", "stage": "str?", "contact_id": "str?", "company_id": "str?"}},
-                {"tool": "crm.update_deal_stage", "args_schema": {"id": "str", "stage": "str"}},
-                {"tool": "crm.log_activity", "args_schema": {"kind": "str", "contact_id": "str?", "deal_id": "str?", "note": "str?"}},
+                {
+                    "tool": "crm.create_contact",
+                    "args_schema": {
+                        "email": "str",
+                        "first_name": "str?",
+                        "last_name": "str?",
+                        "do_not_contact": "bool?",
+                    },
+                },
+                {
+                    "tool": "crm.create_company",
+                    "args_schema": {"name": "str", "domain": "str?"},
+                },
+                {
+                    "tool": "crm.associate_contact_company",
+                    "args_schema": {"contact_id": "str", "company_id": "str"},
+                },
+                {
+                    "tool": "crm.create_deal",
+                    "args_schema": {
+                        "name": "str",
+                        "amount": "number",
+                        "stage": "str?",
+                        "contact_id": "str?",
+                        "company_id": "str?",
+                    },
+                },
+                {
+                    "tool": "crm.update_deal_stage",
+                    "args_schema": {"id": "str", "stage": "str"},
+                },
+                {
+                    "tool": "crm.log_activity",
+                    "args_schema": {
+                        "kind": "str",
+                        "contact_id": "str?",
+                        "deal_id": "str?",
+                        "note": "str?",
+                    },
+                },
             ]
         return []

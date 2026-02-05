@@ -34,7 +34,9 @@ class DocsSim:
             "tags": list(doc.tags or []),
         }
 
-    def create(self, title: str, body: str, tags: Optional[List[str]] = None) -> Dict[str, object]:
+    def create(
+        self, title: str, body: str, tags: Optional[List[str]] = None
+    ) -> Dict[str, object]:
         doc_id = f"DOC-{self._doc_seq}"
         self._doc_seq += 1
         doc = Document(doc_id=doc_id, title=title, body=body, tags=tags or None)
@@ -70,6 +72,40 @@ class DocsSim:
                 hits.append({"doc_id": doc.doc_id, "title": doc.title})
         return hits
 
+    def deliver(self, event: Dict[str, object]) -> Dict[str, object]:
+        """Apply a scheduled docs event using the same shape as docs tools."""
+        payload = dict(event or {})
+        op = str(payload.get("op", "")).lower()
+        doc_id = payload.get("doc_id")
+        if op == "update" or (isinstance(doc_id, str) and doc_id in self.docs):
+            if not isinstance(doc_id, str):
+                raise ValueError("docs.update delivery requires doc_id")
+            return self.update(
+                doc_id=doc_id,
+                title=(
+                    payload.get("title")
+                    if isinstance(payload.get("title"), str)
+                    else None
+                ),
+                body=(
+                    payload.get("body")
+                    if isinstance(payload.get("body"), str)
+                    else None
+                ),
+                tags=(
+                    payload.get("tags")
+                    if isinstance(payload.get("tags"), list)
+                    else None
+                ),
+            )
+
+        title = payload.get("title")
+        body = payload.get("body")
+        if not isinstance(title, str) or not isinstance(body, str):
+            raise ValueError("docs delivery requires title/body for create")
+        tags = payload.get("tags") if isinstance(payload.get("tags"), list) else None
+        return self.create(title=title, body=body, tags=tags)
+
     def _init_seq(self) -> int:
         seq = 1
         for doc_id in self.docs.keys():
@@ -79,4 +115,3 @@ class DocsSim:
             except ValueError:
                 continue
         return seq
-

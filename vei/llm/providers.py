@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import re
@@ -10,7 +11,7 @@ try:
     from openai import AsyncOpenAI, BadRequestError
 except Exception:  # pragma: no cover
     AsyncOpenAI = None  # type: ignore
-    BadRequestError = None # type: ignore
+    BadRequestError = None  # type: ignore
 
 try:
     from anthropic import AsyncAnthropic
@@ -74,10 +75,10 @@ async def _openai_plan(
     """OpenAI provider. Uses Responses API for gpt-5, Chat Completions for others."""
     if AsyncOpenAI is None:
         raise RuntimeError("openai SDK not installed; install with extras [llm]")
-    
+
     client = AsyncOpenAI(
         base_url=base_url or os.environ.get("OPENAI_BASE_URL"),
-        api_key=api_key or os.environ.get("OPENAI_API_KEY")
+        api_key=api_key or os.environ.get("OPENAI_API_KEY"),
     )
 
     # Per user feedback, gpt-5 requires the Responses API and specific params.
@@ -92,7 +93,9 @@ async def _openai_plan(
             "reasoning": {"effort": "high"},
         }
         try:
-            resp = await asyncio.wait_for(client.responses.create(**kwargs), timeout=timeout_s)
+            resp = await asyncio.wait_for(
+                client.responses.create(**kwargs), timeout=timeout_s
+            )
             raw = getattr(resp, "output_text", None)
             if not raw and resp.status == "incomplete":
                 detail = getattr(resp, "incomplete_details", None)
@@ -100,7 +103,9 @@ async def _openai_plan(
                     # Fall back to safetensors tool output if present
                     try:
                         for item in getattr(resp, "output", []) or []:
-                            if getattr(item, "type", None) == "tool_call" and getattr(item, "content", None):
+                            if getattr(item, "type", None) == "tool_call" and getattr(
+                                item, "content", None
+                            ):
                                 content = getattr(item, "content", None)
                                 if isinstance(content, dict):
                                     return content
@@ -122,7 +127,11 @@ async def _openai_plan(
                     model=model,
                     messages=[
                         {"role": "system", "content": system},
-                        {"role": "user", "content": user + "\nReply strictly as JSON with keys 'tool' (string) and 'args' (object)."},
+                        {
+                            "role": "user",
+                            "content": user
+                            + "\nReply strictly as JSON with keys 'tool' (string) and 'args' (object).",
+                        },
                     ],
                     temperature=0.0,
                     top_p=1,
@@ -132,13 +141,15 @@ async def _openai_plan(
             )
             choice = resp.choices[0]
             if choice.finish_reason == "length":
-                raise RuntimeError(f"OpenAI response truncated due to max_tokens.")
+                raise RuntimeError("OpenAI response truncated due to max_tokens.")
             if choice.message.content:
                 return _parse_plan_text(choice.message.content)
         except BadRequestError as e:
             # Handle specific error for gpt-5 if it was routed here by mistake
             if "max_completion_tokens" in str(e):
-                 raise RuntimeError(f"Model {model} may require the Responses API. Rerun with a more specific model name if this is gpt-5.") from e
+                raise RuntimeError(
+                    f"Model {model} may require the Responses API. Rerun with a more specific model name if this is gpt-5."
+                ) from e
             raise
         except Exception:
             raise
@@ -160,7 +171,7 @@ async def _anthropic_plan(
     """Anthropic provider using Messages API."""
     if AsyncAnthropic is None:
         raise RuntimeError("anthropic SDK not installed; install with extras [llm]")
-    
+
     headers: Dict[str, str] = {}
     version = os.environ.get("ANTHROPIC_VERSION")
     beta = os.environ.get("ANTHROPIC_BETA")
@@ -174,14 +185,19 @@ async def _anthropic_plan(
     if headers:
         client_kwargs["default_headers"] = headers
     client = AsyncAnthropic(**client_kwargs)
-    
-    use_beta_api = (os.environ.get("ANTHROPIC_USE_BETA", "").strip().lower() in {"1", "true", "yes"}) or model.startswith("claude-4.5")
+
+    use_beta_api = (
+        os.environ.get("ANTHROPIC_USE_BETA", "").strip().lower() in {"1", "true", "yes"}
+    ) or model.startswith("claude-4.5")
     messages_api = client.beta.messages if use_beta_api else client.messages
 
     try:
-        bridge_mode = bool(tool_schemas and len(tool_schemas) == 1 and tool_schemas[0]["name"] == "vei_call")
+        bridge_mode = bool(
+            tool_schemas
+            and len(tool_schemas) == 1
+            and tool_schemas[0]["name"] == "vei_call"
+        )
         if tool_schemas:
-            first_name = tool_schemas[0]["name"] if tool_schemas else "<none>"
             msg = await asyncio.wait_for(
                 messages_api.create(
                     model=model,
@@ -202,13 +218,15 @@ async def _anthropic_plan(
             msg = await asyncio.wait_for(
                 messages_api.create(
                     model=model,
-                    system=system + "\nYou MUST respond ONLY with valid JSON. No explanations, no prose, ONLY JSON.",
+                    system=system
+                    + "\nYou MUST respond ONLY with valid JSON. No explanations, no prose, ONLY JSON.",
                     max_tokens=2048,
                     temperature=0,
                     messages=[
                         {
                             "role": "user",
-                            "content": user + "\n\nIMPORTANT: Reply with ONLY a JSON object. No other text. Format: {\"tool\": \"<name>\", \"args\": {...}}",
+                            "content": user
+                            + '\n\nIMPORTANT: Reply with ONLY a JSON object. No other text. Format: {"tool": "<name>", "args": {...}}',
                         }
                     ],
                 ),
@@ -216,8 +234,10 @@ async def _anthropic_plan(
             )
 
         if msg.stop_reason == "max_tokens":
-            raise RuntimeError(f"Anthropic response truncated due to max_tokens ({msg.usage.output_tokens}).")
-        
+            raise RuntimeError(
+                f"Anthropic response truncated due to max_tokens ({msg.usage.output_tokens})."
+            )
+
         if tool_schemas:
             for block in getattr(msg, "content", []) or []:
                 if getattr(block, "type", None) == "tool_use":
@@ -233,9 +253,14 @@ async def _anthropic_plan(
                                 args = {}
                             if actual_tool:
                                 return {"tool": actual_tool, "args": args}
-                        raise RuntimeError("Claude returned vei_call without valid tool/args")
+                        raise RuntimeError(
+                            "Claude returned vei_call without valid tool/args"
+                        )
                     tool_name = alias_map.get(alias, alias) if alias_map else alias
-                    return {"tool": tool_name, "args": tool_input if isinstance(tool_input, dict) else {}}
+                    return {
+                        "tool": tool_name,
+                        "args": tool_input if isinstance(tool_input, dict) else {},
+                    }
 
         for block in msg.content:
             if hasattr(block, "text") and block.text:
@@ -243,8 +268,16 @@ async def _anthropic_plan(
                 if text:
                     parsed = json.loads(text)
                     if bridge_mode and parsed.get("tool") == "vei_call":
-                        actual_tool = parsed.get("args", {}).get("tool") if isinstance(parsed.get("args"), dict) else parsed.get("tool_name")
-                        args = parsed.get("args", {}) if isinstance(parsed.get("args"), dict) else parsed.get("tool_args", {})
+                        actual_tool = (
+                            parsed.get("args", {}).get("tool")
+                            if isinstance(parsed.get("args"), dict)
+                            else parsed.get("tool_name")
+                        )
+                        args = (
+                            parsed.get("args", {})
+                            if isinstance(parsed.get("args"), dict)
+                            else parsed.get("tool_args", {})
+                        )
                         if not isinstance(args, dict):
                             args = {}
                         if actual_tool:
@@ -254,9 +287,9 @@ async def _anthropic_plan(
                         if alias in alias_map:
                             parsed["tool"] = alias_map[alias]
                     return parsed
-        
+
         raise RuntimeError(f"No text content in Claude response: {msg}")
-        
+
     except Exception:
         raise
 
@@ -273,18 +306,20 @@ async def _google_plan(
     if genai is None:
         raise RuntimeError("google-genai not installed; install with extras [llm]")
 
-    genai.configure(
-        api_key=api_key or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    key = (
+        api_key or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     )
+    if not key:
+        raise RuntimeError("Google API key missing (GOOGLE_API_KEY/GEMINI_API_KEY)")
 
-    model_instance = genai.GenerativeModel(model_name=model)
+    client = genai.Client(api_key=key)
 
     prompt = (
         f"[system] {system}\n[user] {user}\n"
         "Reply strictly as JSON with keys 'tool' (string) and 'args' (object)."
     )
 
-    config = genai.types.GenerationConfig(
+    config = genai.types.GenerateContentConfig(
         temperature=0.0,
         top_p=1,
         response_mime_type="application/json",
@@ -292,21 +327,43 @@ async def _google_plan(
 
     try:
         resp = await asyncio.wait_for(
-            model_instance.generate_content_async(
-                contents=[prompt],
-                generation_config=config,
+            client.aio.models.generate_content(
+                model=model,
+                contents=prompt,
+                config=config,
             ),
-            timeout=timeout_s
+            timeout=timeout_s,
         )
 
-        if resp.candidates and resp.candidates[0].finish_reason.name == "MAX_TOKENS":
-            raise RuntimeError("Google response truncated due to max_tokens.")
+        candidates = getattr(resp, "candidates", None) or []
+        if candidates:
+            finish_reason = getattr(candidates[0], "finish_reason", None)
+            finish_name = getattr(finish_reason, "name", str(finish_reason or ""))
+            if "MAX" in finish_name.upper():
+                raise RuntimeError("Google response truncated due to max_tokens.")
 
         if hasattr(resp, "text") and resp.text:
-            return json.loads(resp.text)
+            return _parse_plan_text(resp.text)
+
+        for cand in candidates:
+            content = getattr(cand, "content", None)
+            parts = getattr(content, "parts", None) if content is not None else None
+            if not parts:
+                continue
+            for part in parts:
+                text = getattr(part, "text", None)
+                if text:
+                    return _parse_plan_text(text)
 
     except Exception:
         raise
+    finally:
+        # Release http resources in long-lived runners.
+        close = getattr(client, "close", None)
+        if callable(close):
+            maybe_awaitable = close()
+            if inspect.isawaitable(maybe_awaitable):
+                await maybe_awaitable
 
     return {"tool": "vei.observe", "args": {}}
 
@@ -322,7 +379,7 @@ async def _openrouter_plan(
     """OpenRouter provider using OpenAI-compatible API."""
     if AsyncOpenAI is None:
         raise RuntimeError("openai SDK not installed; install with extras [llm]")
-    
+
     headers: Dict[str, str] = {}
     referer = os.environ.get("OPENROUTER_HTTP_REFERER")
     app_title = os.environ.get("OPENROUTER_APP_TITLE")
@@ -336,26 +393,30 @@ async def _openrouter_plan(
         api_key=api_key or os.environ.get("OPENROUTER_API_KEY"),
         default_headers=headers or None,
     )
-    
+
     try:
         resp = await asyncio.wait_for(
             client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": user + "\nReply strictly as JSON with keys 'tool' (string) and 'args' (object)."}
+                    {
+                        "role": "user",
+                        "content": user
+                        + "\nReply strictly as JSON with keys 'tool' (string) and 'args' (object).",
+                    },
                 ],
                 max_tokens=2048,
                 temperature=0,
                 top_p=1,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             ),
-            timeout=timeout_s
+            timeout=timeout_s,
         )
-        
+
         choice = resp.choices[0]
         if choice.finish_reason == "length":
-            raise RuntimeError(f"OpenRouter response truncated due to max_tokens.")
+            raise RuntimeError("OpenRouter response truncated due to max_tokens.")
 
         if choice.message.content:
             try:
@@ -364,11 +425,13 @@ async def _openrouter_plan(
                 snippet = choice.message.content.strip()
                 if len(snippet) > 200:
                     snippet = snippet[:200] + "…"
-                raise RuntimeError(f"OpenRouter returned non-JSON payload: {snippet}") from exc
-        
+                raise RuntimeError(
+                    f"OpenRouter returned non-JSON payload: {snippet}"
+                ) from exc
+
     except Exception:
         raise
-    
+
     return {"tool": "vei.observe", "args": {}}
 
 
@@ -397,7 +460,7 @@ async def plan_once(
             model=model,
             system=system,
             user=user,
-            plan_schema=plan_schema, # Pass it through for gpt-5
+            plan_schema=plan_schema,  # Pass it through for gpt-5
             timeout_s=timeout_s,
             base_url=openai_base_url,
             api_key=openai_api_key,
@@ -413,7 +476,19 @@ async def plan_once(
             alias_map=alias_map,
         )
     if p == "google":
-        return await _google_plan(model=model, system=system, user=user, timeout_s=timeout_s, api_key=google_api_key)
+        return await _google_plan(
+            model=model,
+            system=system,
+            user=user,
+            timeout_s=timeout_s,
+            api_key=google_api_key,
+        )
     if p == "openrouter":
-        return await _openrouter_plan(model=model, system=system, user=user, timeout_s=timeout_s, api_key=openrouter_api_key)
+        return await _openrouter_plan(
+            model=model,
+            system=system,
+            user=user,
+            timeout_s=timeout_s,
+            api_key=openrouter_api_key,
+        )
     raise ValueError(f"Unknown provider: {provider}")

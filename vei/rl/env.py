@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, Tuple
 
 try:
@@ -10,7 +9,7 @@ except Exception as _e:  # pragma: no cover - optional extra
     gym = None  # type: ignore[assignment]
     spaces = None  # type: ignore[assignment]
 
-from vei.router.core import Router
+from vei.router.api import create_router
 
 
 class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
@@ -29,16 +28,18 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
     def __init__(self, seed: int = 42042, reward_mode: str = "sparse") -> None:
         self.seed_value = int(seed)
         self.reward_mode = reward_mode
-        self.router = Router(seed=self.seed_value, artifacts_dir=None)
+        self.router = create_router(seed=self.seed_value, artifacts_dir=None)
         # Lazy spaces if gymnasium is available
         if spaces is not None:
             self.observation_space = spaces.Dict({})  # free-form dict
             # Clamp tool name length to keep gymnasium validators happy without changing behaviour.
-            self.action_space = spaces.Dict({
-                "tool": spaces.Text(min_length=1, max_length=128),
-                # Empty Dict space is permissive enough for RL experiments; args schema enforced downstream by router.
-                "args": spaces.Dict({}),
-            })
+            self.action_space = spaces.Dict(
+                {
+                    "tool": spaces.Text(min_length=1, max_length=128),
+                    # Empty Dict space is permissive enough for RL experiments; args schema enforced downstream by router.
+                    "args": spaces.Dict({}),
+                }
+            )
         else:  # pragma: no cover
             self.observation_space = None  # type: ignore[assignment]
             self.action_space = None  # type: ignore[assignment]
@@ -54,10 +55,12 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
         self.elapsed_ms = 0
 
     # Gymnasium signature: reset(self, *, seed=None, options=None)
-    def reset(self, *, seed: int | None = None, options: Dict[str, Any] | None = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    def reset(
+        self, *, seed: int | None = None, options: Dict[str, Any] | None = None
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if seed is not None:
             self.seed_value = int(seed)
-        self.router = Router(seed=self.seed_value, artifacts_dir=None)
+        self.router = create_router(seed=self.seed_value, artifacts_dir=None)
         self._saw_browser_read = False
         self._sent_email = False
         self._saw_approval = False
@@ -68,7 +71,9 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
         return obs, {}
 
     # Gymnasium signature: step(self, action) -> obs, reward, terminated, truncated, info
-    def step(self, action: Dict[str, Any]) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
+    def step(
+        self, action: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
         tool = action.get("tool", "vei.observe")
         args = action.get("args", {})
         data = self.router.act_and_observe(tool, args)
@@ -149,11 +154,16 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
 
 def _has_price(text: str) -> bool:
     import re
-    pat = re.compile(r"\b(?:price|total)\s*(?::|-)\s*(?:USD|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)", re.I)
+
+    pat = re.compile(
+        r"\b(?:price|total)\s*(?::|-)\s*(?:USD|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
+        re.I,
+    )
     return bool(pat.search(text))
 
 
 def _has_eta(text: str) -> bool:
     import re
+
     pat = re.compile(r"\beta\s*(?::|-)\s*([^\n]+)", re.I)
     return bool(pat.search(text))

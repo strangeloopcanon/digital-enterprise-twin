@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**", "chore/**", "codex/**"]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      AGENT_MODE: baseline
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: "pip"
+
+      - name: Setup
+        run: make setup
+
+      - name: Check
+        run: make check
+
+      - name: Test
+        run: make test
+
+      - name: LLM Live
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$OPENAI_API_KEY" ]; then
+            make llm-live
+          else
+            VEI_LLM_LIVE_BYPASS=1 make llm-live
+          fi
+
+      - name: Dependency Audit
+        run: make deps-audit

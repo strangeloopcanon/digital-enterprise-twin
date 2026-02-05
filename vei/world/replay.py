@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Iterable
 
 from vei.data.models import BaseEvent
-from vei.router.core import EventBus
+from vei.world.api import EventBusAPI
 
 
 class ReplayAdapter:
-    def __init__(self, bus: EventBus, events: Iterable[BaseEvent]) -> None:
+    def __init__(self, bus: EventBusAPI, events: Iterable[BaseEvent]) -> None:
         self.bus = bus
         self.events = sorted(events, key=lambda e: e.time_ms)
         self._index = 0
