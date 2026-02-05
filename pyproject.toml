@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vei"
 version = "0.1.0"
-description = "Virtual Enterprise Internet (VEI) — MCP-native synthetic Slack/Mail/Browser world"
+description = "Digital Enterprise Twin (VEI) — MCP-native synthetic Slack/Mail/Browser world"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

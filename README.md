@@ -1,5 +1,5 @@
-## VEI (Virtual Enterprise Internet)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/strangeloopcanon/pliny-the-elder)
+## Digital Enterprise Twin (VEI)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/strangeloopcanon/digital-enterprise-twin)
 
 ![VEI Virtual Office](docs/assets/virtual_office.gif)
 <p align="center"><sub>Conceptual office view</sub></p>
@@ -7,6 +7,11 @@
 Fully synthetic, MCP-native Slack/Mail/Browser world. A single MCP server exposes tools and a seeded event bus so agents can practice multi-app workflows deterministically and reproducibly.
 
 <!-- Demo branch change for GitHub workflow demonstration -->
+
+### Name History
+- This project was previously named **Pliny the Elder**.
+- We renamed it to **Digital Enterprise Twin** to make the mission explicit: building a realistic, composable enterprise digital twin.
+- We retain **VEI (Virtual Enterprise Internet)** as the runtime/package identity in code and CLI for continuity.
 
 ### Highlights
 - **MCP-native tools**: `slack.*`, `mail.*`, `browser.*`, and `vei.*` helpers (now including `vei.tools.search` for catalog retrieval).
