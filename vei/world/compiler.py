@@ -64,6 +64,7 @@ def compile_scene(
         documents=_build_documents(scene.documents),
         calendar_events=_build_calendar(scene.calendar_events),
         tickets=_build_tickets(scene.tickets),
+        database_tables=dict(scene.database_tables) or None,
         triggers=[
             {"at_ms": trig.at_ms, "target": trig.target, "payload": dict(trig.payload)}
             for trig in scene.triggers

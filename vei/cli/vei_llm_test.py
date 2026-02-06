@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, Tuple, List, Iterable
+from typing import Any, Dict, Tuple, List, Iterable, TextIO
 import re
 import sys
 from urllib.parse import urlparse
@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from vei.llm.providers import plan_once, auto_provider_for_model
+from vei.score_core import compute_score
 
 
 _CLAUDE_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]")
@@ -61,9 +62,27 @@ BASELINE_VISIBLE_TOOLS: List[str] = [
     "vei.tick",
     "vei.act_and_observe",
     "vei.tools.search",
-    "vei.state",
     "vei.call",
 ]
+
+
+NO_PROGRESS_TOOLS = {"vei.observe", "vei.state", "vei.tools.search"}
+NO_ARG_PROGRESS_TOOLS = [
+    "browser.read",
+    "browser.back",
+    "mail.list",
+    "slack.list_channels",
+    "docs.list",
+    "calendar.list_events",
+    "tickets.list",
+    "db.list_tables",
+]
+
+
+class EpisodeFailure(RuntimeError):
+    def __init__(self, message: str, transcript: list[dict]):
+        super().__init__(message)
+        self.transcript = transcript
 
 
 def _select_visible_tools(
@@ -211,38 +230,117 @@ def _filter_anthropic_tools(
     return filtered, trimmed_alias_map
 
 
-def _normalize_result(res: object) -> dict:
-    # Accept raw dicts
-    if isinstance(res, dict):
-        return res
-    # MCP CallToolResult (structuredContent or content list)
-    sc = getattr(res, "structuredContent", None)
-    if sc is not None:
-        if isinstance(sc, dict):
-            return sc
-        # Some clients may return a list for structured content
+def _select_progress_action(
+    action_menu: Iterable[Dict[str, Any]] | None,
+) -> Tuple[str, Dict[str, Any]] | None:
+    items = [item for item in (action_menu or []) if isinstance(item, dict)]
+
+    # Prefer concrete action_menu entries that already include args payload.
+    for item in items:
+        tool = item.get("tool")
+        args = item.get("args")
+        if (
+            isinstance(tool, str)
+            and isinstance(args, dict)
+            and tool not in NO_PROGRESS_TOOLS
+        ):
+            return tool, args
+
+    # Fallback to known no-arg actions when present.
+    tool_names = {
+        str(item.get("tool")) for item in items if isinstance(item.get("tool"), str)
+    }
+    for tool in NO_ARG_PROGRESS_TOOLS:
+        if tool in tool_names:
+            return tool, {}
+
+    return None
+
+
+def _append_transcript(
+    transcript: list[dict], entry: dict, stream_file: TextIO | None = None
+) -> None:
+    transcript.append(entry)
+    if stream_file is None:
+        return
+    stream_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    stream_file.flush()
+
+
+def _is_no_progress(tool: str, args: Dict[str, Any], prev_tool: str | None) -> bool:
+    if tool in NO_PROGRESS_TOOLS:
+        return True
+    if tool in NO_ARG_PROGRESS_TOOLS and not args and prev_tool == tool:
+        return True
+    return False
+
+
+def _to_plain(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(k): _to_plain(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_plain(v) for v in value]
+    if hasattr(value, "model_dump"):
         try:
-            if sc and isinstance(sc, list):
-                return sc[0] if isinstance(sc[0], dict) else {"value": sc[0]}
+            return _to_plain(value.model_dump())
         except Exception:
-            ...
-    content = getattr(res, "content", None)
+            return str(value)
+    if hasattr(value, "dict"):
+        try:
+            return _to_plain(value.dict())  # type: ignore[attr-defined]
+        except Exception:
+            return str(value)
+    return value
+
+
+def _normalize_result(res: object) -> dict:
+    plain = _to_plain(res)
+    if isinstance(plain, dict):
+        sc = plain.get("structuredContent")
+        if isinstance(sc, dict):
+            return _to_plain(sc)
+        if isinstance(sc, list) and sc:
+            first = _to_plain(sc[0])
+            if isinstance(first, dict):
+                return first
+            return {"value": first}
+        content = plain.get("content")
+    else:
+        content = _to_plain(getattr(res, "content", None))
+
     if isinstance(content, list):
         for item in content:
-            try:
-                t = item.get("type")
-                if t == "json" and "data" in item:
-                    return item["data"]
-                if t == "text" and "text" in item:
-                    import json as _json
-
-                    try:
-                        return _json.loads(item["text"])
-                    except Exception:
-                        return {"text": item["text"]}
-            except Exception:
+            payload = _to_plain(item)
+            if not isinstance(payload, dict):
                 continue
-    return {}
+            t = str(payload.get("type", ""))
+            if t == "json":
+                data = payload.get("data")
+                if data is not None:
+                    return data if isinstance(data, dict) else {"value": data}
+            if t == "text":
+                text = payload.get("text")
+                if text is None:
+                    continue
+                try:
+                    loaded = json.loads(text)
+                    if isinstance(loaded, dict):
+                        return loaded
+                    return {"value": loaded}
+                except Exception:
+                    return {"text": str(text)}
+            return payload
+
+    if isinstance(plain, dict):
+        return plain
+    return {"value": plain}
+
+
+async def _with_timeout(coro: Any, timeout_s: int, label: str) -> Any:
+    try:
+        return await asyncio.wait_for(coro, timeout=max(1, int(timeout_s)))
+    except asyncio.TimeoutError as exc:
+        raise TimeoutError(f"{label} timed out after {timeout_s}s") from exc
 
 
 app = typer.Typer(add_completion=False)
@@ -282,364 +380,352 @@ async def run_episode(
     artifacts_dir: str | None = None,
     tool_top_k: int = 0,
     interactive: bool = False,
+    step_timeout_s: int = 180,
+    episode_timeout_s: int = 900,
+    transcript_stream_path: str | None = None,
 ) -> list[dict]:
-    # stdio-only transport
-    py = os.environ.get("PYTHON") or sys.executable or "python3"
-    env = {**os.environ, "VEI_DISABLE_AUTOSTART": "1"}
-    if dataset_path:
-        env["VEI_DATASET"] = dataset_path
-    if artifacts_dir:
-        env["VEI_ARTIFACTS_DIR"] = artifacts_dir
-    params = StdioServerParameters(command=py, args=["-m", "vei.router"], env=env)
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            # Enumerate full tool catalog so the model can "see" the environment
-            anthropic_tool_schemas: list[dict[str, Any]] | None = None
-            anthropic_alias_map: Dict[str, str] | None = None
-            tool_catalog: Dict[str, Dict[str, Any]] = {}
-            try:
-                tools_info = await session.list_tools()
-                for tool in getattr(tools_info, "tools", []) or []:
-                    name = getattr(tool, "name", None)
-                    if not name or name == "vei.inject":
-                        continue
-                    description = getattr(tool, "description", "") or f"MCP tool {name}"
-                    tool_catalog[name] = {"description": description}
-                for baseline in BASELINE_VISIBLE_TOOLS:
-                    tool_catalog.setdefault(baseline, {"description": ""})
-                tool_names = sorted(tool_catalog.keys())
-                anthropic_tool_schemas, anthropic_alias_map = (
-                    _build_anthropic_tool_schemas(tools_info)
+    transcript: list[dict] = []
+    history: list[str] = []
+    stream_file: TextIO | None = None
+    started_at = time.monotonic()
+    try:
+        if transcript_stream_path:
+            stream_path = Path(transcript_stream_path)
+            stream_path.parent.mkdir(parents=True, exist_ok=True)
+            stream_file = stream_path.open("w", encoding="utf-8")
+
+        # stdio-only transport
+        py = os.environ.get("PYTHON") or sys.executable or "python3"
+        env = {**os.environ, "VEI_DISABLE_AUTOSTART": "1"}
+        if dataset_path:
+            env["VEI_DATASET"] = dataset_path
+        if artifacts_dir:
+            env["VEI_ARTIFACTS_DIR"] = artifacts_dir
+        params = StdioServerParameters(command=py, args=["-m", "vei.router"], env=env)
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await _with_timeout(
+                    session.initialize(), step_timeout_s, "session.initialize"
                 )
-            except Exception:
-                fallback_names = {
-                    "vei.observe",
-                    "vei.tick",
-                    "vei.help",
-                    "vei.tools.search",
-                    "browser.read",
-                    "browser.find",
-                    "browser.open",
-                    "browser.click",
-                    "browser.back",
-                    "slack.send_message",
-                    "mail.compose",
-                    "mail.list",
-                    "mail.open",
-                    "mail.reply",
-                }
-                tool_catalog = {name: {"description": ""} for name in fallback_names}
-                for baseline in BASELINE_VISIBLE_TOOLS:
-                    tool_catalog.setdefault(baseline, {"description": ""})
-                tool_names = sorted(tool_catalog.keys())
 
-            base_prompt = SYSTEM_PROMPT
-            if task:
-                base_prompt += f"\nTask: {task}"
-            transcript: list[dict] = []
-            history: list[str] = []
-
-            # One-time catalog hints for common tools to reduce ambiguity
-            common_hints: dict[str, dict] = {
-                "browser.read": {},
-                "browser.find": {"query": "str", "top_k": "int?"},
-                "browser.click": {"node_id": "from observation.action_menu"},
-                "browser.open": {"url": "https://vweb.local/..."},
-                "vei.tick": {"dt_ms": 20000},
-                "vei.tools.search": {"query": "keywords", "top_k": tool_top_k or 8},
-                "slack.send_message": {
-                    "channel": "#procurement",
-                    "text": "Budget $3200. Link: https://vweb.local/pdp/macrobook-pro-16",
-                },
-                "mail.compose": {
-                    "to": "sales@macrocompute.example",
-                    "subj": "Quote request",
-                    "body_text": "Please send latest price and ETA.",
-                },
-                "mail.list": {},
-                "mail.open": {"id": "m1"},
-                "mail.reply": {
-                    "id": "m1",
-                    "body_text": "Thanks; confirming price and ETA.",
-                },
-            }
-
-            prev_tool: str | None = None
-            last_search_query: str | None = None
-            last_search_results: List[str] = []
-
-            for step in range(max_steps):
-                obs_raw = await call_mcp_tool(session, "vei.observe", {})
-                obs = _normalize_result(obs_raw)
-
-                if interactive:
-                    print(f"\n--- Step {step} ---")
-                    print(f"Observation: {json.dumps(obs, indent=2)}")
-                    while True:
-                        print(
-                            "Press Enter to continue, or 'i' to inject event...",
-                            file=sys.stderr,
+                anthropic_tool_schemas: list[dict[str, Any]] | None = None
+                anthropic_alias_map: Dict[str, str] | None = None
+                tool_catalog: Dict[str, Dict[str, Any]] = {}
+                try:
+                    tools_info = await _with_timeout(
+                        session.list_tools(), step_timeout_s, "session.list_tools"
+                    )
+                    for tool in getattr(tools_info, "tools", []) or []:
+                        name = getattr(tool, "name", None)
+                        if not name or name == "vei.inject":
+                            continue
+                        description = (
+                            getattr(tool, "description", "") or f"MCP tool {name}"
                         )
-                        cmd = input("> ").strip()
-                        if cmd == "i":
-                            target = (
-                                input("Target (slack/mail) [slack]: ").strip()
-                                or "slack"
-                            )
-                            if target == "slack":
-                                text = input("Message text: ").strip()
-                                user_id = input("User [cfo]: ").strip() or "cfo"
-                                channel = (
-                                    input("Channel [#procurement]: ").strip()
-                                    or "#procurement"
-                                )
-                                payload = {
-                                    "channel": channel,
-                                    "text": text,
-                                    "user": user_id,
-                                }
-                            elif target == "mail":
-                                subj = input("Subject: ").strip()
-                                body = input("Body: ").strip()
-                                sender = (
-                                    input("From [human@example.com]: ").strip()
-                                    or "human@example.com"
-                                )
-                                payload = {
-                                    "from": sender,
-                                    "subj": subj,
-                                    "body_text": body,
-                                }
-                            else:
-                                print("Unknown target")
-                                continue
+                        tool_catalog[name] = {"description": description}
+                    for baseline in BASELINE_VISIBLE_TOOLS:
+                        tool_catalog.setdefault(baseline, {"description": ""})
+                    tool_names = sorted(tool_catalog.keys())
+                    anthropic_tool_schemas, anthropic_alias_map = (
+                        _build_anthropic_tool_schemas(tools_info)
+                    )
+                except Exception:
+                    fallback_names = {
+                        "vei.observe",
+                        "vei.tick",
+                        "vei.help",
+                        "vei.tools.search",
+                        "browser.read",
+                        "browser.find",
+                        "browser.open",
+                        "browser.click",
+                        "browser.back",
+                        "slack.send_message",
+                        "mail.compose",
+                        "mail.list",
+                        "mail.open",
+                        "mail.reply",
+                    }
+                    tool_catalog = {
+                        name: {"description": ""} for name in fallback_names
+                    }
+                    for baseline in BASELINE_VISIBLE_TOOLS:
+                        tool_catalog.setdefault(baseline, {"description": ""})
+                    tool_names = sorted(tool_catalog.keys())
 
-                            try:
-                                await call_mcp_tool(
-                                    session,
-                                    "vei.inject",
-                                    {"target": target, "payload": payload, "dt_ms": 0},
-                                )
-                                print(f"Injected event to {target}.")
-                                # Re-observe to capture the effect
-                                obs_raw = await call_mcp_tool(
-                                    session, "vei.observe", {}
-                                )
-                                obs = _normalize_result(obs_raw)
-                                print(
-                                    f"Updated Observation: {json.dumps(obs, indent=2)}"
-                                )
-                            except Exception as e:
-                                print(f"Injection failed: {e}")
-                        else:
-                            break
+                base_prompt = SYSTEM_PROMPT
+                if task:
+                    base_prompt += f"\nTask: {task}"
 
-                transcript.append({"observation": obs})
-                history.append(f"observation {step}: {json.dumps(obs)}")
-                action_menu = obs.get("action_menu") if isinstance(obs, dict) else None
-
-                search_matches: List[str] = []
-                if tool_top_k and tool_top_k > 0:
-                    query_parts: List[str] = []
-                    if task:
-                        query_parts.append(task)
-                    summary = obs.get("summary") if isinstance(obs, dict) else None
-                    if isinstance(summary, str):
-                        query_parts.append(summary)
-                    focus = obs.get("focus") if isinstance(obs, dict) else None
-                    if isinstance(focus, str):
-                        query_parts.append(focus)
-                    menu_tools: List[str] = []
-                    if isinstance(action_menu, list):
-                        for item in action_menu:
-                            if isinstance(item, dict) and item.get("tool"):
-                                menu_tools.append(str(item.get("tool")))
-                            if len(menu_tools) >= 4:
-                                break
-                    if menu_tools:
-                        query_parts.extend(menu_tools)
-                    query = " ".join(part for part in query_parts if part).strip()
-                    if not query and prev_tool:
-                        query = prev_tool
-
-                    if query:
-                        if query != last_search_query:
-                            try:
-                                search_raw = await call_mcp_tool(
-                                    session,
-                                    "vei.tools.search",
-                                    {"query": query, "top_k": tool_top_k},
-                                )
-                                search_resp = _normalize_result(search_raw)
-                                results = (
-                                    search_resp.get("results", [])
-                                    if isinstance(search_resp, dict)
-                                    else []
-                                )
-                                search_matches = [
-                                    str(item.get("name"))
-                                    for item in results
-                                    if isinstance(item, dict)
-                                    and item.get("name") in tool_catalog
-                                ]
-                                last_search_query = query
-                                last_search_results = search_matches[:]
-                                transcript.append(
-                                    {
-                                        "tool_search": {
-                                            "query": query,
-                                            "results": search_matches,
-                                        }
-                                    }
-                                )
-                            except Exception:
-                                search_matches = []
-                                last_search_query = query
-                                last_search_results = []
-                        else:
-                            search_matches = last_search_results[:]
-
-                visible_tools = _select_visible_tools(
-                    available=tool_names,
-                    action_menu=action_menu if isinstance(action_menu, list) else None,
-                    search_matches=search_matches,
-                    baseline=BASELINE_VISIBLE_TOOLS,
-                    top_k=tool_top_k,
-                )
-
-                catalog_lines = []
-                for name in visible_tools:
-                    desc = tool_catalog.get(name, {}).get("description", "")
-                    if desc:
-                        catalog_lines.append(f"- {name}: {desc}")
-                    else:
-                        catalog_lines.append(f"- {name}")
-                catalog_text = "\n".join(catalog_lines)
-                hints_lines = [
-                    f"- {k} {json.dumps(v)}"
-                    for k, v in common_hints.items()
-                    if k in visible_tools
-                ]
-                hints_text = "\n".join(hints_lines)
-
-                # Open schema (no gating). We present the tool subset plus allow vei.call for escapes.
-                plan_schema = {
-                    "name": "vei.plan.schema",
-                    "schema": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": ["tool", "args"],
-                        "properties": {
-                            "tool": {"type": "string"},
-                            "args": {"type": "object"},
-                        },
+                common_hints: dict[str, dict] = {
+                    "browser.read": {},
+                    "browser.find": {"query": "str", "top_k": "int?"},
+                    "browser.click": {"node_id": "from observation.action_menu"},
+                    "browser.open": {"url": "https://vweb.local/..."},
+                    "vei.tick": {"dt_ms": 20000},
+                    "vei.tools.search": {"query": "keywords", "top_k": tool_top_k or 8},
+                    "slack.send_message": {
+                        "channel": "#procurement",
+                        "text": "Budget $3200. Link: https://vweb.local/pdp/macrobook-pro-16",
+                    },
+                    "mail.compose": {
+                        "to": "sales@macrocompute.example",
+                        "subj": "Quote request",
+                        "body_text": "Please send latest price and ETA.",
+                    },
+                    "mail.list": {},
+                    "mail.open": {"id": "m1"},
+                    "mail.reply": {
+                        "id": "m1",
+                        "body_text": "Thanks; confirming price and ETA.",
                     },
                 }
-                context_block = "\n".join(history[-6:])
-                user = (
-                    (
-                        "Goal:\n"
-                        + (
-                            task
-                            or "Complete procurement with citations, approval, and vendor email."
+
+                prev_tool: str | None = None
+                last_search_query: str | None = None
+                last_search_results: List[str] = []
+                no_progress_streak = 0
+
+                for step in range(max_steps):
+                    elapsed_s = time.monotonic() - started_at
+                    if elapsed_s > episode_timeout_s:
+                        raise TimeoutError(
+                            f"episode timed out after {episode_timeout_s}s at step {step}"
                         )
-                    )
-                    + "\n\nTools available (you may use any):\n"
-                    + catalog_text
-                    + (
-                        "\n\nCommon tool arg hints:\n" + hints_text
-                        if hints_text
-                        else ""
-                    )
-                    + "\n\nObservation:\n"
-                    + json.dumps(obs)
-                    + "\n\nConsidering this, what is the single next task you should do to accomplish the goal? "
-                    "Choose exactly one tool and args that best advances the goal. "
-                    "Do not choose 'vei.observe' again unless new information appeared or you must change focus."
-                )
-                if context_block:
-                    user = f"Context:\n{context_block}\n\n{user}"
-                # Call selected provider to get plan (JSON with {tool, args})
-                eff_provider = auto_provider_for_model(
-                    model, (provider or "").strip().lower() or None
-                )
-                plan: dict
-                plan_error: str | None = None
 
-                provider_schemas = anthropic_tool_schemas
-                provider_alias_map = anthropic_alias_map
-                if eff_provider == "anthropic":
-                    provider_schemas, provider_alias_map = _filter_anthropic_tools(
-                        anthropic_tool_schemas,
-                        anthropic_alias_map,
-                        visible_tools,
+                    obs_raw = await _with_timeout(
+                        call_mcp_tool(session, "vei.observe", {}),
+                        step_timeout_s,
+                        "vei.observe",
                     )
-                try:
-                    plan = await plan_once(
-                        provider=eff_provider,
-                        model=model,
-                        system=base_prompt,
-                        user=user,
-                        plan_schema=plan_schema,
-                        timeout_s=240,
-                        openai_base_url=openai_base_url
-                        or os.environ.get("OPENAI_BASE_URL"),
-                        openai_api_key=openai_api_key
-                        or os.environ.get("OPENAI_API_KEY"),
-                        anthropic_api_key=anthropic_api_key
-                        or os.environ.get("ANTHROPIC_API_KEY"),
-                        google_api_key=google_api_key
-                        or os.environ.get("GOOGLE_API_KEY"),
-                        openrouter_api_key=openrouter_api_key
-                        or os.environ.get("OPENROUTER_API_KEY"),
-                        tool_schemas=(
-                            provider_schemas if eff_provider == "anthropic" else None
+                    obs = _normalize_result(obs_raw)
+
+                    if interactive:
+                        print(f"\n--- Step {step} ---")
+                        print(f"Observation: {json.dumps(obs, indent=2)}")
+                        while True:
+                            print(
+                                "Press Enter to continue, or 'i' to inject event...",
+                                file=sys.stderr,
+                            )
+                            cmd = input("> ").strip()
+                            if cmd == "i":
+                                target = (
+                                    input("Target (slack/mail) [slack]: ").strip()
+                                    or "slack"
+                                )
+                                if target == "slack":
+                                    text = input("Message text: ").strip()
+                                    user_id = input("User [cfo]: ").strip() or "cfo"
+                                    channel = (
+                                        input("Channel [#procurement]: ").strip()
+                                        or "#procurement"
+                                    )
+                                    payload = {
+                                        "channel": channel,
+                                        "text": text,
+                                        "user": user_id,
+                                    }
+                                elif target == "mail":
+                                    subj = input("Subject: ").strip()
+                                    body = input("Body: ").strip()
+                                    sender = (
+                                        input("From [human@example.com]: ").strip()
+                                        or "human@example.com"
+                                    )
+                                    payload = {
+                                        "from": sender,
+                                        "subj": subj,
+                                        "body_text": body,
+                                    }
+                                else:
+                                    print("Unknown target")
+                                    continue
+
+                                try:
+                                    await _with_timeout(
+                                        call_mcp_tool(
+                                            session,
+                                            "vei.inject",
+                                            {
+                                                "target": target,
+                                                "payload": payload,
+                                                "dt_ms": 0,
+                                            },
+                                        ),
+                                        step_timeout_s,
+                                        "vei.inject",
+                                    )
+                                    print(f"Injected event to {target}.")
+                                    obs_raw = await _with_timeout(
+                                        call_mcp_tool(session, "vei.observe", {}),
+                                        step_timeout_s,
+                                        "vei.observe.post_inject",
+                                    )
+                                    obs = _normalize_result(obs_raw)
+                                    print(
+                                        f"Updated Observation: {json.dumps(obs, indent=2)}"
+                                    )
+                                except Exception as e:
+                                    print(f"Injection failed: {e}")
+                            else:
+                                break
+
+                    _append_transcript(transcript, {"observation": obs}, stream_file)
+                    history.append(f"observation {step}: {json.dumps(obs)}")
+                    action_menu = (
+                        obs.get("action_menu") if isinstance(obs, dict) else None
+                    )
+
+                    search_matches: List[str] = []
+                    if tool_top_k and tool_top_k > 0:
+                        query_parts: List[str] = []
+                        if task:
+                            query_parts.append(task)
+                        summary = obs.get("summary") if isinstance(obs, dict) else None
+                        if isinstance(summary, str):
+                            query_parts.append(summary)
+                        focus = obs.get("focus") if isinstance(obs, dict) else None
+                        if isinstance(focus, str):
+                            query_parts.append(focus)
+                        menu_tools: List[str] = []
+                        if isinstance(action_menu, list):
+                            for item in action_menu:
+                                if isinstance(item, dict) and item.get("tool"):
+                                    menu_tools.append(str(item.get("tool")))
+                                if len(menu_tools) >= 4:
+                                    break
+                        if menu_tools:
+                            query_parts.extend(menu_tools)
+                        query = " ".join(part for part in query_parts if part).strip()
+                        if not query and prev_tool:
+                            query = prev_tool
+
+                        if query:
+                            if query != last_search_query:
+                                try:
+                                    search_raw = await _with_timeout(
+                                        call_mcp_tool(
+                                            session,
+                                            "vei.tools.search",
+                                            {"query": query, "top_k": tool_top_k},
+                                        ),
+                                        step_timeout_s,
+                                        "vei.tools.search",
+                                    )
+                                    search_resp = _normalize_result(search_raw)
+                                    results = (
+                                        search_resp.get("results", [])
+                                        if isinstance(search_resp, dict)
+                                        else []
+                                    )
+                                    search_matches = [
+                                        str(item.get("name"))
+                                        for item in results
+                                        if isinstance(item, dict)
+                                        and item.get("name") in tool_catalog
+                                    ]
+                                    last_search_query = query
+                                    last_search_results = search_matches[:]
+                                    _append_transcript(
+                                        transcript,
+                                        {
+                                            "tool_search": {
+                                                "query": query,
+                                                "results": search_matches,
+                                            }
+                                        },
+                                        stream_file,
+                                    )
+                                except Exception:
+                                    search_matches = []
+                                    last_search_query = query
+                                    last_search_results = []
+                            else:
+                                search_matches = last_search_results[:]
+
+                    visible_tools = _select_visible_tools(
+                        available=tool_names,
+                        action_menu=(
+                            action_menu if isinstance(action_menu, list) else None
                         ),
-                        alias_map=(
-                            provider_alias_map if eff_provider == "anthropic" else None
-                        ),
-                    )
-                except Exception as e:
-                    plan_error = f"Provider error: {type(e).__name__}: {str(e)}"
-                    transcript.append({"plan_error": plan_error})
-                    raise  # FAIL FAST - no masking
-
-                if eff_provider == "anthropic" and provider_alias_map:
-                    tool_alias = plan.get("tool")
-                    if tool_alias in provider_alias_map:
-                        plan["tool"] = provider_alias_map[tool_alias]
-
-                tool = str(plan.get("tool", "vei.observe"))
-                args = (
-                    plan.get("args", {}) if isinstance(plan.get("args"), dict) else {}
-                )
-
-                # If model returns a no-op after the first step, retry once with a stronger prompt.
-                if tool == "vei.observe" and prev_tool is not None:
-                    transcript.append(
-                        {
-                            "action": {
-                                "tool": tool,
-                                "args": args,
-                                "retried": True,
-                                "original_plan": plan,
-                            }
-                        }
+                        search_matches=search_matches,
+                        baseline=BASELINE_VISIBLE_TOOLS,
+                        top_k=tool_top_k,
                     )
 
-                    retry_user_prompt = user + (
-                        "\n\nCRITICAL: You returned 'vei.observe' when an action was required. You MUST choose a "
-                        "different, non-observe tool to make progress. What is the next concrete action?"
+                    catalog_lines = []
+                    for name in visible_tools:
+                        desc = tool_catalog.get(name, {}).get("description", "")
+                        if desc:
+                            catalog_lines.append(f"- {name}: {desc}")
+                        else:
+                            catalog_lines.append(f"- {name}")
+                    catalog_text = "\n".join(catalog_lines)
+                    hints_lines = [
+                        f"- {k} {json.dumps(v)}"
+                        for k, v in common_hints.items()
+                        if k in visible_tools
+                    ]
+                    hints_text = "\n".join(hints_lines)
+
+                    plan_schema = {
+                        "name": "vei.plan.schema",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["tool", "args"],
+                            "properties": {
+                                "tool": {"type": "string"},
+                                "args": {"type": "object"},
+                            },
+                        },
+                    }
+                    context_block = "\n".join(history[-6:])
+                    user = (
+                        (
+                            "Goal:\n"
+                            + (
+                                task
+                                or "Complete procurement with citations, approval, and vendor email."
+                            )
+                        )
+                        + "\n\nTools available (you may use any):\n"
+                        + catalog_text
+                        + (
+                            "\n\nCommon tool arg hints:\n" + hints_text
+                            if hints_text
+                            else ""
+                        )
+                        + "\n\nObservation:\n"
+                        + json.dumps(obs)
+                        + "\n\nConsidering this, what is the single next task you should do to accomplish the goal? "
+                        "Choose exactly one tool and args that best advances the goal. "
+                        "Do not choose 'vei.observe' again unless new information appeared or you must change focus."
                     )
-                    try:
-                        plan = await plan_once(
+                    if context_block:
+                        user = f"Context:\n{context_block}\n\n{user}"
+
+                    eff_provider = auto_provider_for_model(
+                        model, (provider or "").strip().lower() or None
+                    )
+                    provider_schemas = anthropic_tool_schemas
+                    provider_alias_map = anthropic_alias_map
+                    if eff_provider == "anthropic":
+                        provider_schemas, provider_alias_map = _filter_anthropic_tools(
+                            anthropic_tool_schemas,
+                            anthropic_alias_map,
+                            visible_tools,
+                        )
+
+                    plan = await _with_timeout(
+                        plan_once(
                             provider=eff_provider,
                             model=model,
                             system=base_prompt,
-                            user=retry_user_prompt,
+                            user=user,
                             plan_schema=plan_schema,
-                            timeout_s=240,
+                            timeout_s=step_timeout_s,
                             openai_base_url=openai_base_url
                             or os.environ.get("OPENAI_BASE_URL"),
                             openai_api_key=openai_api_key
@@ -660,65 +746,138 @@ async def run_episode(
                                 if eff_provider == "anthropic"
                                 else None
                             ),
-                        )
-                        if eff_provider == "anthropic" and provider_alias_map:
-                            alias = plan.get("tool")
-                            if alias in provider_alias_map:
-                                plan["tool"] = provider_alias_map[alias]
-                        tool = str(plan.get("tool", "vei.observe"))
-                        args = (
-                            plan.get("args", {})
-                            if isinstance(plan.get("args"), dict)
-                            else {}
-                        )
-                    except Exception as e:
-                        plan_error = (
-                            f"Provider error on retry: {type(e).__name__}: {str(e)}"
-                        )
-                        transcript.append({"plan_error": plan_error})
-                        raise
+                        ),
+                        step_timeout_s + 5,
+                        "plan_once",
+                    )
 
-                action_record = {"tool": tool, "args": args}
-                if tool == "vei.observe":
-                    res_raw = await call_mcp_tool(session, tool, args)
-                    res = _normalize_result(res_raw)
-                    action_record["result"] = res
-                    transcript.append({"action": action_record})
-                    history.append(f"action {step}: {json.dumps(action_record)}")
-                else:
-                    # Execute action and return post-action observation atomically
-                    try:
-                        ao_raw = await call_mcp_tool(
-                            session, "vei.act_and_observe", {"tool": tool, "args": args}
-                        )
-                        ao = _normalize_result(ao_raw)
-                        res = ao.get("result", ao)
-                        obs2 = ao.get("observation")
-                    except Exception as e:
-                        res = {"error": str(e)}
-                        obs2 = None
-                    action_record["result"] = res
-                    transcript.append({"action": action_record})
-                    history.append(f"action {step}: {json.dumps(action_record)}")
-                    if isinstance(obs2, dict):
-                        transcript.append({"observation": obs2})
-                        history.append(f"observation {step}.1: {json.dumps(obs2)}")
+                    if eff_provider == "anthropic" and provider_alias_map:
+                        tool_alias = plan.get("tool")
+                        if tool_alias in provider_alias_map:
+                            plan["tool"] = provider_alias_map[tool_alias]
 
-                    # Auto-drain pending events after key actions to keep episodes bounded
-                    if tool in {"mail.compose", "slack.send_message"}:
+                    tool = str(plan.get("tool", "vei.observe"))
+                    args = (
+                        plan.get("args", {})
+                        if isinstance(plan.get("args"), dict)
+                        else {}
+                    )
+                    model_tool = tool
+                    model_args = dict(args)
+
+                    if _is_no_progress(tool, args, prev_tool):
+                        no_progress_streak += 1
+                    else:
+                        no_progress_streak = 0
+
+                    override_reason: str | None = None
+                    if tool in NO_PROGRESS_TOOLS or no_progress_streak >= 2:
+                        fallback = _select_progress_action(
+                            action_menu if isinstance(action_menu, list) else None
+                        )
+                        if fallback is not None:
+                            tool, args = fallback
+                            override_reason = "no_progress_override"
+                            no_progress_streak = 0
+                        elif tool != "vei.tick":
+                            tool, args = "vei.tick", {"dt_ms": 20000}
+                            override_reason = "forced_tick_fallback"
+                            no_progress_streak = 0
+
+                    action_record: Dict[str, Any] = {"tool": tool, "args": args}
+                    if override_reason:
+                        action_record["override_reason"] = override_reason
+                        action_record["model_plan"] = {
+                            "tool": model_tool,
+                            "args": model_args,
+                        }
+
+                    if tool == "vei.observe":
+                        res_raw = await _with_timeout(
+                            call_mcp_tool(session, tool, args),
+                            step_timeout_s,
+                            "vei.observe.action",
+                        )
+                        res = _normalize_result(res_raw)
+                        action_record["result"] = res
+                        _append_transcript(
+                            transcript, {"action": action_record}, stream_file
+                        )
+                        history.append(f"action {step}: {json.dumps(action_record)}")
+                    else:
                         try:
-                            await call_mcp_tool(session, "vei.tick", {"dt_ms": 20000})
-                            obs_raw2 = await call_mcp_tool(session, "vei.observe", {})
-                            obs2b = _normalize_result(obs_raw2)
-                            transcript.append({"observation": obs2b})
-                            history.append(
-                                f"observation {step}.tick: {json.dumps(obs2b)}"
+                            ao_raw = await _with_timeout(
+                                call_mcp_tool(
+                                    session,
+                                    "vei.act_and_observe",
+                                    {"tool": tool, "args": args},
+                                ),
+                                step_timeout_s,
+                                f"vei.act_and_observe({tool})",
                             )
-                        except Exception:
-                            ...
-                prev_tool = tool
+                            ao = _normalize_result(ao_raw)
+                            res = ao.get("result", ao) if isinstance(ao, dict) else ao
+                            obs2 = (
+                                ao.get("observation") if isinstance(ao, dict) else None
+                            )
+                        except Exception as e:
+                            res = {"error": str(e)}
+                            obs2 = None
+                        action_record["result"] = res
+                        _append_transcript(
+                            transcript, {"action": action_record}, stream_file
+                        )
+                        history.append(f"action {step}: {json.dumps(action_record)}")
+                        if isinstance(obs2, dict):
+                            _append_transcript(
+                                transcript, {"observation": obs2}, stream_file
+                            )
+                            history.append(f"observation {step}.1: {json.dumps(obs2)}")
 
-            return transcript
+                        if tool in {"mail.compose", "slack.send_message"}:
+                            try:
+                                await _with_timeout(
+                                    call_mcp_tool(
+                                        session, "vei.tick", {"dt_ms": 20000}
+                                    ),
+                                    step_timeout_s,
+                                    "vei.tick.auto",
+                                )
+                                obs_raw2 = await _with_timeout(
+                                    call_mcp_tool(session, "vei.observe", {}),
+                                    step_timeout_s,
+                                    "vei.observe.post_tick",
+                                )
+                                obs2b = _normalize_result(obs_raw2)
+                                _append_transcript(
+                                    transcript, {"observation": obs2b}, stream_file
+                                )
+                                history.append(
+                                    f"observation {step}.tick: {json.dumps(obs2b)}"
+                                )
+                            except Exception as e:
+                                _append_transcript(
+                                    transcript,
+                                    {
+                                        "auto_tick_error": f"{type(e).__name__}: {str(e)}"
+                                    },
+                                    stream_file,
+                                )
+                    prev_tool = tool
+        return transcript
+    except Exception as e:
+        _append_transcript(
+            transcript,
+            {"episode_error": f"{type(e).__name__}: {str(e)}"},
+            stream_file,
+        )
+        raise EpisodeFailure(
+            f"Episode failed after {len(transcript)} transcript entries: {type(e).__name__}: {str(e)}",
+            transcript,
+        ) from e
+    finally:
+        if stream_file is not None:
+            stream_file.close()
 
 
 def _ensure_sse_available(sse_url: str, autostart: bool) -> None:
@@ -792,6 +951,27 @@ def run(
     interactive: bool = typer.Option(
         False, help="Run in interactive mode to allow manual event injection."
     ),
+    step_timeout_s: int = typer.Option(
+        180, help="Per-step timeout for model/tool operations (seconds)."
+    ),
+    episode_timeout_s: int = typer.Option(
+        900, help="Total wall-clock timeout for the episode (seconds)."
+    ),
+    score_success_mode: str = typer.Option(
+        "email",
+        help="Score success criteria if --artifacts is set: email|full.",
+        show_default=True,
+    ),
+    require_success: bool = typer.Option(
+        False,
+        "--require-success/--no-require-success",
+        help="Exit non-zero when computed score.success is false.",
+    ),
+    print_transcript: bool = typer.Option(
+        True,
+        "--print-transcript/--no-print-transcript",
+        help="Print full transcript JSON to stdout.",
+    ),
 ) -> None:
     load_dotenv(override=True)
     eff_provider = auto_provider_for_model(model, provider)
@@ -817,26 +997,103 @@ def run(
         raise typer.BadParameter(
             "OPENROUTER_API_KEY not set (provide --openrouter-api-key or put it in .env)"
         )
-    transcript = asyncio.run(
-        run_episode(
-            model=model,
-            sse_url="",  # unused in stdio mode
-            max_steps=max_steps,
-            provider=provider,
-            engine=engine,
-            openai_base_url=openai_base_url,
-            openai_api_key=openai_api_key,
-            anthropic_api_key=anthropic_api_key,
-            google_api_key=google_api_key,
-            openrouter_api_key=openrouter_api_key,
-            task=task,
-            dataset_path=str(dataset) if dataset else None,
-            artifacts_dir=str(artifacts) if artifacts else None,
-            tool_top_k=tool_top_k,
-            interactive=interactive,
+
+    mode = score_success_mode.lower().strip()
+    if mode not in {"email", "full"}:
+        raise typer.BadParameter("score_success_mode must be 'email' or 'full'")
+
+    artifacts_dir: Path | None = None
+    transcript_stream_path: Path | None = None
+    transcript_json_path: Path | None = None
+    score_json_path: Path | None = None
+    if artifacts:
+        artifacts_dir = artifacts
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        transcript_stream_path = artifacts_dir / "llm_transcript.jsonl"
+        transcript_json_path = artifacts_dir / "transcript.json"
+        score_json_path = artifacts_dir / "score.json"
+
+    transcript: list[dict] = []
+    run_error: str | None = None
+    started_at = time.monotonic()
+    try:
+        transcript = asyncio.run(
+            run_episode(
+                model=model,
+                sse_url="",  # unused in stdio mode
+                max_steps=max_steps,
+                provider=provider,
+                engine=engine,
+                openai_base_url=openai_base_url,
+                openai_api_key=openai_api_key,
+                anthropic_api_key=anthropic_api_key,
+                google_api_key=google_api_key,
+                openrouter_api_key=openrouter_api_key,
+                task=task,
+                dataset_path=str(dataset) if dataset else None,
+                artifacts_dir=str(artifacts_dir) if artifacts_dir else None,
+                tool_top_k=tool_top_k,
+                interactive=interactive,
+                step_timeout_s=step_timeout_s,
+                episode_timeout_s=episode_timeout_s,
+                transcript_stream_path=(
+                    str(transcript_stream_path) if transcript_stream_path else None
+                ),
+            )
         )
-    )
-    typer.echo(json.dumps(transcript, indent=2))
+    except EpisodeFailure as exc:
+        transcript = exc.transcript
+        run_error = str(exc)
+
+    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+    if transcript_json_path:
+        transcript_json_path.write_text(
+            json.dumps(transcript, indent=2), encoding="utf-8"
+        )
+
+    score_obj: dict[str, Any] | None = None
+    if artifacts_dir is not None:
+        trace_path = artifacts_dir / "trace.jsonl"
+        if trace_path.exists():
+            try:
+                score_obj = compute_score(artifacts_dir, success_mode=mode)
+                if score_json_path:
+                    score_json_path.write_text(
+                        json.dumps(score_obj, indent=2), encoding="utf-8"
+                    )
+            except Exception as exc:
+                if require_success:
+                    run_error = run_error or f"Score computation failed: {str(exc)}"
+
+    if run_error:
+        typer.echo(run_error, err=True)
+        if print_transcript:
+            typer.echo(json.dumps(transcript, indent=2))
+        raise typer.Exit(code=1)
+
+    if require_success:
+        if score_obj is None:
+            typer.echo(
+                "--require-success was set but no score could be computed from artifacts.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if not bool(score_obj.get("success")):
+            typer.echo(
+                "Run completed but score.success=false under --require-success.",
+                err=True,
+            )
+            typer.echo(json.dumps(score_obj, indent=2), err=True)
+            raise typer.Exit(code=1)
+
+    summary = {
+        "steps": sum(1 for item in transcript if "action" in item),
+        "elapsed_ms": elapsed_ms,
+        "success": score_obj.get("success") if score_obj else None,
+    }
+    typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
+    if print_transcript:
+        typer.echo(json.dumps(transcript, indent=2))
 
 
 if __name__ == "__main__":

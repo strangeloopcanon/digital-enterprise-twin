@@ -20,9 +20,10 @@ class ErpSim:
     Amount math is integer cents to avoid FP drift.
     """
 
-    def __init__(
-        self, bus, scenario: Optional[Scenario] = None
-    ):  # noqa: ANN001 (bus type local)
+    _DEFAULT_LIMIT = 25
+    _MAX_LIMIT = 200
+
+    def __init__(self, bus: Any, scenario: Optional[Scenario] = None):
         self.bus = bus
         self._po_seq = 1
         self._inv_seq = 1
@@ -82,6 +83,10 @@ class ErpSim:
             "lines": po_lines,
             "amount": self._cents_to_money(total_cents),
             "created_ms": self.bus.clock_ms,
+            "updated_ms": self.bus.clock_ms,
+            "received_qty_by_item": {
+                str(line_item["item_id"]): 0 for line_item in po_lines
+            },
         }
         self.pos[po_id] = po
         return {"id": po_id, "amount": po["amount"], "currency": po["currency"]}
@@ -92,14 +97,68 @@ class ErpSim:
             raise MCPError("unknown_po", f"Unknown PO: {id}")
         return po
 
-    def list_pos(self) -> List[Dict[str, Any]]:
-        return list(self.pos.values())
+    def list_pos(
+        self,
+        vendor: str | None = None,
+        status: str | None = None,
+        currency: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort_by: str = "created_ms",
+        sort_dir: str = "desc",
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        rows = list(self.pos.values())
+        if vendor:
+            needle = vendor.strip().lower()
+            rows = [row for row in rows if needle in str(row.get("vendor", "")).lower()]
+        if status:
+            wanted_status = status.strip().upper()
+            rows = [
+                row
+                for row in rows
+                if str(row.get("status", "")).upper() == wanted_status
+            ]
+        if currency:
+            wanted_currency = currency.strip().upper()
+            rows = [
+                row
+                for row in rows
+                if str(row.get("currency", "")).strip().upper() == wanted_currency
+            ]
+        sort_field = (
+            sort_by
+            if sort_by in {"created_ms", "updated_ms", "amount", "vendor"}
+            else "created_ms"
+        )
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+
+        is_legacy = (
+            vendor is None
+            and status is None
+            and currency is None
+            and limit is None
+            and cursor is None
+            and sort_by == "created_ms"
+            and sort_dir == "desc"
+        )
+        if is_legacy:
+            return rows
+        return _page_rows(rows, key="purchase_orders", limit=limit, cursor=cursor)
 
     def receive_goods(self, po_id: str, lines: List[Dict[str, Any]]) -> Dict[str, Any]:
-        if po_id not in self.pos:
+        po = self.pos.get(po_id)
+        if not po:
             raise MCPError("unknown_po", f"Unknown PO: {po_id}")
         rcpt_id = f"RCPT-{self._rcpt_seq}"
         self._rcpt_seq += 1
+        item_to_ordered = {
+            str(line_item["item_id"]): int(line_item.get("qty", 0))
+            for line_item in po.get("lines", [])
+        }
+        received_qty = dict(po.get("received_qty_by_item", {}))
         rcpt_lines = [
             {
                 "item_id": str(ln.get("item_id")),
@@ -107,6 +166,21 @@ class ErpSim:
             }
             for ln in lines
         ]
+        for line_item in rcpt_lines:
+            item_id = str(line_item["item_id"])
+            qty = int(line_item["qty"])
+            if item_id not in item_to_ordered:
+                raise MCPError(
+                    "unknown_item", f"Item {item_id} is not present on PO {po_id}"
+                )
+            new_total = int(received_qty.get(item_id, 0)) + qty
+            if new_total > int(item_to_ordered[item_id]):
+                raise MCPError(
+                    "qty_exceeds_po",
+                    f"Received qty for {item_id} exceeds ordered qty on {po_id}",
+                )
+            received_qty[item_id] = new_total
+
         rcpt = {
             "id": rcpt_id,
             "po_id": po_id,
@@ -114,13 +188,26 @@ class ErpSim:
             "time_ms": self.bus.clock_ms,
         }
         self.receipts[rcpt_id] = rcpt
-        return {"id": rcpt_id}
+        all_received = all(
+            int(received_qty.get(item_id, 0)) >= int(qty)
+            for item_id, qty in item_to_ordered.items()
+        )
+        po["received_qty_by_item"] = received_qty
+        po["status"] = "RECEIVED" if all_received else "PARTIALLY_RECEIVED"
+        po["updated_ms"] = self.bus.clock_ms
+        return {"id": rcpt_id, "po_status": po["status"]}
 
     def submit_invoice(
         self, vendor: str, po_id: str, lines: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        if po_id not in self.pos:
+        po = self.pos.get(po_id)
+        if not po:
             raise MCPError("unknown_po", f"Unknown PO: {po_id}")
+        if str(po.get("vendor", "")).strip().lower() != vendor.strip().lower():
+            raise MCPError(
+                "vendor_mismatch",
+                f"Invoice vendor {vendor} does not match PO vendor {po.get('vendor')}",
+            )
         # Occasionally simulate validation error
         if self.error_rate > 0 and self.bus.rng.next_float() < self.error_rate:
             raise MCPError(
@@ -153,8 +240,11 @@ class ErpSim:
             "amount": self._cents_to_money(total_cents),
             "paid_amount": 0.0,
             "time_ms": self.bus.clock_ms,
+            "updated_ms": self.bus.clock_ms,
         }
         self.invoices[inv_id] = inv
+        po["status"] = "INVOICED"
+        po["updated_ms"] = self.bus.clock_ms
         return {"id": inv_id, "amount": inv["amount"]}
 
     def get_invoice(self, id: str) -> Dict[str, Any]:
@@ -163,8 +253,50 @@ class ErpSim:
             raise MCPError("unknown_invoice", f"Unknown invoice: {id}")
         return inv
 
-    def list_invoices(self) -> List[Dict[str, Any]]:
-        return list(self.invoices.values())
+    def list_invoices(
+        self,
+        status: str | None = None,
+        vendor: str | None = None,
+        po_id: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        rows = list(self.invoices.values())
+        if status:
+            wanted_status = status.strip().upper()
+            rows = [
+                row
+                for row in rows
+                if str(row.get("status", "")).upper() == wanted_status
+            ]
+        if vendor:
+            needle = vendor.strip().lower()
+            rows = [row for row in rows if needle in str(row.get("vendor", "")).lower()]
+        if po_id:
+            rows = [row for row in rows if str(row.get("po_id")) == po_id]
+        sort_field = (
+            sort_by
+            if sort_by in {"updated_ms", "time_ms", "amount", "vendor"}
+            else "updated_ms"
+        )
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        is_legacy = (
+            status is None
+            and vendor is None
+            and po_id is None
+            and limit is None
+            and cursor is None
+            and sort_by == "updated_ms"
+            and sort_dir == "desc"
+        )
+        if is_legacy:
+            return rows
+        return _page_rows(rows, key="invoices", limit=limit, cursor=cursor)
 
     def match_three_way(
         self, po_id: str, invoice_id: str, receipt_id: Optional[str] = None
@@ -203,6 +335,13 @@ class ErpSim:
                     {"item_id": it, "po": pq, "invoice": iq, "received": rq}
                 )
         status = "MATCH" if (amount_ok and not qty_mismatches) else "MISMATCH"
+        po["last_three_way_match"] = {
+            "invoice_id": invoice_id,
+            "receipt_id": receipt_id,
+            "status": status,
+            "time_ms": self.bus.clock_ms,
+        }
+        po["updated_ms"] = self.bus.clock_ms
         return {
             "status": status,
             "amount_ok": amount_ok,
@@ -224,6 +363,67 @@ class ErpSim:
         ) + self._money_to_cents(amount)
         total_c = self._money_to_cents(inv.get("amount", 0.0))
         inv["paid_amount"] = self._cents_to_money(min(paid_c, total_c))
+        inv["updated_ms"] = self.bus.clock_ms
         if paid_c >= total_c:
             inv["status"] = "PAID"
+        elif paid_c > 0:
+            inv["status"] = "PARTIALLY_PAID"
         return {"status": inv["status"], "paid_amount": inv["paid_amount"]}
+
+
+def _normalize_limit(
+    limit: int | None, *, default: int = 25, max_limit: int = 200
+) -> int:
+    if limit is None:
+        return default
+    if limit < 1:
+        return 1
+    return min(max_limit, int(limit))
+
+
+def _decode_cursor(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    if not cursor.startswith("ofs:"):
+        raise MCPError("invalid_cursor", "Cursor must use 'ofs:<offset>' format")
+    try:
+        value = int(cursor.split(":", 1)[1])
+    except ValueError as exc:
+        raise MCPError("invalid_cursor", f"Invalid cursor: {cursor}") from exc
+    return max(0, value)
+
+
+def _encode_cursor(offset: int) -> str:
+    return f"ofs:{max(0, int(offset))}"
+
+
+def _page_rows(
+    rows: List[Dict[str, Any]],
+    *,
+    key: str,
+    limit: int | None,
+    cursor: str | None,
+) -> Dict[str, Any]:
+    page_limit = _normalize_limit(
+        limit, default=ErpSim._DEFAULT_LIMIT, max_limit=ErpSim._MAX_LIMIT
+    )
+    start = _decode_cursor(cursor)
+    sliced = rows[start : start + page_limit]
+    next_cursor = (
+        _encode_cursor(start + page_limit) if (start + page_limit) < len(rows) else None
+    )
+    return {
+        key: sliced,
+        "count": len(sliced),
+        "total": len(rows),
+        "next_cursor": next_cursor,
+        "has_more": next_cursor is not None,
+    }
+
+
+def _sortable(value: object) -> object:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)

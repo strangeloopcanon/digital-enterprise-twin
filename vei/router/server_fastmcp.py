@@ -240,8 +240,29 @@ def create_mcp_server(
         return R().call_and_step("browser.submit", {"form_id": form_id})
 
     @srv.tool(name="docs.list", description="List knowledge base documents")
-    def docs_list() -> list[dict[str, Any]]:
-        return R().call_and_step("docs.list", {})  # type: ignore[return-value]
+    def docs_list(
+        query: str = None,
+        tag: str = None,
+        status: str = None,
+        owner: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "docs.list",
+            {
+                "query": query,
+                "tag": tag,
+                "status": status,
+                "owner": owner,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="docs.read", description="Read a document")
     def docs_read(doc_id: str) -> dict[str, Any]:
@@ -251,30 +272,77 @@ def create_mcp_server(
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="docs.search", description="Search documents")
-    def docs_search(query: str) -> list[dict[str, Any]]:
-        return R().call_and_step("docs.search", {"query": query})  # type: ignore[return-value]
+    def docs_search(
+        query: str, limit: int = 20, cursor: str = None
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "docs.search",
+            {"query": query, "limit": limit, "cursor": cursor},
+        )
 
     @srv.tool(name="docs.create", description="Create a document")
-    def docs_create(title: str, body: str, tags: list = None) -> dict[str, Any]:
+    def docs_create(
+        title: str,
+        body: str,
+        tags: list = None,
+        owner: str = None,
+        status: str = "DRAFT",
+    ) -> dict[str, Any]:
         return R().call_and_step(
-            "docs.create", {"title": title, "body": body, "tags": tags}
+            "docs.create",
+            {
+                "title": title,
+                "body": body,
+                "tags": tags,
+                "owner": owner,
+                "status": status,
+            },
         )
 
     @srv.tool(name="docs.update", description="Update a document")
     def docs_update(
-        doc_id: str, title: str = None, body: str = None, tags: list = None
+        doc_id: str,
+        title: str = None,
+        body: str = None,
+        tags: list = None,
+        status: str = None,
     ) -> dict[str, Any]:
         try:
             return R().call_and_step(
                 "docs.update",
-                {"doc_id": doc_id, "title": title, "body": body, "tags": tags},
+                {
+                    "doc_id": doc_id,
+                    "title": title,
+                    "body": body,
+                    "tags": tags,
+                    "status": status,
+                },
             )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
     @srv.tool(name="calendar.list_events", description="List calendar events")
-    def calendar_list_events() -> list[dict[str, Any]]:
-        return R().call_and_step("calendar.list_events", {})  # type: ignore[return-value]
+    def calendar_list_events(
+        attendee: str = None,
+        status: str = None,
+        starts_after_ms: int = None,
+        ends_before_ms: int = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_dir: str = "asc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "calendar.list_events",
+            {
+                "attendee": attendee,
+                "status": status,
+                "starts_after_ms": starts_after_ms,
+                "ends_before_ms": ends_before_ms,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="calendar.create_event", description="Create a calendar event")
     def calendar_create_event(
@@ -284,6 +352,8 @@ def create_mcp_server(
         attendees: list = None,
         location: str = None,
         description: str = None,
+        organizer: str = None,
+        status: str = "CONFIRMED",
     ) -> dict[str, Any]:
         return R().call_and_step(
             "calendar.create_event",
@@ -294,6 +364,8 @@ def create_mcp_server(
                 "attendees": attendees,
                 "location": location,
                 "description": description,
+                "organizer": organizer,
+                "status": status,
             },
         )
 
@@ -315,9 +387,68 @@ def create_mcp_server(
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
 
+    @srv.tool(name="calendar.update_event", description="Update a calendar event")
+    def calendar_update_event(
+        event_id: str,
+        title: str = None,
+        start_ms: int = None,
+        end_ms: int = None,
+        attendees: list = None,
+        location: str = None,
+        description: str = None,
+        status: str = None,
+    ) -> dict[str, Any]:
+        try:
+            return R().call_and_step(
+                "calendar.update_event",
+                {
+                    "event_id": event_id,
+                    "title": title,
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "attendees": attendees,
+                    "location": location,
+                    "description": description,
+                    "status": status,
+                },
+            )
+        except MCPError as e:
+            return {"error": {"code": e.code, "message": e.message}}
+
+    @srv.tool(name="calendar.cancel_event", description="Cancel a calendar event")
+    def calendar_cancel_event(event_id: str, reason: str = None) -> dict[str, Any]:
+        try:
+            return R().call_and_step(
+                "calendar.cancel_event",
+                {"event_id": event_id, "reason": reason},
+            )
+        except MCPError as e:
+            return {"error": {"code": e.code, "message": e.message}}
+
     @srv.tool(name="tickets.list", description="List tickets")
-    def tickets_list() -> list[dict[str, Any]]:
-        return R().call_and_step("tickets.list", {})  # type: ignore[return-value]
+    def tickets_list(
+        status: str = None,
+        assignee: str = None,
+        priority: str = None,
+        query: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "tickets.list",
+            {
+                "status": status,
+                "assignee": assignee,
+                "priority": priority,
+                "query": query,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="tickets.get", description="Get ticket detail")
     def tickets_get(ticket_id: str) -> dict[str, Any]:
@@ -328,16 +459,33 @@ def create_mcp_server(
 
     @srv.tool(name="tickets.create", description="Create a ticket")
     def tickets_create(
-        title: str, description: str = None, assignee: str = None
+        title: str,
+        description: str = None,
+        assignee: str = None,
+        priority: str = "P3",
+        severity: str = "medium",
+        labels: list = None,
     ) -> dict[str, Any]:
         return R().call_and_step(
             "tickets.create",
-            {"title": title, "description": description, "assignee": assignee},
+            {
+                "title": title,
+                "description": description,
+                "assignee": assignee,
+                "priority": priority,
+                "severity": severity,
+                "labels": labels,
+            },
         )
 
     @srv.tool(name="tickets.update", description="Update a ticket")
     def tickets_update(
-        ticket_id: str, description: str = None, assignee: str = None
+        ticket_id: str,
+        description: str = None,
+        assignee: str = None,
+        priority: str = None,
+        severity: str = None,
+        labels: list = None,
     ) -> dict[str, Any]:
         try:
             return R().call_and_step(
@@ -346,6 +494,9 @@ def create_mcp_server(
                     "ticket_id": ticket_id,
                     "description": description,
                     "assignee": assignee,
+                    "priority": priority,
+                    "severity": severity,
+                    "labels": labels,
                 },
             )
         except MCPError as e:
@@ -356,6 +507,18 @@ def create_mcp_server(
         try:
             return R().call_and_step(
                 "tickets.transition", {"ticket_id": ticket_id, "status": status}
+            )
+        except MCPError as e:
+            return {"error": {"code": e.code, "message": e.message}}
+
+    @srv.tool(name="tickets.add_comment", description="Add a comment to a ticket")
+    def tickets_add_comment(
+        ticket_id: str, body: str, author: str = "agent"
+    ) -> dict[str, Any]:
+        try:
+            return R().call_and_step(
+                "tickets.add_comment",
+                {"ticket_id": ticket_id, "body": body, "author": author},
             )
         except MCPError as e:
             return {"error": {"code": e.code, "message": e.message}}
@@ -382,8 +545,27 @@ def create_mcp_server(
         return _safe_call("erp.get_po", {"id": id})
 
     @srv.tool(name="erp.list_pos", description="List all POs")
-    def erp_list_pos() -> list[dict[str, Any]]:
-        return R().call_and_step("erp.list_pos", {})  # type: ignore[return-value]
+    def erp_list_pos(
+        vendor: str = None,
+        status: str = None,
+        currency: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "created_ms",
+        sort_dir: str = "desc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "erp.list_pos",
+            {
+                "vendor": vendor,
+                "status": status,
+                "currency": currency,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="erp.receive_goods", description="Receive goods against a PO")
     def erp_receive_goods(po_id: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
@@ -402,8 +584,27 @@ def create_mcp_server(
         return _safe_call("erp.get_invoice", {"id": id})
 
     @srv.tool(name="erp.list_invoices", description="List invoices")
-    def erp_list_invoices() -> list[dict[str, Any]]:
-        return R().call_and_step("erp.list_invoices", {})  # type: ignore[return-value]
+    def erp_list_invoices(
+        status: str = None,
+        vendor: str = None,
+        po_id: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "erp.list_invoices",
+            {
+                "status": status,
+                "vendor": vendor,
+                "po_id": po_id,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(
         name="erp.match_three_way",
@@ -446,8 +647,27 @@ def create_mcp_server(
         return _safe_call("crm.get_contact", {"id": id})
 
     @srv.tool(name="crm.list_contacts", description="List contacts")
-    def crm_list_contacts() -> list[dict[str, Any]]:
-        return R().call_and_step("crm.list_contacts", {})  # type: ignore[return-value]
+    def crm_list_contacts(
+        query: str = None,
+        company_id: str = None,
+        do_not_contact: bool = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "created_ms",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "crm.list_contacts",
+            {
+                "query": query,
+                "company_id": company_id,
+                "do_not_contact": do_not_contact,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="crm.create_company", description="Create a company")
     def crm_create_company(name: str, domain: str = None) -> dict[str, Any]:
@@ -458,8 +678,25 @@ def create_mcp_server(
         return _safe_call("crm.get_company", {"id": id})
 
     @srv.tool(name="crm.list_companies", description="List companies")
-    def crm_list_companies() -> list[dict[str, Any]]:
-        return R().call_and_step("crm.list_companies", {})  # type: ignore[return-value]
+    def crm_list_companies(
+        query: str = None,
+        domain: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "name",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "crm.list_companies",
+            {
+                "query": query,
+                "domain": domain,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(
         name="crm.associate_contact_company",
@@ -480,6 +717,7 @@ def create_mcp_server(
         stage: str = "New",
         contact_id: str = None,
         company_id: str = None,
+        close_date: str = None,
     ) -> dict[str, Any]:
         return _safe_call(
             "crm.create_deal",
@@ -489,6 +727,7 @@ def create_mcp_server(
                 "stage": stage,
                 "contact_id": contact_id,
                 "company_id": company_id,
+                "close_date": close_date,
             },
         )
 
@@ -497,8 +736,29 @@ def create_mcp_server(
         return _safe_call("crm.get_deal", {"id": id})
 
     @srv.tool(name="crm.list_deals", description="List deals")
-    def crm_list_deals() -> list[dict[str, Any]]:
-        return R().call_and_step("crm.list_deals", {})  # type: ignore[return-value]
+    def crm_list_deals(
+        stage: str = None,
+        company_id: str = None,
+        min_amount: float = None,
+        max_amount: float = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "crm.list_deals",
+            {
+                "stage": stage,
+                "company_id": company_id,
+                "min_amount": min_amount,
+                "max_amount": max_amount,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
 
     @srv.tool(name="crm.update_deal_stage", description="Update deal stage")
     def crm_update_deal_stage(id: str, stage: str) -> dict[str, Any]:
@@ -511,6 +771,268 @@ def create_mcp_server(
         return _safe_call(
             "crm.log_activity",
             {"kind": kind, "contact_id": contact_id, "deal_id": deal_id, "note": note},
+        )
+
+    @srv.tool(name="db.list_tables", description="List enterprise database tables")
+    def db_list_tables(
+        query: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "table",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        return R().call_and_step(  # type: ignore[return-value]
+            "db.list_tables",
+            {
+                "query": query,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(
+        name="db.describe_table",
+        description="Describe columns and row count for a table",
+    )
+    def db_describe_table(table: str) -> dict[str, Any]:
+        return _safe_call("db.describe_table", {"table": table})
+
+    @srv.tool(name="db.query", description="Query rows from an enterprise table")
+    def db_query(
+        table: str,
+        filters: dict[str, Any] = None,
+        columns: list[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+        cursor: str = None,
+        sort_by: str = None,
+        descending: bool = False,
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "db.query",
+            {
+                "table": table,
+                "filters": filters,
+                "columns": columns,
+                "limit": limit,
+                "offset": offset,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "descending": descending,
+            },
+        )
+
+    @srv.tool(name="db.upsert", description="Insert or update a table row")
+    def db_upsert(table: str, row: dict[str, Any], key: str = "id") -> dict[str, Any]:
+        return _safe_call("db.upsert", {"table": table, "row": row, "key": key})
+
+    # --- ServiceDesk twin tools ---
+    @srv.tool(name="servicedesk.list_incidents", description="List service incidents")
+    def servicedesk_list_incidents(
+        status: str = None,
+        priority: str = None,
+        query: str = None,
+        assignee: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "id",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "servicedesk.list_incidents",
+            {
+                "status": status,
+                "priority": priority,
+                "query": query,
+                "assignee": assignee,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(name="servicedesk.get_incident", description="Get incident details")
+    def servicedesk_get_incident(incident_id: str) -> dict[str, Any]:
+        return _safe_call("servicedesk.get_incident", {"incident_id": incident_id})
+
+    @srv.tool(name="servicedesk.update_incident", description="Update incident fields")
+    def servicedesk_update_incident(
+        incident_id: str,
+        status: str = None,
+        assignee: str = None,
+        comment: str = None,
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "servicedesk.update_incident",
+            {
+                "incident_id": incident_id,
+                "status": status,
+                "assignee": assignee,
+                "comment": comment,
+            },
+        )
+
+    @srv.tool(name="servicedesk.list_requests", description="List service requests")
+    def servicedesk_list_requests(
+        status: str = None,
+        requester: str = None,
+        query: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "id",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "servicedesk.list_requests",
+            {
+                "status": status,
+                "requester": requester,
+                "query": query,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(name="servicedesk.get_request", description="Get request details")
+    def servicedesk_get_request(request_id: str) -> dict[str, Any]:
+        return _safe_call("servicedesk.get_request", {"request_id": request_id})
+
+    @srv.tool(name="servicedesk.update_request", description="Update request fields")
+    def servicedesk_update_request(
+        request_id: str,
+        status: str = None,
+        approval_stage: str = None,
+        approval_status: str = None,
+        comment: str = None,
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "servicedesk.update_request",
+            {
+                "request_id": request_id,
+                "status": status,
+                "approval_stage": approval_stage,
+                "approval_status": approval_status,
+                "comment": comment,
+            },
+        )
+
+    # --- Okta twin tools ---
+    @srv.tool(name="okta.list_users", description="List directory users")
+    def okta_list_users(
+        status: str = None,
+        query: str = None,
+        include_groups: bool = False,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "email",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "okta.list_users",
+            {
+                "status": status,
+                "query": query,
+                "include_groups": include_groups,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(name="okta.get_user", description="Get a directory user")
+    def okta_get_user(user_id: str) -> dict[str, Any]:
+        return _safe_call("okta.get_user", {"user_id": user_id})
+
+    @srv.tool(name="okta.activate_user", description="Activate user account")
+    def okta_activate_user(user_id: str) -> dict[str, Any]:
+        return _safe_call("okta.activate_user", {"user_id": user_id})
+
+    @srv.tool(name="okta.deactivate_user", description="Deactivate user account")
+    def okta_deactivate_user(user_id: str, reason: str = None) -> dict[str, Any]:
+        return _safe_call(
+            "okta.deactivate_user", {"user_id": user_id, "reason": reason}
+        )
+
+    @srv.tool(name="okta.suspend_user", description="Suspend user account")
+    def okta_suspend_user(user_id: str, reason: str = None) -> dict[str, Any]:
+        return _safe_call("okta.suspend_user", {"user_id": user_id, "reason": reason})
+
+    @srv.tool(name="okta.unsuspend_user", description="Unsuspend user account")
+    def okta_unsuspend_user(user_id: str) -> dict[str, Any]:
+        return _safe_call("okta.unsuspend_user", {"user_id": user_id})
+
+    @srv.tool(name="okta.reset_password", description="Generate reset token")
+    def okta_reset_password(user_id: str) -> dict[str, Any]:
+        return _safe_call("okta.reset_password", {"user_id": user_id})
+
+    @srv.tool(name="okta.list_groups", description="List identity groups")
+    def okta_list_groups(
+        query: str = None,
+        include_members: bool = False,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "name",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "okta.list_groups",
+            {
+                "query": query,
+                "include_members": include_members,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(name="okta.assign_group", description="Assign user to group")
+    def okta_assign_group(user_id: str, group_id: str) -> dict[str, Any]:
+        return _safe_call(
+            "okta.assign_group", {"user_id": user_id, "group_id": group_id}
+        )
+
+    @srv.tool(name="okta.unassign_group", description="Unassign user from group")
+    def okta_unassign_group(user_id: str, group_id: str) -> dict[str, Any]:
+        return _safe_call(
+            "okta.unassign_group", {"user_id": user_id, "group_id": group_id}
+        )
+
+    @srv.tool(name="okta.list_applications", description="List SSO applications")
+    def okta_list_applications(
+        query: str = None,
+        limit: int = None,
+        cursor: str = None,
+        sort_by: str = "label",
+        sort_dir: str = "asc",
+    ) -> dict[str, Any]:
+        return _safe_call(
+            "okta.list_applications",
+            {
+                "query": query,
+                "limit": limit,
+                "cursor": cursor,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+        )
+
+    @srv.tool(name="okta.assign_application", description="Assign app to user")
+    def okta_assign_application(user_id: str, app_id: str) -> dict[str, Any]:
+        return _safe_call(
+            "okta.assign_application", {"user_id": user_id, "app_id": app_id}
+        )
+
+    @srv.tool(name="okta.unassign_application", description="Unassign app from user")
+    def okta_unassign_application(user_id: str, app_id: str) -> dict[str, Any]:
+        return _safe_call(
+            "okta.unassign_application", {"user_id": user_id, "app_id": app_id}
         )
 
     # --- Configurable alias packs (ERP) ---
@@ -548,7 +1070,7 @@ def create_mcp_server(
             _register_alias(alias, base)
 
     # CRM alias packs
-    crm_packs_env = os.environ.get("VEI_CRM_ALIAS_PACKS", "hubspot").strip()
+    crm_packs_env = os.environ.get("VEI_CRM_ALIAS_PACKS", "hubspot,salesforce").strip()
     crm_packs = [p.strip() for p in crm_packs_env.split(",") if p.strip()]
     for pack in crm_packs:
         for alias, base in CRM_ALIAS_PACKS.get(pack, []):
@@ -643,160 +1165,6 @@ def create_mcp_server(
         description="Usage help: how to interact via MCP and example actions",
     )
     def vei_help() -> dict[str, Any]:
-        return {
-            "instructions": (
-                "Use MCP tools to interact with the VEI environment. Typical loop: "
-                "(1) call vei.observe {} to obtain an observation with an action_menu and pending_events; "
-                "(2) choose exactly one tool to call (often from action_menu) then call vei.observe {}; "
-                "or simply call vei.act_and_observe {tool,args} to do both in one step; (3) repeat."
-            ),
-            "tools": [
-                {"tool": "vei.observe", "args": {"focus": "browser|slack|mail?"}},
-                {
-                    "tool": "vei.act_and_observe",
-                    "args": {"tool": "str", "args": "object"},
-                },
-                {"tool": "vei.tick", "args": {"dt_ms": "int?"}},
-                {"tool": "vei.pending", "args": {}},
-                {
-                    "tool": "vei.state",
-                    "args": {"tool_tail": "int?", "include_state": "bool?"},
-                },
-                {
-                    "tool": "vei.tools.search",
-                    "args": {"query": "keywords", "top_k": "int?"},
-                },
-                {"tool": "vei.reset", "args": {"seed": "int?"}},
-                {"tool": "browser.read", "args": {}},
-                {"tool": "browser.find", "args": {"query": "str", "top_k": "int?"}},
-                {"tool": "browser.click", "args": {"node_id": "str"}},
-                {"tool": "browser.open", "args": {"url": "str"}},
-                {"tool": "browser.type", "args": {"node_id": "str", "text": "str"}},
-                {"tool": "browser.submit", "args": {"form_id": "str"}},
-                {"tool": "browser.back", "args": {}},
-                {"tool": "slack.list_channels", "args": {}},
-                {"tool": "slack.open_channel", "args": {"channel": "str"}},
-                {
-                    "tool": "slack.send_message",
-                    "args": {"channel": "str", "text": "str", "thread_ts": "str?"},
-                },
-                {
-                    "tool": "slack.react",
-                    "args": {"channel": "str", "ts": "str", "emoji": "str"},
-                },
-                {
-                    "tool": "slack.fetch_thread",
-                    "args": {"channel": "str", "thread_ts": "str"},
-                },
-                {"tool": "mail.list", "args": {"folder": "str?"}},
-                {"tool": "mail.open", "args": {"id": "str"}},
-                {
-                    "tool": "mail.compose",
-                    "args": {"to": "str", "subj": "str", "body_text": "str"},
-                },
-                {"tool": "mail.reply", "args": {"id": "str", "body_text": "str"}},
-                {
-                    "tool": "erp.create_po",
-                    "args": {
-                        "vendor": "str",
-                        "currency": "str",
-                        "lines": "[{item_id,desc,qty,unit_price}]",
-                    },
-                },
-                {"tool": "erp.list_pos", "args": {}},
-                {
-                    "tool": "erp.submit_invoice",
-                    "args": {
-                        "vendor": "str",
-                        "po_id": "str",
-                        "lines": "[{item_id,qty,unit_price}]",
-                    },
-                },
-                {
-                    "tool": "erp.match_three_way",
-                    "args": {"po_id": "str", "invoice_id": "str", "receipt_id": "str?"},
-                },
-                {
-                    "tool": "crm.create_contact",
-                    "args": {
-                        "email": "str",
-                        "first_name": "str?",
-                        "last_name": "str?",
-                        "do_not_contact": "bool?",
-                    },
-                },
-                {
-                    "tool": "crm.create_company",
-                    "args": {"name": "str", "domain": "str?"},
-                },
-                {
-                    "tool": "crm.associate_contact_company",
-                    "args": {"contact_id": "str", "company_id": "str"},
-                },
-                {
-                    "tool": "crm.create_deal",
-                    "args": {
-                        "name": "str",
-                        "amount": "number",
-                        "stage": "str?",
-                        "contact_id": "str?",
-                        "company_id": "str?",
-                    },
-                },
-                {
-                    "tool": "crm.update_deal_stage",
-                    "args": {"id": "str", "stage": "str"},
-                },
-                {
-                    "tool": "crm.log_activity",
-                    "args": {
-                        "kind": "str",
-                        "contact_id": "str?",
-                        "deal_id": "str?",
-                        "note": "str?",
-                    },
-                },
-                {"tool": "vei.call", "args": {"tool": "str", "args": "object"}},
-            ],
-            "examples": [
-                {"tool": "vei.observe", "args": {}},
-                {"tool": "browser.read", "args": {}},
-                {
-                    "tool": "slack.send_message",
-                    "args": {
-                        "channel": "#procurement",
-                        "text": "Summary: budget $3200, citations included.",
-                    },
-                },
-                {
-                    "tool": "mail.compose",
-                    "args": {
-                        "to": "sales@macrocompute.example",
-                        "subj": "Quote request",
-                        "body_text": "Please send latest price and ETA.",
-                    },
-                },
-                {"tool": "vei.state", "args": {"tool_tail": 5}},
-                {
-                    "tool": "vei.tools.search",
-                    "args": {"query": "slack approval budget", "top_k": 8},
-                },
-                {"tool": "vei.ping", "args": {}},
-                {"tool": "vei.reset", "args": {"seed": 42042}},
-                {
-                    "tool": "vei.act_and_observe",
-                    "args": {"tool": "browser.read", "args": {}},
-                },
-                {"tool": "vei.call", "args": {"tool": "erp.list_pos", "args": {}}},
-                {
-                    "tool": (
-                        packs[0] + ".list_purchase_orders"
-                        if packs
-                        else "xero.list_purchase_orders"
-                    ),
-                    "args": {},
-                },
-            ],
-        }
+        return R().help_payload()
 
     return srv

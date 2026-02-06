@@ -137,6 +137,7 @@ class Scenario:
     documents: Optional[Dict[str, Document]] = None
     calendar_events: Optional[List[CalendarEvent]] = None
     tickets: Optional[Dict[str, Ticket]] = None
+    database_tables: Optional[Dict[str, List[Dict[str, Any]]]] = None
     triggers: Optional[List[Dict[str, Any]]] = None
     metadata: Optional[Dict[str, Any]] = None
     identity_users: Optional[Dict[str, IdentityUserSeed]] = None

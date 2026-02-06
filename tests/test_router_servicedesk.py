@@ -37,3 +37,14 @@ def test_servicedesk_request_update():
         for approval in details.get("approvals", [])
     )
     assert details.get("comments")
+
+
+def test_servicedesk_listing_supports_pagination_and_query():
+    router = _router()
+    incidents = router.call_and_step(
+        "servicedesk.list_incidents",
+        {"query": "procurement", "limit": 1},
+    )
+    assert incidents["count"] == 1
+    assert incidents["total"] >= incidents["count"]
+    assert incidents["incidents"][0]["id"].startswith("INC-")

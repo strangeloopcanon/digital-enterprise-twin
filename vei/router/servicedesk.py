@@ -83,6 +83,9 @@ def _default_requests() -> Dict[str, Dict[str, Any]]:
 class ServiceDeskSim:
     """Deterministic ServiceDesk twin (akin to ServiceNow)."""
 
+    _DEFAULT_LIMIT = 25
+    _MAX_LIMIT = 200
+
     def __init__(self, scenario: Optional[Scenario] = None):
         incs = (scenario.service_incidents if scenario else None) or {}
         reqs = (scenario.service_requests if scenario else None) or {}
@@ -98,7 +101,15 @@ class ServiceDeskSim:
         )
 
     def list_incidents(
-        self, status: Optional[str] = None, priority: Optional[str] = None
+        self,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        query: Optional[str] = None,
+        assignee: Optional[str] = None,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        sort_by: str = "id",
+        sort_dir: str = "asc",
     ) -> Dict[str, Any]:
         rows = []
         for inc in self.incidents.values():
@@ -106,6 +117,15 @@ class ServiceDeskSim:
                 continue
             if priority and inc.get("priority") != priority:
                 continue
+            if assignee and inc.get("assignee") != assignee:
+                continue
+            if query:
+                needle = query.lower()
+                if (
+                    needle not in str(inc.get("title", "")).lower()
+                    and needle not in str(inc.get("description", "")).lower()
+                ):
+                    continue
             rows.append(
                 {
                     "id": inc["incident_id"],
@@ -115,7 +135,30 @@ class ServiceDeskSim:
                     "assignee": inc.get("assignee"),
                 }
             )
-        return {"incidents": rows, "count": len(rows)}
+        sort_field = (
+            sort_by if sort_by in {"id", "status", "priority", "assignee"} else "id"
+        )
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        start = _decode_cursor(cursor)
+        page_limit = _normalize_limit(
+            limit, default=self._DEFAULT_LIMIT, max_limit=self._MAX_LIMIT
+        )
+        sliced = rows[start : start + page_limit]
+        next_cursor = (
+            _encode_cursor(start + page_limit)
+            if (start + page_limit) < len(rows)
+            else None
+        )
+        return {
+            "incidents": sliced,
+            "count": len(sliced),
+            "total": len(rows),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
+        }
 
     def get_incident(self, incident_id: str) -> Dict[str, Any]:
         incident = self.incidents.get(incident_id)
@@ -153,11 +196,29 @@ class ServiceDeskSim:
             "assignee": incident.get("assignee"),
         }
 
-    def list_requests(self, status: Optional[str] = None) -> Dict[str, Any]:
+    def list_requests(
+        self,
+        status: Optional[str] = None,
+        requester: Optional[str] = None,
+        query: Optional[str] = None,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        sort_by: str = "id",
+        sort_dir: str = "asc",
+    ) -> Dict[str, Any]:
         rows = []
         for req in self.requests.values():
             if status and req.get("status") != status:
                 continue
+            if requester and req.get("requester") != requester:
+                continue
+            if query:
+                needle = query.lower()
+                if (
+                    needle not in str(req.get("title", "")).lower()
+                    and needle not in str(req.get("description", "")).lower()
+                ):
+                    continue
             rows.append(
                 {
                     "id": req["request_id"],
@@ -166,7 +227,28 @@ class ServiceDeskSim:
                     "requester": req.get("requester"),
                 }
             )
-        return {"requests": rows, "count": len(rows)}
+        sort_field = sort_by if sort_by in {"id", "status", "requester"} else "id"
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        start = _decode_cursor(cursor)
+        page_limit = _normalize_limit(
+            limit, default=self._DEFAULT_LIMIT, max_limit=self._MAX_LIMIT
+        )
+        sliced = rows[start : start + page_limit]
+        next_cursor = (
+            _encode_cursor(start + page_limit)
+            if (start + page_limit) < len(rows)
+            else None
+        )
+        return {
+            "requests": sliced,
+            "count": len(sliced),
+            "total": len(rows),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
+        }
 
     def get_request(self, request_id: str) -> Dict[str, Any]:
         request = self.requests.get(request_id)
@@ -210,6 +292,40 @@ class ServiceDeskSim:
                 {"author": "agent", "body": comment}
             )
         return {"request_id": request_id, "status": request["status"]}
+
+
+def _normalize_limit(limit: Optional[int], *, default: int, max_limit: int) -> int:
+    if limit is None:
+        return default
+    if limit < 1:
+        return 1
+    return min(max_limit, int(limit))
+
+
+def _decode_cursor(cursor: Optional[str]) -> int:
+    if not cursor:
+        return 0
+    if not cursor.startswith("ofs:"):
+        raise MCPError("servicedesk.invalid_cursor", f"Invalid cursor: {cursor}")
+    try:
+        value = int(cursor.split(":", 1)[1])
+    except ValueError as exc:
+        raise MCPError(
+            "servicedesk.invalid_cursor", f"Invalid cursor: {cursor}"
+        ) from exc
+    return max(0, value)
+
+
+def _encode_cursor(offset: int) -> str:
+    return f"ofs:{max(0, int(offset))}"
+
+
+def _sortable(value: object) -> object:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
 
 
 class ServiceDeskToolProvider(PrefixToolProvider):

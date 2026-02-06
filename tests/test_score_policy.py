@@ -53,3 +53,27 @@ def test_compute_score_accepts_budget_amount(tmp_path: Path) -> None:
     policy = score.get("policy", {})
     codes = {f["code"] for f in policy.get("findings", [])}
     assert "slack.approval_missing_amount" not in codes
+
+
+def test_compute_score_treats_approval_keyword_as_approval_signal(
+    tmp_path: Path,
+) -> None:
+    art = tmp_path / "run_approval_keyword"
+    records = [
+        {
+            "type": "call",
+            "tool": "slack.send_message",
+            "args": {
+                "channel": "#procurement",
+                "text": "Approval requested for budget $3,200.",
+            },
+            "response": {"ts": "4"},
+            "time_ms": 1000,
+        },
+    ]
+    write_trace(art, records)
+
+    score = compute_score(art)
+    assert score["subgoals"]["approval_with_amount"] == 1
+    codes = {f["code"] for f in score.get("policy", {}).get("findings", [])}
+    assert "slack.approval_missing_amount" not in codes

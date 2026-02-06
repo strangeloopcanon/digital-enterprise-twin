@@ -20,6 +20,20 @@ class CrmSim:
     returns an error when error_rate triggers or policy is violated.
     """
 
+    _DEFAULT_LIMIT = 25
+    _MAX_LIMIT = 200
+    _STAGE_BY_KEY = {
+        "new": "New",
+        "prospecting": "Prospecting",
+        "qualification": "Qualification",
+        "proposal": "Proposal",
+        "negotiation": "Negotiation",
+        "closed won": "Closed Won",
+        "closed lost": "Closed Lost",
+        "closed_won": "Closed Won",
+        "closed_lost": "Closed Lost",
+    }
+
     def __init__(self, bus, scenario: Optional[Scenario] = None):  # noqa: ANN001
         import os
 
@@ -31,6 +45,7 @@ class CrmSim:
         self._c_seq = 1
         self._co_seq = 1
         self._d_seq = 1
+        self._a_seq = 1
         try:
             self.error_rate = float(os.environ.get("VEI_CRM_ERROR_RATE", "0"))
         except Exception:
@@ -44,6 +59,13 @@ class CrmSim:
         last_name: str | None = None,
         do_not_contact: bool = False,
     ) -> Dict[str, Any]:
+        if any(
+            str(contact.get("email", "")).lower() == email.lower()
+            for contact in self.contacts.values()
+        ):
+            raise MCPError(
+                "conflict.contact_exists", f"Contact already exists: {email}"
+            )
         cid = f"C-{self._c_seq}"
         self._c_seq += 1
         self.contacts[cid] = {
@@ -63,11 +85,66 @@ class CrmSim:
             raise MCPError("unknown_contact", f"Unknown contact: {id}")
         return c
 
-    def list_contacts(self) -> List[Dict[str, Any]]:
-        return list(self.contacts.values())
+    def list_contacts(
+        self,
+        query: str | None = None,
+        company_id: str | None = None,
+        do_not_contact: bool | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort_by: str = "created_ms",
+        sort_dir: str = "asc",
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        rows = list(self.contacts.values())
+        needle = (query or "").strip().lower()
+        if needle:
+            rows = [
+                row
+                for row in rows
+                if needle in str(row.get("email", "")).lower()
+                or needle in str(row.get("first_name", "")).lower()
+                or needle in str(row.get("last_name", "")).lower()
+            ]
+        if company_id:
+            rows = [row for row in rows if str(row.get("company_id")) == company_id]
+        if do_not_contact is not None:
+            rows = [
+                row
+                for row in rows
+                if bool(row.get("do_not_contact")) == bool(do_not_contact)
+            ]
+
+        sort_field = (
+            sort_by if sort_by in {"created_ms", "email", "last_name"} else "created_ms"
+        )
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+
+        is_legacy = (
+            query is None
+            and company_id is None
+            and do_not_contact is None
+            and limit is None
+            and cursor is None
+            and sort_by == "created_ms"
+            and sort_dir == "asc"
+        )
+        if is_legacy:
+            return rows
+        return _page_rows(rows, limit=limit, cursor=cursor, key="contacts")
 
     # Companies
     def create_company(self, name: str, domain: str | None = None) -> Dict[str, Any]:
+        domain_value = (domain or "").strip().lower()
+        if domain_value and any(
+            str(company.get("domain", "")).strip().lower() == domain_value
+            for company in self.companies.values()
+        ):
+            raise MCPError(
+                "conflict.company_exists", f"Company already exists: {domain}"
+            )
         coid = f"CO-{self._co_seq}"
         self._co_seq += 1
         self.companies[coid] = {
@@ -84,8 +161,48 @@ class CrmSim:
             raise MCPError("unknown_company", f"Unknown company: {id}")
         return co
 
-    def list_companies(self) -> List[Dict[str, Any]]:
-        return list(self.companies.values())
+    def list_companies(
+        self,
+        query: str | None = None,
+        domain: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort_by: str = "name",
+        sort_dir: str = "asc",
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        rows = list(self.companies.values())
+        needle = (query or "").strip().lower()
+        if needle:
+            rows = [
+                row
+                for row in rows
+                if needle in str(row.get("name", "")).lower()
+                or needle in str(row.get("domain", "")).lower()
+            ]
+        if domain:
+            wanted_domain = domain.strip().lower()
+            rows = [
+                row
+                for row in rows
+                if str(row.get("domain", "")).strip().lower() == wanted_domain
+            ]
+        sort_field = sort_by if sort_by in {"name", "domain", "created_ms"} else "name"
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+
+        is_legacy = (
+            query is None
+            and domain is None
+            and limit is None
+            and cursor is None
+            and sort_by == "name"
+            and sort_dir == "asc"
+        )
+        if is_legacy:
+            return rows
+        return _page_rows(rows, limit=limit, cursor=cursor, key="companies")
 
     # Associations
     def associate_contact_company(
@@ -107,18 +224,26 @@ class CrmSim:
         stage: str = "New",
         contact_id: str | None = None,
         company_id: str | None = None,
+        close_date: str | None = None,
     ) -> Dict[str, Any]:
+        stage_name = self._normalize_stage(stage)
+        if contact_id and contact_id not in self.contacts:
+            raise MCPError("unknown_contact", f"Unknown contact: {contact_id}")
+        if company_id and company_id not in self.companies:
+            raise MCPError("unknown_company", f"Unknown company: {company_id}")
         did = f"D-{self._d_seq}"
         self._d_seq += 1
         self.deals[did] = {
             "id": did,
             "name": name,
             "amount": float(amount),
-            "stage": stage,
+            "stage": stage_name,
             "contact_id": contact_id,
             "company_id": company_id,
+            "close_date": close_date,
             "created_ms": self.bus.clock_ms,
             "updated_ms": self.bus.clock_ms,
+            "stage_history": [{"stage": stage_name, "time_ms": self.bus.clock_ms}],
         }
         return {"id": did}
 
@@ -128,16 +253,68 @@ class CrmSim:
             raise MCPError("unknown_deal", f"Unknown deal: {id}")
         return d
 
-    def list_deals(self) -> List[Dict[str, Any]]:
-        return list(self.deals.values())
+    def list_deals(
+        self,
+        stage: str | None = None,
+        company_id: str | None = None,
+        min_amount: float | None = None,
+        max_amount: float | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+        sort_by: str = "updated_ms",
+        sort_dir: str = "desc",
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        rows = list(self.deals.values())
+        if stage:
+            wanted_stage = self._normalize_stage(stage)
+            rows = [row for row in rows if str(row.get("stage")) == wanted_stage]
+        if company_id:
+            rows = [row for row in rows if str(row.get("company_id")) == company_id]
+        if min_amount is not None:
+            rows = [row for row in rows if float(row.get("amount", 0.0)) >= min_amount]
+        if max_amount is not None:
+            rows = [row for row in rows if float(row.get("amount", 0.0)) <= max_amount]
+        sort_field = (
+            sort_by
+            if sort_by in {"updated_ms", "created_ms", "amount", "stage"}
+            else "updated_ms"
+        )
+        rows.sort(
+            key=lambda row: _sortable(row.get(sort_field)),
+            reverse=sort_dir.lower() != "asc",
+        )
+
+        is_legacy = (
+            stage is None
+            and company_id is None
+            and min_amount is None
+            and max_amount is None
+            and limit is None
+            and cursor is None
+            and sort_by == "updated_ms"
+            and sort_dir == "desc"
+        )
+        if is_legacy:
+            return rows
+        return _page_rows(rows, limit=limit, cursor=cursor, key="deals")
 
     def update_deal_stage(self, id: str, stage: str) -> Dict[str, Any]:
         d = self.deals.get(id)
         if not d:
             raise MCPError("unknown_deal", f"Unknown deal: {id}")
-        d["stage"] = stage
+        next_stage = self._normalize_stage(stage)
+        current = str(d.get("stage", "New"))
+        if current in {"Closed Won", "Closed Lost"} and next_stage != current:
+            raise MCPError(
+                "invalid_stage_transition",
+                f"Cannot move closed deal from {current} to {next_stage}",
+            )
+        d["stage"] = next_stage
         d["updated_ms"] = self.bus.clock_ms
-        return {"ok": True, "stage": stage}
+        history = list(d.get("stage_history", []))
+        history.append({"stage": next_stage, "time_ms": self.bus.clock_ms})
+        d["stage_history"] = history
+        return {"ok": True, "stage": next_stage}
 
     # Activities
     def log_activity(
@@ -147,6 +324,22 @@ class CrmSim:
         deal_id: str | None = None,
         note: str | None = None,
     ) -> Dict[str, Any]:
+        allowed_kinds = {
+            "note",
+            "email_outreach",
+            "call",
+            "meeting",
+            "task",
+            "system_event",
+        }
+        if kind not in allowed_kinds:
+            raise MCPError(
+                "invalid_activity_kind", f"Unsupported activity kind: {kind}"
+            )
+        if contact_id and contact_id not in self.contacts:
+            raise MCPError("unknown_contact", f"Unknown contact: {contact_id}")
+        if deal_id and deal_id not in self.deals:
+            raise MCPError("unknown_deal", f"Unknown deal: {deal_id}")
         # Policy: if outreach to a DNC contact, sometimes error depending on error_rate
         if kind == "email_outreach" and contact_id:
             c = self.contacts.get(contact_id)
@@ -155,7 +348,10 @@ class CrmSim:
                     raise MCPError(
                         "consent_violation", "Contact is marked do-not-contact."
                     )
+        activity_id = f"A-{self._a_seq}"
+        self._a_seq += 1
         rec = {
+            "id": activity_id,
             "time_ms": self.bus.clock_ms,
             "kind": kind,
             "contact_id": contact_id,
@@ -163,4 +359,68 @@ class CrmSim:
             "note": note or "",
         }
         self.activities.append(rec)
-        return {"ok": True}
+        return {"ok": True, "id": activity_id}
+
+    def _normalize_stage(self, stage: str) -> str:
+        normalized = self._STAGE_BY_KEY.get(stage.strip().lower())
+        if not normalized:
+            raise MCPError("invalid_stage", f"Unsupported stage: {stage}")
+        return normalized
+
+
+def _normalize_limit(
+    limit: int | None, *, default: int = 25, max_limit: int = 200
+) -> int:
+    if limit is None:
+        return default
+    if limit < 1:
+        return 1
+    return min(max_limit, int(limit))
+
+
+def _decode_cursor(cursor: str | None) -> int:
+    if not cursor:
+        return 0
+    if not cursor.startswith("ofs:"):
+        raise MCPError("invalid_cursor", "Cursor must use 'ofs:<offset>' format")
+    try:
+        value = int(cursor.split(":", 1)[1])
+    except ValueError as exc:
+        raise MCPError("invalid_cursor", f"Invalid cursor: {cursor}") from exc
+    return max(0, value)
+
+
+def _encode_cursor(offset: int) -> str:
+    return f"ofs:{max(0, int(offset))}"
+
+
+def _page_rows(
+    rows: List[Dict[str, Any]],
+    *,
+    limit: int | None,
+    cursor: str | None,
+    key: str,
+) -> Dict[str, Any]:
+    page_limit = _normalize_limit(
+        limit, default=CrmSim._DEFAULT_LIMIT, max_limit=CrmSim._MAX_LIMIT
+    )
+    start = _decode_cursor(cursor)
+    sliced = rows[start : start + page_limit]
+    next_cursor = (
+        _encode_cursor(start + page_limit) if (start + page_limit) < len(rows) else None
+    )
+    return {
+        key: sliced,
+        "count": len(sliced),
+        "total": len(rows),
+        "next_cursor": next_cursor,
+        "has_more": next_cursor is not None,
+    }
+
+
+def _sortable(value: object) -> object:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)

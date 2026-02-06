@@ -118,6 +118,7 @@ class SceneSpec(BaseModel):
     documents: List[DocumentSpec] = Field(default_factory=list)
     calendar_events: List[CalendarEventSpec] = Field(default_factory=list)
     tickets: List[TicketSpec] = Field(default_factory=list)
+    database_tables: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     triggers: List[TriggerSpec] = Field(default_factory=list)
 
     @field_validator("browser_nodes")

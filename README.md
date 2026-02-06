@@ -207,6 +207,27 @@ ServiceNow-style workflows are also available inside the router:
 
 These draw from the scenario’s `service_incidents` / `service_requests` seeds, making it easy to script access requests or outage coordination alongside Okta/ERP data.
 
+### DET Phase 0-6 Pipeline (Workflow DSL + Corpus)
+
+Use the new `vei-det` CLI to compile/run workflow DSL v2 and generate/filter large corpus batches:
+
+```bash
+# Create a starter DSL v2 workflow
+vei-det sample-workflow --output ./_vei_out/workflow_sample.json
+
+# Compile + run deterministically
+vei-det compile-workflow --spec ./_vei_out/workflow_sample.json --output ./_vei_out/workflow_compiled.json
+vei-det run-workflow --spec ./_vei_out/workflow_sample.json --connector-mode sim --artifacts ./_vei_out/workflow_run
+
+# Generate and filter a large corpus
+vei-det generate-corpus --seed 42042 --environments 50 --scenarios-per-environment 30 --output ./_vei_out/corpus/generated.json
+vei-det filter-corpus --corpus ./_vei_out/corpus/generated.json --output ./_vei_out/corpus/filter_report.json
+```
+
+Generated corpus workflows now rotate across enterprise tool families (Slack, mail, docs, calendar, tickets, DB, and CRM aliases such as Salesforce by default) so scenarios stay runnable while covering realistic multi-system operations.
+
+Architecture details: [docs/det_phases_0_6_architecture.md](docs/det_phases_0_6_architecture.md)
+
 ### Dataset tooling & evaluation
 
 Follow the canonical procurement workflow, then adapt it as needed:

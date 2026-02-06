@@ -5,6 +5,7 @@ MODE ?= $(or $(AGENT_MODE),baseline)
 SETUP_STAMP := $(VENV)/.setup-complete
 VENV_BIN := $(VENV)/bin
 DEPS := black==24.8.0 ruff==0.6.8 mypy==1.11.2 bandit==1.7.9 detect-secrets==1.5.0 pip-audit==2.7.3 pytest==9.0.2 pytest-timeout==2.4.0 pytest-cov==7.0.0 pre-commit==4.4.0
+PIPAPI_PYTHON := $(abspath $(VENV_BIN)/python)
 
 .PHONY: setup bootstrap check test llm-live deps-audit all clean
 
@@ -47,17 +48,19 @@ llm-live: $(SETUP_STAMP)
 		echo "OPENAI_API_KEY not set; cannot run llm-live target. Set the key or export VEI_LLM_LIVE_BYPASS=1 to skip in CI."; \
 		exit 4; \
 	else \
+		ART="$${VEI_LLM_ARTIFACTS_DIR:-_vei_out/llm_live/latest}"; \
+		mkdir -p "$$ART"; \
 		. $(VENV)/bin/activate && \
-			VEI_SCENARIO=$${VEI_SCENARIO:-multi_channel} \
-			vei-llm-test --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-12} --task "$${VEI_LLM_TASK:-Baseline procurement workflow with identity checks.}"; \
-		echo "llm-live metrics: pass=1 fail=0 cost_usd=unknown p95_latency_ms=unknown"; \
+				VEI_SCENARIO=$${VEI_SCENARIO:-multi_channel} \
+				vei-llm-test --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-12} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-email} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Baseline procurement workflow with identity checks.}" && \
+				$(VENV_BIN)/python -c 'import json,sys;from pathlib import Path;art=Path(sys.argv[1]);score=json.loads((art/"score.json").read_text(encoding="utf-8"));trace=art/"trace.jsonl";records=[json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines() if line.strip()] if trace.exists() else [];times=[int(r.get("time_ms",0)) for r in records if r.get("type")=="call"];lat=[max(0,b-a) for a,b in zip(times,times[1:])];p95=sorted(lat)[int(0.95*(len(lat)-1))] if lat else 0;passed=1 if bool(score.get("success")) else 0;failed=0 if passed else 1;actions=int(score.get("costs",{}).get("actions",len(times)));print(f"llm-live metrics: pass={passed} fail={failed} cost_usd=unknown p95_latency_ms={p95} actions={actions}")' "$$ART"; \
 	fi
 
 deps-audit: $(SETUP_STAMP)
 	@if [ "$(MODE)" = "production" ]; then \
-		. $(VENV)/bin/activate && pip-audit --skip-editable; \
+		. $(VENV)/bin/activate && VIRTUAL_ENV=$(abspath $(VENV)) PIPAPI_PYTHON_LOCATION=$(PIPAPI_PYTHON) pip-audit --skip-editable; \
 	else \
-		. $(VENV)/bin/activate && pip-audit --skip-editable || true; \
+		. $(VENV)/bin/activate && VIRTUAL_ENV=$(abspath $(VENV)) PIPAPI_PYTHON_LOCATION=$(PIPAPI_PYTHON) pip-audit --skip-editable || true; \
 	fi
 
 all: check test llm-live deps-audit

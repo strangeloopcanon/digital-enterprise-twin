@@ -12,13 +12,20 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
 from pydantic import BaseModel
+from vei.connectors import (
+    ConnectorInvocationError,
+    create_default_runtime,
+    parse_adapter_mode,
+)
 from vei.world.scenario import Scenario
 from vei.world.scenarios import load_from_env
 from vei.monitors.manager import MonitorManager
 from vei.policy import DEFAULT_RULES, PolicyEngine, PromoteMonitorRule
 from vei.world.drift import DriftEngine
 from vei.world.state import Event as StateEvent, StateStore
+from .alias_packs import CRM_ALIAS_PACKS, ERP_ALIAS_PACKS
 from .calendar import CalendarSim
+from .database import DatabaseSim
 from .docs import DocsSim
 from .tickets import TicketsSim
 from .errors import MCPError
@@ -655,6 +662,7 @@ class Router:
         seed: int,
         artifacts_dir: Optional[str] = None,
         scenario: Optional[Scenario] = None,
+        connector_mode: Optional[str] = None,
     ):
         self.bus = EventBus(seed)
 
@@ -678,6 +686,8 @@ class Router:
         self.registry = ToolRegistry()
         self.tool_providers: List[ToolProvider] = []
         self._seed_tool_registry()
+        self.alias_map = self._build_alias_map()
+        self._register_alias_specs(self.alias_map)
         fault_profile_env = os.environ.get("VEI_FAULT_PROFILE", "off").strip().lower()
         if fault_profile_env not in FAULT_PROFILES:
             fault_profile_env = "off"
@@ -733,15 +743,7 @@ class Router:
         self.docs = DocsSim(self.scenario)
         self.calendar = CalendarSim(self.scenario)
         self.tickets = TicketsSim(self.scenario)
-        for evt in self.scenario.derail_events or []:
-            try:
-                dt = int(evt.get("dt_ms", 0))
-                target = evt.get("target")
-                payload = evt.get("payload", {})
-                if target:
-                    self.bus.schedule(dt_ms=dt, target=target, payload=payload)
-            except Exception:
-                continue
+        self.database = DatabaseSim(self.scenario)
         # Optional ERP twin
         try:
             from .erp import ErpSim  # local import to avoid import-time failures
@@ -756,7 +758,9 @@ class Router:
             self.crm = CrmSim(self.bus, self.scenario)
         except Exception:
             self.crm = None  # type: ignore[attr-defined]
+
         # Optional identity twin
+        self.okta = None  # type: ignore[attr-defined]
         try:
             from .identity import OktaSim, OktaToolProvider
 
@@ -764,9 +768,45 @@ class Router:
             self.register_tool_provider(OktaToolProvider(self.okta))
         except Exception:
             self.okta = None  # type: ignore[attr-defined]
+
         # ServiceDesk twin
         self.servicedesk = ServiceDeskSim(self.scenario)
         self.register_tool_provider(ServiceDeskToolProvider(self.servicedesk))
+
+        self.connector_mode = parse_adapter_mode(
+            connector_mode or os.environ.get("VEI_CONNECTOR_MODE")
+        )
+        connector_receipts_path: Optional[Path] = None
+        if self.state_store.storage_dir:
+            connector_receipts_path = (
+                self.state_store.storage_dir / "connector_receipts.jsonl"
+            )
+        elif artifacts_dir:
+            connector_receipts_path = Path(artifacts_dir) / "connector_receipts.jsonl"
+        self.connector_runtime = create_default_runtime(
+            mode=self.connector_mode,
+            slack=self.slack,
+            mail=self.mail,
+            calendar=self.calendar,
+            docs=self.docs,
+            tickets=self.tickets,
+            database=self.database,
+            erp=getattr(self, "erp", None),
+            crm=getattr(self, "crm", None),
+            okta=getattr(self, "okta", None),
+            servicedesk=self.servicedesk,
+            receipts_path=connector_receipts_path,
+        )
+
+        for evt in self.scenario.derail_events or []:
+            try:
+                dt = int(evt.get("dt_ms", 0))
+                target = evt.get("target")
+                payload = evt.get("payload", {})
+                if target:
+                    self.bus.schedule(dt_ms=dt, target=target, payload=payload)
+            except Exception:
+                continue
 
         drift_seed_env = os.environ.get("VEI_DRIFT_SEED")
         try:
@@ -919,6 +959,8 @@ class Router:
             return self.calendar.deliver(payload)
         if target == "tickets":
             return self.tickets.deliver(payload)
+        if target in {"db", "database"}:
+            return self.database.deliver(payload)
         if target in {"erp", "crm", "servicedesk", "okta", "tool"}:
             tool = payload.get("tool")
             args = payload.get("args", {})
@@ -1017,6 +1059,10 @@ class Router:
                 }
             )
         snapshot["policy_findings"] = policy_tail
+        snapshot["connectors"] = {
+            "mode": self.connector_mode.value,
+            "last_receipt": self.connector_runtime.last_receipt(),
+        }
         if include_receipts:
             snapshot["receipts"] = (
                 list(self._receipts[-tool_tail:]) if tool_tail else list(self._receipts)
@@ -1036,6 +1082,47 @@ class Router:
                 self.registry.register(spec)
             except ValueError:
                 continue
+
+    def _build_alias_map(self) -> Dict[str, str]:
+        alias_map: Dict[str, str] = {}
+        erp_packs_env = os.environ.get("VEI_ALIAS_PACKS", "xero").strip()
+        erp_packs = [pack.strip() for pack in erp_packs_env.split(",") if pack.strip()]
+        for pack in erp_packs:
+            for alias, base in ERP_ALIAS_PACKS.get(pack, []):
+                alias_map[alias] = base
+
+        crm_packs_env = os.environ.get(
+            "VEI_CRM_ALIAS_PACKS", "hubspot,salesforce"
+        ).strip()
+        crm_packs = [pack.strip() for pack in crm_packs_env.split(",") if pack.strip()]
+        for pack in crm_packs:
+            for alias, base in CRM_ALIAS_PACKS.get(pack, []):
+                alias_map[alias] = base
+        return alias_map
+
+    def _register_alias_specs(self, alias_map: Dict[str, str]) -> None:
+        specs: List[ToolSpec] = []
+        for alias_name, base_tool in alias_map.items():
+            base = self.registry.get(base_tool)
+            if base:
+                specs.append(
+                    ToolSpec(
+                        name=alias_name,
+                        description=f"Alias -> {base_tool}. {base.description}",
+                        side_effects=base.side_effects,
+                        permissions=base.permissions,
+                        default_latency_ms=base.default_latency_ms,
+                        latency_jitter_ms=base.latency_jitter_ms,
+                        nominal_cost=base.nominal_cost,
+                        returns=base.returns,
+                        fault_probability=base.fault_probability,
+                    )
+                )
+            else:
+                specs.append(
+                    ToolSpec(name=alias_name, description=f"Alias -> {base_tool}")
+                )
+        self._register_tool_specs(specs)
 
     def _seed_tool_registry(self) -> None:
         specs = [
@@ -1173,7 +1260,7 @@ class Router:
         docs_specs = [
             ToolSpec(
                 name="docs.list",
-                description="List documents in the knowledge base.",
+                description="List documents in the knowledge base with optional filtering/pagination.",
                 permissions=("docs:read",),
             ),
             ToolSpec(
@@ -1206,7 +1293,7 @@ class Router:
         calendar_specs = [
             ToolSpec(
                 name="calendar.list_events",
-                description="List upcoming calendar events.",
+                description="List calendar events with optional filtering/pagination.",
                 permissions=("calendar:read",),
             ),
             ToolSpec(
@@ -1233,11 +1320,27 @@ class Router:
                 default_latency_ms=300,
                 latency_jitter_ms=150,
             ),
+            ToolSpec(
+                name="calendar.update_event",
+                description="Update event fields (time, attendees, description, status).",
+                permissions=("calendar:write",),
+                side_effects=("calendar_mutation",),
+                default_latency_ms=500,
+                latency_jitter_ms=180,
+            ),
+            ToolSpec(
+                name="calendar.cancel_event",
+                description="Cancel a calendar event with optional reason.",
+                permissions=("calendar:write",),
+                side_effects=("calendar_mutation",),
+                default_latency_ms=420,
+                latency_jitter_ms=140,
+            ),
         ]
         ticket_specs = [
             ToolSpec(
                 name="tickets.list",
-                description="List tickets in the queue.",
+                description="List tickets in the queue with optional filtering/pagination.",
                 permissions=("tickets:read",),
             ),
             ToolSpec(
@@ -1270,6 +1373,40 @@ class Router:
                 default_latency_ms=420,
                 latency_jitter_ms=160,
                 fault_probability=0.02,
+            ),
+            ToolSpec(
+                name="tickets.add_comment",
+                description="Add a comment to a ticket.",
+                permissions=("tickets:write",),
+                side_effects=("tickets_mutation",),
+                default_latency_ms=350,
+                latency_jitter_ms=130,
+            ),
+        ]
+        db_specs = [
+            ToolSpec(
+                name="db.list_tables",
+                description="List available enterprise database tables.",
+                permissions=("db:read",),
+            ),
+            ToolSpec(
+                name="db.describe_table",
+                description="Describe columns and row counts for a database table.",
+                permissions=("db:read",),
+            ),
+            ToolSpec(
+                name="db.query",
+                description="Run a structured query over a database table.",
+                permissions=("db:read",),
+            ),
+            ToolSpec(
+                name="db.upsert",
+                description="Insert or update a row in a database table.",
+                permissions=("db:write",),
+                side_effects=("db_mutation",),
+                default_latency_ms=450,
+                latency_jitter_ms=150,
+                fault_probability=0.01,
             ),
         ]
         # ERP and CRM specs are registered lazily to avoid importing optional twins here.
@@ -1385,6 +1522,7 @@ class Router:
         specs.extend(docs_specs)
         specs.extend(calendar_specs)
         specs.extend(ticket_specs)
+        specs.extend(db_specs)
         specs.extend(erp_specs)
         specs.extend(crm_specs)
         self._register_tool_specs(specs)
@@ -1412,6 +1550,80 @@ class Router:
             "query": query,
             "top_k": top_k,
             "results": results,
+        }
+
+    def help_payload(self) -> Dict[str, Any]:
+        focuses = [
+            "browser",
+            "slack",
+            "mail",
+            "docs",
+            "calendar",
+            "tickets",
+            "db",
+            "erp",
+            "crm",
+            "okta",
+            "servicedesk",
+        ]
+        focus_menus: Dict[str, List[Dict[str, Any]]] = {}
+        for focus in focuses:
+            menu = self._action_menu(focus)
+            if menu:
+                focus_menus[focus] = menu
+        tools = [
+            {
+                "tool": spec.name,
+                "description": spec.description,
+                "permissions": list(spec.permissions),
+                "side_effects": list(spec.side_effects),
+            }
+            for spec in sorted(self.registry.list(), key=lambda item: item.name)
+        ]
+        return {
+            "instructions": (
+                "Use MCP tools against the virtual enterprise. "
+                "Typical loop: observe -> call one tool -> observe again."
+            ),
+            "software": [
+                "slack",
+                "mail",
+                "browser",
+                "docs",
+                "calendar",
+                "tickets",
+                "db",
+                "erp",
+                "crm",
+                "okta",
+                "servicedesk",
+            ],
+            "tools": tools,
+            "focus_action_menus": focus_menus,
+            "examples": [
+                {"tool": "vei.observe", "args": {"focus": "browser"}},
+                {
+                    "tool": "mail.compose",
+                    "args": {
+                        "to": "sales@macrocompute.example",
+                        "subj": "Quote request",
+                        "body_text": "Please send quote and ETA.",
+                    },
+                },
+                {
+                    "tool": "slack.send_message",
+                    "args": {
+                        "channel": "#procurement",
+                        "text": "Approval request with budget and evidence.",
+                    },
+                },
+                {"tool": "db.query", "args": {"table": "approval_audit", "limit": 5}},
+                {
+                    "tool": "servicedesk.list_requests",
+                    "args": {"status": "PENDING_APPROVAL", "limit": 5},
+                },
+                {"tool": "okta.list_users", "args": {"status": "ACTIVE", "limit": 5}},
+            ],
         }
 
     def call_and_step(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1449,6 +1661,17 @@ class Router:
             return self.inject(**args)
         if not tool.startswith("vei."):
             self._maybe_fault(tool)
+        tool = self.alias_map.get(tool, tool)
+        if self.connector_runtime.managed_tool(tool):
+            try:
+                return self.connector_runtime.invoke_tool(
+                    tool,
+                    args,
+                    time_ms=self.bus.clock_ms,
+                    metadata={"router_branch": self.state_store.branch},
+                )
+            except ConnectorInvocationError as exc:
+                raise MCPError(exc.code, exc.message) from exc
         if tool == "slack.list_channels":
             return self.slack.list_channels()
         if tool == "slack.open_channel":
@@ -1486,7 +1709,7 @@ class Router:
 
         if tool.startswith("docs."):
             if tool == "docs.list":
-                return self.docs.list()
+                return self.docs.list(**args)
             if tool == "docs.read":
                 return self.docs.read(**args)
             if tool == "docs.search":
@@ -1499,18 +1722,22 @@ class Router:
 
         if tool.startswith("calendar."):
             if tool == "calendar.list_events":
-                return self.calendar.list_events()
+                return self.calendar.list_events(**args)
             if tool == "calendar.create_event":
                 return self.calendar.create_event(**args)
             if tool == "calendar.accept":
                 return self.calendar.accept(**args)
             if tool == "calendar.decline":
                 return self.calendar.decline(**args)
+            if tool == "calendar.update_event":
+                return self.calendar.update_event(**args)
+            if tool == "calendar.cancel_event":
+                return self.calendar.cancel_event(**args)
             raise MCPError("unknown_tool", f"No such tool: {tool}")
 
         if tool.startswith("tickets."):
             if tool == "tickets.list":
-                return self.tickets.list()
+                return self.tickets.list(**args)
             if tool == "tickets.get":
                 return self.tickets.get(**args)
             if tool == "tickets.create":
@@ -1519,6 +1746,8 @@ class Router:
                 return self.tickets.update(**args)
             if tool == "tickets.transition":
                 return self.tickets.transition(**args)
+            if tool == "tickets.add_comment":
+                return self.tickets.add_comment(**args)
             raise MCPError("unknown_tool", f"No such tool: {tool}")
 
         # ERP tools
@@ -1531,7 +1760,7 @@ class Router:
             if tool == "erp.get_po":
                 return erp.get_po(**args)
             if tool == "erp.list_pos":
-                return erp.list_pos()
+                return erp.list_pos(**args)
             if tool == "erp.receive_goods":
                 return erp.receive_goods(**args)
             if tool == "erp.submit_invoice":
@@ -1539,7 +1768,7 @@ class Router:
             if tool == "erp.get_invoice":
                 return erp.get_invoice(**args)
             if tool == "erp.list_invoices":
-                return erp.list_invoices()
+                return erp.list_invoices(**args)
             if tool == "erp.match_three_way":
                 return erp.match_three_way(**args)
             if tool == "erp.post_payment":
@@ -1556,13 +1785,13 @@ class Router:
             if tool == "crm.get_contact":
                 return crm.get_contact(**args)
             if tool == "crm.list_contacts":
-                return crm.list_contacts()
+                return crm.list_contacts(**args)
             if tool == "crm.create_company":
                 return crm.create_company(**args)
             if tool == "crm.get_company":
                 return crm.get_company(**args)
             if tool == "crm.list_companies":
-                return crm.list_companies()
+                return crm.list_companies(**args)
             if tool == "crm.associate_contact_company":
                 return crm.associate_contact_company(**args)
             if tool == "crm.create_deal":
@@ -1570,7 +1799,7 @@ class Router:
             if tool == "crm.get_deal":
                 return crm.get_deal(**args)
             if tool == "crm.list_deals":
-                return crm.list_deals()
+                return crm.list_deals(**args)
             if tool == "crm.update_deal_stage":
                 return crm.update_deal_stage(**args)
             if tool == "crm.log_activity":
@@ -1602,23 +1831,7 @@ class Router:
     def step_and_observe(self, tool: str, args: Dict[str, Any]) -> Observation:
         """Execute a tool call with deterministic step, then return an observation snapshot."""
         self.call_and_step(tool, args)
-        focus = "browser"
-        if tool.startswith("slack."):
-            focus = "slack"
-        elif tool.startswith("mail."):
-            focus = "mail"
-        elif tool.startswith("docs."):
-            focus = "docs"
-        elif tool.startswith("calendar."):
-            focus = "calendar"
-        elif tool.startswith("tickets."):
-            focus = "tickets"
-        elif tool.startswith("erp."):
-            focus = "erp"
-        elif tool.startswith("crm."):
-            focus = "crm"
-        elif tool.startswith("browser."):
-            focus = "browser"
+        focus = self._focus_for_tool(tool)
         return self.snapshot_observation(focus)
 
     def act_and_observe(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1627,24 +1840,30 @@ class Router:
         This is a convenience for clients that want a single call semantics.
         """
         result = self.call_and_step(tool, args)
-        # Choose focus consistent with action
-        focus = "browser"
-        if tool.startswith("slack."):
-            focus = "slack"
-        elif tool.startswith("mail."):
-            focus = "mail"
-        elif tool.startswith("docs."):
-            focus = "docs"
-        elif tool.startswith("calendar."):
-            focus = "calendar"
-        elif tool.startswith("tickets."):
-            focus = "tickets"
-        elif tool.startswith("erp."):
-            focus = "erp"
-        elif tool.startswith("crm."):
-            focus = "crm"
+        focus = self._focus_for_tool(tool)
         obs = self.snapshot_observation(focus)
         return {"result": result, "observation": obs.model_dump()}
+
+    def _focus_for_tool(self, tool: str) -> str:
+        resolved = self.alias_map.get(tool, tool)
+        for prefix in (
+            "slack",
+            "mail",
+            "docs",
+            "calendar",
+            "tickets",
+            "erp",
+            "crm",
+            "db",
+            "browser",
+            "okta",
+            "servicedesk",
+        ):
+            if resolved.startswith(f"{prefix}."):
+                return prefix
+        if tool.startswith("salesforce.") or tool.startswith("hubspot."):
+            return "crm"
+        return "browser"
 
     def inject(
         self, target: str, payload: Dict[str, Any], dt_ms: int = 0
@@ -1662,7 +1881,19 @@ class Router:
 
         Returns the number of delivered events per target and the new time.
         """
-        delivered = {"slack": 0, "mail": 0, "calendar": 0, "docs": 0, "tickets": 0}
+        delivered = {
+            "slack": 0,
+            "mail": 0,
+            "calendar": 0,
+            "docs": 0,
+            "tickets": 0,
+            "db": 0,
+            "erp": 0,
+            "crm": 0,
+            "okta": 0,
+            "servicedesk": 0,
+            "tool": 0,
+        }
         target_time = self.bus.clock_ms + max(0, int(dt_ms))
         # Deliver in order at due timestamps
         while (self.bus.peek_due_time() is not None) and (
@@ -1751,6 +1982,28 @@ class Router:
             cs = len(getattr(self, "crm").contacts) if getattr(self, "crm", None) else 0
             ds = len(getattr(self, "crm").deals) if getattr(self, "crm", None) else 0
             return f"CRM: {cs} contacts, {ds} deals"
+        if focus == "db":
+            tables = self.database.list_tables()
+            if not tables:
+                return "DB: no tables"
+            largest = max(tables, key=lambda item: int(item.get("row_count", 0)))
+            return f"DB: {len(tables)} tables (largest: {largest['table']})"
+        if focus == "okta":
+            if not getattr(self, "okta", None):
+                return "Okta: unavailable"
+            users = self.okta.list_users(limit=1)
+            total = int(users.get("total", users.get("count", 0)))
+            suspended = self.okta.list_users(status="SUSPENDED", limit=1)
+            suspended_total = int(suspended.get("total", suspended.get("count", 0)))
+            return f"Okta: {total} users ({suspended_total} suspended)"
+        if focus == "servicedesk":
+            incidents = self.servicedesk.list_incidents(limit=1)
+            request_rows = self.servicedesk.list_requests(limit=1)
+            return (
+                "ServiceDesk: "
+                f"{incidents.get('total', incidents.get('count', 0))} incidents, "
+                f"{request_rows.get('total', request_rows.get('count', 0))} requests"
+            )
         return ""
 
     def _pending_counts(self) -> Dict[str, int]:
@@ -1760,6 +2013,12 @@ class Router:
             "docs": 0,
             "calendar": 0,
             "tickets": 0,
+            "db": 0,
+            "erp": 0,
+            "crm": 0,
+            "okta": 0,
+            "servicedesk": 0,
+            "tool": 0,
         }
         for _, _, event in self.bus._heap:
             counts[event.target] = counts.get(event.target, 0) + 1
@@ -1770,7 +2029,18 @@ class Router:
         prob = self._fault_overrides.get(tool)
         if prob is None:
             spec = self.registry.get(tool)
-            prob = spec.fault_probability if spec else 0.0
+            use_spec_faults = os.environ.get(
+                "VEI_USE_SPEC_FAULTS", ""
+            ).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            if self.fault_profile != "off" or use_spec_faults:
+                prob = spec.fault_probability if spec else 0.0
+            else:
+                prob = 0.0
         if prob and prob > 0:
             if self.bus.rng.next_float() < prob:
                 raise MCPError("fault.injected", f"Injected fault for {tool}")
@@ -1820,12 +2090,33 @@ class Router:
             ]
         if focus == "docs":
             return [
-                {"tool": "docs.list", "args_schema": {}},
-                {"tool": "docs.search", "args_schema": {"query": "str"}},
+                {
+                    "tool": "docs.list",
+                    "args_schema": {
+                        "query": "str?",
+                        "tag": "str?",
+                        "status": "str?",
+                        "owner": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                        "sort_by": "str?",
+                        "sort_dir": "asc|desc?",
+                    },
+                },
+                {
+                    "tool": "docs.search",
+                    "args_schema": {"query": "str", "limit": "int?", "cursor": "str?"},
+                },
                 {"tool": "docs.read", "args_schema": {"doc_id": "str"}},
                 {
                     "tool": "docs.create",
-                    "args_schema": {"title": "str", "body": "str", "tags": "[str]?"},
+                    "args_schema": {
+                        "title": "str",
+                        "body": "str",
+                        "tags": "[str]?",
+                        "owner": "str?",
+                        "status": "str?",
+                    },
                 },
                 {
                     "tool": "docs.update",
@@ -1834,12 +2125,24 @@ class Router:
                         "title": "str?",
                         "body": "str?",
                         "tags": "[str]?",
+                        "status": "str?",
                     },
                 },
             ]
         if focus == "calendar":
             return [
-                {"tool": "calendar.list_events", "args_schema": {}},
+                {
+                    "tool": "calendar.list_events",
+                    "args_schema": {
+                        "attendee": "str?",
+                        "status": "str?",
+                        "starts_after_ms": "int?",
+                        "ends_before_ms": "int?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                        "sort_dir": "asc|desc?",
+                    },
+                },
                 {
                     "tool": "calendar.create_event",
                     "args_schema": {
@@ -1849,6 +2152,8 @@ class Router:
                         "attendees": "[str]?",
                         "location": "str?",
                         "description": "str?",
+                        "organizer": "str?",
+                        "status": "str?",
                     },
                 },
                 {
@@ -1859,10 +2164,39 @@ class Router:
                     "tool": "calendar.decline",
                     "args_schema": {"event_id": "str", "attendee": "str"},
                 },
+                {
+                    "tool": "calendar.update_event",
+                    "args_schema": {
+                        "event_id": "str",
+                        "title": "str?",
+                        "start_ms": "int?",
+                        "end_ms": "int?",
+                        "attendees": "[str]?",
+                        "location": "str?",
+                        "description": "str?",
+                        "status": "str?",
+                    },
+                },
+                {
+                    "tool": "calendar.cancel_event",
+                    "args_schema": {"event_id": "str", "reason": "str?"},
+                },
             ]
         if focus == "tickets":
             return [
-                {"tool": "tickets.list", "args_schema": {}},
+                {
+                    "tool": "tickets.list",
+                    "args_schema": {
+                        "status": "str?",
+                        "assignee": "str?",
+                        "priority": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                        "sort_by": "str?",
+                        "sort_dir": "asc|desc?",
+                    },
+                },
                 {"tool": "tickets.get", "args_schema": {"ticket_id": "str"}},
                 {
                     "tool": "tickets.create",
@@ -1870,6 +2204,9 @@ class Router:
                         "title": "str",
                         "description": "str?",
                         "assignee": "str?",
+                        "priority": "str?",
+                        "severity": "str?",
+                        "labels": "[str]?",
                     },
                 },
                 {
@@ -1878,11 +2215,22 @@ class Router:
                         "ticket_id": "str",
                         "description": "str?",
                         "assignee": "str?",
+                        "priority": "str?",
+                        "severity": "str?",
+                        "labels": "[str]?",
                     },
                 },
                 {
                     "tool": "tickets.transition",
                     "args_schema": {"ticket_id": "str", "status": "str"},
+                },
+                {
+                    "tool": "tickets.add_comment",
+                    "args_schema": {
+                        "ticket_id": "str",
+                        "body": "str",
+                        "author": "str?",
+                    },
                 },
             ]
         if focus == "erp" and getattr(self, "erp", None):
@@ -1895,7 +2243,18 @@ class Router:
                         "lines": "[{item_id,desc,qty,unit_price}]",
                     },
                 },
-                {"tool": "erp.list_pos", "args_schema": {}},
+                {
+                    "tool": "erp.list_pos",
+                    "args_schema": {
+                        "vendor": "str?",
+                        "status": "str?",
+                        "currency": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                        "sort_by": "str?",
+                        "sort_dir": "asc|desc?",
+                    },
+                },
                 {
                     "tool": "erp.submit_invoice",
                     "args_schema": {
@@ -1929,6 +2288,25 @@ class Router:
                     "args_schema": {"name": "str", "domain": "str?"},
                 },
                 {
+                    "tool": "crm.list_contacts",
+                    "args_schema": {
+                        "query": "str?",
+                        "company_id": "str?",
+                        "do_not_contact": "bool?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {
+                    "tool": "crm.list_companies",
+                    "args_schema": {
+                        "query": "str?",
+                        "domain": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {
                     "tool": "crm.associate_contact_company",
                     "args_schema": {"contact_id": "str", "company_id": "str"},
                 },
@@ -1940,11 +2318,23 @@ class Router:
                         "stage": "str?",
                         "contact_id": "str?",
                         "company_id": "str?",
+                        "close_date": "str?",
                     },
                 },
                 {
                     "tool": "crm.update_deal_stage",
                     "args_schema": {"id": "str", "stage": "str"},
+                },
+                {
+                    "tool": "crm.list_deals",
+                    "args_schema": {
+                        "stage": "str?",
+                        "company_id": "str?",
+                        "min_amount": "number?",
+                        "max_amount": "number?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
                 },
                 {
                     "tool": "crm.log_activity",
@@ -1953,6 +2343,98 @@ class Router:
                         "contact_id": "str?",
                         "deal_id": "str?",
                         "note": "str?",
+                    },
+                },
+            ]
+        if focus == "db":
+            return [
+                {
+                    "tool": "db.list_tables",
+                    "args_schema": {
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                        "sort_by": "str?",
+                        "sort_dir": "asc|desc?",
+                    },
+                },
+                {"tool": "db.describe_table", "args_schema": {"table": "str"}},
+                {
+                    "tool": "db.query",
+                    "args_schema": {
+                        "table": "str",
+                        "filters": "object?",
+                        "columns": "[str]?",
+                        "limit": "int?",
+                        "offset": "int?",
+                        "cursor": "str?",
+                        "sort_by": "str?",
+                        "descending": "bool?",
+                    },
+                },
+                {
+                    "tool": "db.upsert",
+                    "args_schema": {"table": "str", "row": "object", "key": "str?"},
+                },
+            ]
+        if focus == "okta":
+            return [
+                {
+                    "tool": "okta.list_users",
+                    "args_schema": {
+                        "status": "str?",
+                        "query": "str?",
+                        "include_groups": "bool?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {"tool": "okta.get_user", "args_schema": {"user_id": "str"}},
+                {"tool": "okta.suspend_user", "args_schema": {"user_id": "str"}},
+                {"tool": "okta.unsuspend_user", "args_schema": {"user_id": "str"}},
+                {"tool": "okta.list_groups", "args_schema": {"query": "str?"}},
+                {
+                    "tool": "okta.assign_group",
+                    "args_schema": {"user_id": "str", "group_id": "str"},
+                },
+            ]
+        if focus == "servicedesk":
+            return [
+                {
+                    "tool": "servicedesk.list_incidents",
+                    "args_schema": {
+                        "status": "str?",
+                        "priority": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {
+                    "tool": "servicedesk.get_incident",
+                    "args_schema": {"incident_id": "str"},
+                },
+                {
+                    "tool": "servicedesk.update_incident",
+                    "args_schema": {
+                        "incident_id": "str",
+                        "status": "str?",
+                        "assignee": "str?",
+                        "comment": "str?",
+                    },
+                },
+                {
+                    "tool": "servicedesk.list_requests",
+                    "args_schema": {"status": "str?", "query": "str?"},
+                },
+                {
+                    "tool": "servicedesk.update_request",
+                    "args_schema": {
+                        "request_id": "str",
+                        "status": "str?",
+                        "approval_stage": "str?",
+                        "approval_status": "str?",
+                        "comment": "str?",
                     },
                 },
             ]
