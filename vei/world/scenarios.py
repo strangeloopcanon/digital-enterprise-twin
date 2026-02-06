@@ -113,6 +113,25 @@ def scenario_multi_channel() -> Scenario:
             history=[{"status": "open"}],
         )
     }
+    database_tables = {
+        "procurement_orders": [
+            {
+                "id": "PO-1001",
+                "vendor": "MacroCompute",
+                "amount_usd": 3199,
+                "status": "PENDING_APPROVAL",
+            }
+        ],
+        "approval_audit": [
+            {
+                "id": "APR-1001",
+                "entity_type": "purchase_order",
+                "entity_id": "PO-1001",
+                "status": "PENDING",
+                "approver": "finance@macrocompute.example",
+            }
+        ],
+    }
     events = [
         {
             "dt_ms": 5000,
@@ -239,6 +258,7 @@ def scenario_multi_channel() -> Scenario:
         vendor_reply_variants=["Quote: $3199, ETA 5 days"],
         documents=docs,
         tickets=tickets,
+        database_tables=database_tables,
         derail_events=events,
         identity_users=identity_users,
         identity_groups=identity_groups,
@@ -1473,6 +1493,7 @@ def generate_scenario(template: Dict[str, Any], seed: Optional[int] = None) -> S
         vendor_reply_variants=variants or None,
         browser_nodes=template.get("browser_nodes"),
         derail_events=template.get("derail_events"),
+        database_tables=template.get("database_tables"),
     )
 
 

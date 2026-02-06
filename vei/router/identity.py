@@ -80,6 +80,9 @@ def _default_app_seeds() -> Dict[str, IdentityApplicationSeed]:
 class OktaSim:
     """Deterministic Okta-like identity emulator."""
 
+    _DEFAULT_LIMIT = 25
+    _MAX_LIMIT = 200
+
     def __init__(self, scenario: Optional[Scenario] = None):
         user_seeds = (
             list((scenario.identity_users or _default_user_seeds()).values())
@@ -124,11 +127,15 @@ class OktaSim:
         status: Optional[str] = None,
         query: Optional[str] = None,
         include_groups: bool = False,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        sort_by: str = "email",
+        sort_dir: str = "asc",
     ) -> Dict[str, Any]:
         normalized = status.upper() if status else None
         needle = (query or "").strip().lower()
         payload: List[Dict[str, Any]] = []
-        for user in sorted(self.users.values(), key=lambda u: (u.status, u.email)):
+        for user in self.users.values():
             if normalized and user.status.upper() != normalized:
                 continue
             if (
@@ -141,7 +148,30 @@ class OktaSim:
             if include_groups:
                 row["groups"] = list(user.groups)
             payload.append(row)
-        return {"users": payload, "count": len(payload)}
+        sort_key = (
+            sort_by if sort_by in {"email", "status", "display_name"} else "email"
+        )
+        payload.sort(
+            key=lambda row: _sort_key(row.get(sort_key)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        start = _decode_cursor(cursor)
+        page_limit = _normalize_limit(
+            limit, default=self._DEFAULT_LIMIT, max_limit=self._MAX_LIMIT
+        )
+        sliced = payload[start : start + page_limit]
+        next_cursor = (
+            _encode_cursor(start + page_limit)
+            if (start + page_limit) < len(payload)
+            else None
+        )
+        return {
+            "users": sliced,
+            "count": len(sliced),
+            "total": len(payload),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
+        }
 
     def get_user(self, user_id: str) -> Dict[str, Any]:
         user = self.users.get(user_id)
@@ -155,6 +185,10 @@ class OktaSim:
             raise MCPError("okta.user_not_found", f"Unknown user: {user_id}")
         if user.status == "ACTIVE":
             return {"id": user_id, "status": "ACTIVE", "changed": False}
+        if user.status == "DEPROVISIONED":
+            raise MCPError(
+                "okta.invalid_state", f"Cannot activate deprovisioned user: {user_id}"
+            )
         updated = user.model_copy(update={"status": "ACTIVE"})
         self.users[user_id] = updated
         return {"id": user_id, "status": updated.status, "changed": True}
@@ -173,6 +207,37 @@ class OktaSim:
         self.users[user_id] = updated
         return {"id": user_id, "status": updated.status, "reason": reason or "manual"}
 
+    def suspend_user(
+        self, user_id: str, reason: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user = self.users.get(user_id)
+        if not user:
+            raise MCPError("okta.user_not_found", f"Unknown user: {user_id}")
+        if user.status == "DEPROVISIONED":
+            raise MCPError(
+                "okta.invalid_state", f"Cannot suspend deprovisioned user: {user_id}"
+            )
+        if user.status == "SUSPENDED":
+            return {"id": user_id, "status": "SUSPENDED", "changed": False}
+        updated = user.model_copy(update={"status": "SUSPENDED"})
+        self.users[user_id] = updated
+        return {
+            "id": user_id,
+            "status": updated.status,
+            "changed": True,
+            "reason": reason or "manual",
+        }
+
+    def unsuspend_user(self, user_id: str) -> Dict[str, Any]:
+        user = self.users.get(user_id)
+        if not user:
+            raise MCPError("okta.user_not_found", f"Unknown user: {user_id}")
+        if user.status != "SUSPENDED":
+            raise MCPError("okta.invalid_state", f"User is not suspended: {user_id}")
+        updated = user.model_copy(update={"status": "ACTIVE"})
+        self.users[user_id] = updated
+        return {"id": user_id, "status": updated.status, "changed": True}
+
     def reset_password(self, user_id: str) -> Dict[str, Any]:
         user = self.users.get(user_id)
         if not user:
@@ -187,18 +252,45 @@ class OktaSim:
         return {"user_id": user.user_id, "reset_token": token, "expires_ms": 3_600_000}
 
     def list_groups(
-        self, query: Optional[str] = None, include_members: bool = False
+        self,
+        query: Optional[str] = None,
+        include_members: bool = False,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        sort_by: str = "name",
+        sort_dir: str = "asc",
     ) -> Dict[str, Any]:
         needle = (query or "").strip().lower()
         payload: List[Dict[str, Any]] = []
-        for group in sorted(self.groups.values(), key=lambda g: g.name):
+        for group in self.groups.values():
             if needle and needle not in group.name.lower():
                 continue
             row = group.summary()
             if include_members:
                 row["members"] = list(group.members)
             payload.append(row)
-        return {"groups": payload, "count": len(payload)}
+        sort_key = sort_by if sort_by in {"name", "member_count"} else "name"
+        payload.sort(
+            key=lambda row: _sort_key(row.get(sort_key)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        start = _decode_cursor(cursor)
+        page_limit = _normalize_limit(
+            limit, default=self._DEFAULT_LIMIT, max_limit=self._MAX_LIMIT
+        )
+        sliced = payload[start : start + page_limit]
+        next_cursor = (
+            _encode_cursor(start + page_limit)
+            if (start + page_limit) < len(payload)
+            else None
+        )
+        return {
+            "groups": sliced,
+            "count": len(sliced),
+            "total": len(payload),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
+        }
 
     def assign_group(self, user_id: str, group_id: str) -> Dict[str, Any]:
         user = self.users.get(user_id)
@@ -213,14 +305,55 @@ class OktaSim:
             user.groups.append(group_id)
         return {"group_id": group_id, "user_id": user_id, "members": len(group.members)}
 
-    def list_applications(self, query: Optional[str] = None) -> Dict[str, Any]:
+    def unassign_group(self, user_id: str, group_id: str) -> Dict[str, Any]:
+        user = self.users.get(user_id)
+        if not user:
+            raise MCPError("okta.user_not_found", f"Unknown user: {user_id}")
+        group = self.groups.get(group_id)
+        if not group:
+            raise MCPError("okta.group_not_found", f"Unknown group: {group_id}")
+        if group_id in user.groups:
+            user.groups = [gid for gid in user.groups if gid != group_id]
+        if user_id in group.members:
+            group.members = [member for member in group.members if member != user_id]
+        return {"group_id": group_id, "user_id": user_id, "members": len(group.members)}
+
+    def list_applications(
+        self,
+        query: Optional[str] = None,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+        sort_by: str = "label",
+        sort_dir: str = "asc",
+    ) -> Dict[str, Any]:
         needle = (query or "").strip().lower()
         payload: List[Dict[str, Any]] = []
-        for app in sorted(self.apps.values(), key=lambda a: a.label):
+        for app in self.apps.values():
             if needle and needle not in app.label.lower():
                 continue
             payload.append(app.summary())
-        return {"applications": payload, "count": len(payload)}
+        sort_key = sort_by if sort_by in {"label", "status", "assignments"} else "label"
+        payload.sort(
+            key=lambda row: _sort_key(row.get(sort_key)),
+            reverse=sort_dir.lower() != "asc",
+        )
+        start = _decode_cursor(cursor)
+        page_limit = _normalize_limit(
+            limit, default=self._DEFAULT_LIMIT, max_limit=self._MAX_LIMIT
+        )
+        sliced = payload[start : start + page_limit]
+        next_cursor = (
+            _encode_cursor(start + page_limit)
+            if (start + page_limit) < len(payload)
+            else None
+        )
+        return {
+            "applications": sliced,
+            "count": len(sliced),
+            "total": len(payload),
+            "next_cursor": next_cursor,
+            "has_more": next_cursor is not None,
+        }
 
     def assign_application(self, user_id: str, app_id: str) -> Dict[str, Any]:
         user = self.users.get(user_id)
@@ -233,6 +366,23 @@ class OktaSim:
             app.assignments.append(user_id)
         if app_id not in user.applications:
             user.applications.append(app_id)
+        return {
+            "user_id": user_id,
+            "app_id": app_id,
+            "assignments": len(app.assignments),
+        }
+
+    def unassign_application(self, user_id: str, app_id: str) -> Dict[str, Any]:
+        user = self.users.get(user_id)
+        if not user:
+            raise MCPError("okta.user_not_found", f"Unknown user: {user_id}")
+        app = self.apps.get(app_id)
+        if not app:
+            raise MCPError("okta.app_not_found", f"Unknown application: {app_id}")
+        if app_id in user.applications:
+            user.applications = [aid for aid in user.applications if aid != app_id]
+        if user_id in app.assignments:
+            app.assignments = [uid for uid in app.assignments if uid != user_id]
         return {
             "user_id": user_id,
             "app_id": app_id,
@@ -279,6 +429,22 @@ class OktaToolProvider(PrefixToolProvider):
                 fault_probability=0.01,
             ),
             ToolSpec(
+                name="okta.suspend_user",
+                description="Suspend a user account.",
+                permissions=("identity:write",),
+                side_effects=("identity_mutation",),
+                default_latency_ms=430,
+                latency_jitter_ms=140,
+            ),
+            ToolSpec(
+                name="okta.unsuspend_user",
+                description="Unsuspend a suspended user account.",
+                permissions=("identity:write",),
+                side_effects=("identity_mutation",),
+                default_latency_ms=420,
+                latency_jitter_ms=130,
+            ),
+            ToolSpec(
                 name="okta.reset_password",
                 description="Generate a password reset token for a user.",
                 permissions=("identity:write",),
@@ -302,6 +468,14 @@ class OktaToolProvider(PrefixToolProvider):
                 latency_jitter_ms=140,
             ),
             ToolSpec(
+                name="okta.unassign_group",
+                description="Remove a user from an Okta group.",
+                permissions=("identity:write",),
+                side_effects=("identity_mutation",),
+                default_latency_ms=410,
+                latency_jitter_ms=140,
+            ),
+            ToolSpec(
                 name="okta.list_applications",
                 description="List SSO applications available in Okta.",
                 permissions=("identity:read",),
@@ -316,17 +490,29 @@ class OktaToolProvider(PrefixToolProvider):
                 default_latency_ms=420,
                 latency_jitter_ms=130,
             ),
+            ToolSpec(
+                name="okta.unassign_application",
+                description="Remove an application assignment from a user.",
+                permissions=("identity:write",),
+                side_effects=("identity_mutation",),
+                default_latency_ms=420,
+                latency_jitter_ms=130,
+            ),
         ]
         self._handlers: Dict[str, Callable[..., Any]] = {
             "okta.list_users": self.sim.list_users,
             "okta.get_user": self.sim.get_user,
             "okta.activate_user": self.sim.activate_user,
             "okta.deactivate_user": self.sim.deactivate_user,
+            "okta.suspend_user": self.sim.suspend_user,
+            "okta.unsuspend_user": self.sim.unsuspend_user,
             "okta.reset_password": self.sim.reset_password,
             "okta.list_groups": self.sim.list_groups,
             "okta.assign_group": self.sim.assign_group,
+            "okta.unassign_group": self.sim.unassign_group,
             "okta.list_applications": self.sim.list_applications,
             "okta.assign_application": self.sim.assign_application,
+            "okta.unassign_application": self.sim.unassign_application,
         }
 
     def specs(self) -> List[ToolSpec]:
@@ -341,3 +527,39 @@ class OktaToolProvider(PrefixToolProvider):
             return handler(**payload)
         except TypeError as exc:  # pragma: no cover - surfaced via MCPError
             raise MCPError("invalid_args", str(exc)) from exc
+
+
+def _normalize_limit(limit: Optional[int], *, default: int, max_limit: int) -> int:
+    if limit is None:
+        return default
+    if limit < 1:
+        return 1
+    return min(max_limit, int(limit))
+
+
+def _decode_cursor(cursor: Optional[str]) -> int:
+    if not cursor:
+        return 0
+    if not cursor.startswith("ofs:"):
+        raise MCPError("okta.invalid_cursor", f"Invalid cursor: {cursor}")
+    try:
+        value = int(cursor.split(":", 1)[1])
+    except ValueError as exc:
+        raise MCPError("okta.invalid_cursor", f"Invalid cursor: {cursor}") from exc
+    return max(0, value)
+
+
+def _encode_cursor(offset: int) -> str:
+    return f"ofs:{max(0, int(offset))}"
+
+
+def _sort_key(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int):
+        return f"{value:020d}"
+    if isinstance(value, float):
+        return f"{value:020.6f}"
+    return str(value).lower()

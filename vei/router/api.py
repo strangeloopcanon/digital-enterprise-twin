@@ -27,8 +27,14 @@ def create_router(
     seed: int,
     artifacts_dir: Optional[str] = None,
     scenario: Optional[Scenario] = None,
+    connector_mode: Optional[str] = None,
 ) -> RouterAPI:
     """Factory for the router runtime exposed as a typed module API."""
     from .core import Router
 
-    return Router(seed=seed, artifacts_dir=artifacts_dir, scenario=scenario)
+    return Router(
+        seed=seed,
+        artifacts_dir=artifacts_dir,
+        scenario=scenario,
+        connector_mode=connector_mode,
+    )

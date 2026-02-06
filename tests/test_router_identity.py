@@ -30,3 +30,24 @@ def test_okta_reset_password_rejects_deprovisioned(router: Router):
     with pytest.raises(MCPError) as exc:
         router.call_and_step("okta.reset_password", {"user_id": "USR-3001"})
     assert exc.value.code == "okta.invalid_state"
+
+
+def test_okta_pagination_suspend_and_unassign(router: Router):
+    first = router.call_and_step("okta.list_users", {"limit": 1, "sort_by": "email"})
+    assert first["count"] == 1
+    assert first["total"] >= 1
+
+    suspended = router.call_and_step("okta.suspend_user", {"user_id": "USR-2001"})
+    assert suspended["status"] == "SUSPENDED"
+    unsuspended = router.call_and_step("okta.unsuspend_user", {"user_id": "USR-2001"})
+    assert unsuspended["status"] == "ACTIVE"
+
+    apps = router.call_and_step("okta.list_applications", {"limit": 1})
+    app_id = apps["applications"][0]["id"]
+    router.call_and_step(
+        "okta.assign_application", {"user_id": "USR-2001", "app_id": app_id}
+    )
+    unassigned = router.call_and_step(
+        "okta.unassign_application", {"user_id": "USR-2001", "app_id": app_id}
+    )
+    assert unassigned["app_id"] == app_id

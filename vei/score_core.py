@@ -24,13 +24,47 @@ def compute_score(
     ticket_updated = False
     crm_logged = False
     approval_with_amount = False
+    email_parsed_detected = False
     vendor_reply_time_ms: int | None = None
     crm_log_time_ms: int | None = None
-    price_pat = re.compile(
-        r"\b(?:price|total)\s*(?::|-)\s*(?:USD|US\$|\$)?\s*([0-9][0-9,]*(?:\.[0-9]{2})?)",
-        re.I,
-    )
-    eta_pat = re.compile(r"\beta\s*(?::|-)\s*([^\n]+)", re.I)
+
+    def _approval_signal(text: str) -> bool:
+        lowered = (text or "").lower()
+        return any(token in lowered for token in ("approve", "approved", "approval"))
+
+    def _mail_quote_signal(text: str) -> bool:
+        return _has_amount(text) and _has_eta(text)
+
+    def _extract_texts(payload: object) -> list[str]:
+        if isinstance(payload, str):
+            return [payload]
+        if isinstance(payload, list):
+            out: list[str] = []
+            for item in payload:
+                out.extend(_extract_texts(item))
+            return out
+        if isinstance(payload, dict):
+            out = []
+            for key in (
+                "body_text",
+                "body",
+                "text",
+                "excerpt",
+                "note",
+                "subj",
+                "subject",
+            ):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    out.append(value)
+            for key in ("result", "rows", "items", "messages", "value", "payload"):
+                if key in payload:
+                    out.extend(_extract_texts(payload.get(key)))
+            headers = payload.get("headers")
+            if isinstance(headers, dict):
+                out.extend(_extract_texts(headers))
+            return out
+        return []
 
     def _add_policy(
         code: str,
@@ -75,10 +109,9 @@ def compute_score(
                 )
             if tool == "slack.send_message":
                 text = str(args.get("text", ""))
-                lowered = text.lower()
-                if "approve" in lowered and _has_amount(text):
+                if _approval_signal(text) and _has_amount(text):
                     approval_with_amount = True
-                if "approve" in text.lower() and not _has_amount(text):
+                if _approval_signal(text) and not _has_amount(text):
                     _add_policy(
                         "slack.approval_missing_amount",
                         "Approval message lacks budget amount",
@@ -189,19 +222,24 @@ def compute_score(
                     time_ms=call_time,
                     metadata={},
                 )
+            if tool in {"mail.open", "mail.list"}:
+                for text in _extract_texts(rec.get("response", {})):
+                    if _mail_quote_signal(text):
+                        email_parsed_detected = True
+                        if vendor_reply_time_ms is None:
+                            vendor_reply_time_ms = call_time
+                        break
         elif rec.get("type") == "event":
             if rec.get("target") == "slack":
                 slack_events.append(rec)
             if rec.get("target") == "mail":
                 mail_events.append(rec)
-                body = rec.get("payload", {}).get("body_text", "")
-                if (
-                    vendor_reply_time_ms is None
-                    and body
-                    and price_pat.search(body)
-                    and eta_pat.search(body)
-                ):
-                    vendor_reply_time_ms = int(rec.get("time_ms", 0))
+                for text in _extract_texts(rec.get("payload", {})):
+                    if _mail_quote_signal(text):
+                        email_parsed_detected = True
+                        if vendor_reply_time_ms is None:
+                            vendor_reply_time_ms = int(rec.get("time_ms", 0))
+                        break
 
     subgoals = {
         "citations": 0,
@@ -227,11 +265,8 @@ def compute_score(
     if approval_with_amount:
         subgoals["approval_with_amount"] = 1
 
-    for e in mail_events:
-        body = e.get("payload", {}).get("body_text", "")
-        if body and price_pat.search(body) and eta_pat.search(body):
-            subgoals["email_parsed"] = 1
-            break
+    if email_parsed_detected:
+        subgoals["email_parsed"] = 1
     if doc_logged:
         subgoals["doc_logged"] = 1
     if ticket_updated:
@@ -324,9 +359,9 @@ def _has_amount(text: str) -> bool:
 _ETA_PATTERN = re.compile(
     r"""
     (?:
-        \beta[:\s-]*(?:within\s*)?\d+\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
-      | \bdelivery[:\s-]*(?:within\s*)?\d+\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
-      | \barriv(?:e|al)\b[:\s-]*(?:within\s*)?\d+\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
+        \beta[:\s-]*(?:within\s*|approx\.?\s*|about\s*)?\d+(?:\s*-\s*\d+)?\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
+      | \bdelivery[:\s-]*(?:within\s*|approx\.?\s*|about\s*)?\d+(?:\s*-\s*\d+)?\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
+      | \barriv(?:e|al)\b[:\s-]*(?:within\s*|approx\.?\s*|about\s*)?\d+(?:\s*-\s*\d+)?\s*(?:business\s*)?(?:day|days|hour|hours|week|weeks)\b
     )
     """,
     re.IGNORECASE | re.VERBOSE,

@@ -100,3 +100,23 @@ def test_score_other_subgoals_independent_of_success(tmp_path: Path):
     assert data["subgoals"]["email_sent"] == 1
     assert data["subgoals"]["email_parsed"] == 0
     assert data["success"] is False
+
+
+def test_score_parses_vendor_quote_from_mail_open_call_response(tmp_path: Path):
+    art = tmp_path / "mail_open_response"
+    records = [
+        {
+            "type": "call",
+            "time_ms": 8000,
+            "tool": "mail.open",
+            "args": {"id": "m2"},
+            "response": {
+                "headers": {"Subject": "Re: Quote request"},
+                "body_text": "Quote $3199, ETA 5 business days",
+            },
+        }
+    ]
+    write_trace(art, records)
+    data = run_score(art)
+    assert data["subgoals"]["email_parsed"] == 1
+    assert data["success"] is True
