@@ -2,20 +2,29 @@
 set -euo pipefail
 
 REPO_ROOT="${1:-$(pwd)}"
-TMP_DIR="$(mktemp -d)"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+
+TMP_DIR=""
 cleanup() {
-  rm -rf "${TMP_DIR}"
+  if [ -n "${TMP_DIR}" ]; then
+    rm -rf "${TMP_DIR}"
+  fi
 }
 trap cleanup EXIT
 
-python3.11 -m venv "${TMP_DIR}/venv"
-source "${TMP_DIR}/venv/bin/activate"
-python -m pip install --upgrade pip setuptools wheel >/dev/null
+# In CI we already bootstrap .venv during `make setup`; reuse it for speed/stability.
+# Local fallback creates an isolated venv when .venv is not present.
+if [ ! -x "${PYTHON_BIN}" ]; then
+  TMP_DIR="$(mktemp -d)"
+  python3.11 -m venv "${TMP_DIR}/venv"
+  PYTHON_BIN="${TMP_DIR}/venv/bin/python"
+fi
 
-# Match external consumer behavior: install from a git URL (local file remote here).
-python -m pip install "git+file://${REPO_ROOT}" >/dev/null
+"${PYTHON_BIN}" -m pip install --upgrade pip setuptools wheel >/dev/null
+# Validate git dependency install path while avoiding redundant dependency resolution.
+"${PYTHON_BIN}" -m pip install --force-reinstall --no-deps "git+file://${REPO_ROOT}" >/dev/null
 
-python - <<'PY'
+"${PYTHON_BIN}" - <<'PY'
 from vei.sdk import create_session, get_scenario_manifest
 
 manifest = get_scenario_manifest("multi_channel")
