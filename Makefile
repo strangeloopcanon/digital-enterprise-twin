@@ -50,9 +50,10 @@ llm-live: $(SETUP_STAMP)
 	else \
 		ART="$${VEI_LLM_ARTIFACTS_DIR:-_vei_out/llm_live/latest}"; \
 		mkdir -p "$$ART"; \
+		rm -f "$$ART/trace.jsonl" "$$ART/score.json" "$$ART/transcript.json" "$$ART/llm_transcript.jsonl" "$$ART/connector_receipts.jsonl"; \
 		. $(VENV)/bin/activate && \
 				VEI_SCENARIO=$${VEI_SCENARIO:-multi_channel} \
-				vei-llm-test --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-12} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-email} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Baseline procurement workflow with identity checks.}" && \
+				vei-llm-test --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-18} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-full} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Run full procurement workflow: cite source, post Slack approval with budget amount, email vendor and parse price+ETA reply, log quote in Docs, update ticket, and log CRM activity.}" && \
 				$(VENV_BIN)/python -c 'import json,sys;from pathlib import Path;art=Path(sys.argv[1]);score=json.loads((art/"score.json").read_text(encoding="utf-8"));trace=art/"trace.jsonl";records=[json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines() if line.strip()] if trace.exists() else [];times=[int(r.get("time_ms",0)) for r in records if r.get("type")=="call"];lat=[max(0,b-a) for a,b in zip(times,times[1:])];p95=sorted(lat)[int(0.95*(len(lat)-1))] if lat else 0;passed=1 if bool(score.get("success")) else 0;failed=0 if passed else 1;actions=int(score.get("costs",{}).get("actions",len(times)));print(f"llm-live metrics: pass={passed} fail={failed} cost_usd=unknown p95_latency_ms={p95} actions={actions}")' "$$ART"; \
 	fi
 

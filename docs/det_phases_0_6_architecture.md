@@ -111,3 +111,14 @@ Use `vei-det`:
 - `run-workflow` to execute and validate deterministic runs
 - `generate-corpus` for large-scale scenario generation
 - `filter-corpus` for dedupe + realism + runnability filtering
+
+## External Embedding (SDK)
+
+For third-party embedding, use the stable SDK facade:
+
+- `vei.sdk.create_session` / `vei.sdk.EnterpriseSession`
+- `vei.sdk.compile_workflow_spec`, `vei.sdk.validate_workflow_spec`, `vei.sdk.run_workflow_spec`
+- `vei.sdk.generate_enterprise_corpus`, `vei.sdk.filter_enterprise_corpus`
+
+The session API exposes deterministic tool execution and allows custom provider
+registration through `register_tool_provider(...)`.
