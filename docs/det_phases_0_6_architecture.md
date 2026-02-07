@@ -117,8 +117,10 @@ Use `vei-det`:
 For third-party embedding, use the stable SDK facade:
 
 - `vei.sdk.create_session` / `vei.sdk.EnterpriseSession`
+- `vei.sdk.SessionHook` + `EnterpriseSession.register_hook(...)` for before/after tool-call instrumentation
 - `vei.sdk.compile_workflow_spec`, `vei.sdk.validate_workflow_spec`, `vei.sdk.run_workflow_spec`
 - `vei.sdk.generate_enterprise_corpus`, `vei.sdk.filter_enterprise_corpus`
+- `vei.sdk.list_scenario_manifest`, `vei.sdk.get_scenario_manifest` for scenario-pack discovery
 
 The session API exposes deterministic tool execution and allows custom provider
 registration through `register_tool_provider(...)`.

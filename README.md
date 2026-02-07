@@ -320,6 +320,15 @@ make all          # check → test → llm-live → deps-audit
 
 Set `VEI_LLM_LIVE_BYPASS=1` when running in environments without LLM credentials; otherwise provide provider keys before invoking `make llm-live` or `make all`.
 
+### Contribution Note: `bd` repo rename mismatch
+If you renamed/forked the repository path and see a `bd` daemon repo-id mismatch, fix it once:
+```bash
+bd --no-daemon migrate --update-repo-id
+bd --no-daemon sync --flush-only
+bd daemon restart
+```
+This keeps local issue tracking healthy without changing runtime behavior.
+
 ## Library Embedding (SDK)
 You can embed VEI directly as a local Python dependency; PyPI publishing is optional.
 
@@ -349,9 +358,35 @@ result = session.call_tool(
 )
 ```
 
+SDK hooks for telemetry/integration:
+```python
+from vei.sdk import SessionHook, create_session
+
+class TraceHook(SessionHook):
+    def before_call(self, tool: str, args: dict) -> None:
+        print("before", tool, args)
+
+    def after_call(self, tool: str, args: dict, result: dict) -> None:
+        print("after", tool, sorted(result.keys()))
+
+session = create_session(seed=42042, scenario_name="multi_channel")
+session.register_hook(TraceHook())
+session.call_tool("browser.read", {})
+```
+
+Scenario pack manifest helpers:
+- `list_scenario_manifest()` returns typed metadata for all built-in scenarios.
+- `get_scenario_manifest(name)` returns one scenario manifest (tool families, seeded asset counts, expected step range when declared).
+
 Workflow + corpus helpers are also exposed from `vei.sdk`:
 - `compile_workflow_spec`, `validate_workflow_spec`, `run_workflow_spec`
 - `generate_enterprise_corpus`, `filter_enterprise_corpus`
+
+Reference script:
+- `examples/sdk_playground_min.py`
+
+SDK stability contract:
+- `docs/SDK_ALPHA_CONTRACT.md`
 
 ## Configuration Cheatsheet
 - `VEI_ARTIFACTS_DIR` — where traces, transcripts, and scores are saved (set this for every run).

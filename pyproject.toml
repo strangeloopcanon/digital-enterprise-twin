@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vei"
-version = "0.1.0"
+version = "0.2.0a1"
 description = "Digital Enterprise Twin (VEI) — MCP-native synthetic Slack/Mail/Browser world"
 readme = "README.md"
 requires-python = ">=3.11"

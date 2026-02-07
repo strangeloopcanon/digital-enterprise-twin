@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Optional, Protocol
 
 from vei.corpus.api import CorpusBundle, GeneratedWorkflowSpec, generate_corpus
 from vei.quality.api import QualityFilterReport, filter_workflow_corpus
@@ -10,7 +10,12 @@ from vei.scenario_engine.api import compile_workflow
 from vei.scenario_engine.compiler import CompiledWorkflow
 from vei.scenario_runner.api import run_workflow, validate_workflow
 from vei.scenario_runner.models import ScenarioRunResult, ValidationReport
-from vei.world.api import get_catalog_scenario
+from vei.world.api import (
+    get_catalog_scenario,
+    get_catalog_scenario_manifest,
+    list_catalog_scenario_manifest,
+)
+from vei.world.manifest import ScenarioManifest
 
 
 @dataclass(frozen=True)
@@ -20,6 +25,16 @@ class SessionConfig:
     connector_mode: str = "sim"
     scenario_name: str = "multi_channel"
     scenario: Any | None = None
+
+
+class SessionHook(Protocol):
+    """Optional callback hooks for SDK embedding telemetry and control."""
+
+    def before_call(self, tool: str, args: Dict[str, Any]) -> None: ...
+
+    def after_call(
+        self, tool: str, args: Dict[str, Any], result: Dict[str, Any]
+    ) -> None: ...
 
 
 class EnterpriseSession:
@@ -36,6 +51,7 @@ class EnterpriseSession:
             scenario=scenario_obj,
             connector_mode=config.connector_mode,
         )
+        self._hooks: list[SessionHook] = []
 
     @property
     def router(self) -> RouterAPI:
@@ -47,18 +63,39 @@ class EnterpriseSession:
     def call_tool(
         self, tool: str, args: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        return self._router.call_and_step(tool, dict(args or {}))
+        payload = dict(args or {})
+        self._run_before_hooks(tool, payload)
+        result = self._router.call_and_step(tool, payload)
+        self._run_after_hooks(tool, payload, result)
+        return result
 
     def act_and_observe(
         self, tool: str, args: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        return self._router.act_and_observe(tool, dict(args or {}))
+        payload = dict(args or {})
+        self._run_before_hooks(tool, payload)
+        result = self._router.act_and_observe(tool, payload)
+        self._run_after_hooks(tool, payload, result)
+        return result
 
     def pending(self) -> Dict[str, int]:
         return self._router.pending()
 
     def register_tool_provider(self, provider: RouterToolProvider) -> None:
         self._router.register_tool_provider(provider)
+
+    def register_hook(self, hook: SessionHook) -> None:
+        self._hooks.append(hook)
+
+    def _run_before_hooks(self, tool: str, args: Dict[str, Any]) -> None:
+        for hook in self._hooks:
+            hook.before_call(tool, dict(args))
+
+    def _run_after_hooks(
+        self, tool: str, args: Dict[str, Any], result: Dict[str, Any]
+    ) -> None:
+        for hook in self._hooks:
+            hook.after_call(tool, dict(args), dict(result))
 
 
 def create_session(
@@ -133,3 +170,11 @@ def filter_enterprise_corpus(
         for workflow in bundle.workflows
     ]
     return filter_workflow_corpus(workflows, realism_threshold=realism_threshold)
+
+
+def get_scenario_manifest(name: str) -> ScenarioManifest:
+    return get_catalog_scenario_manifest(name)
+
+
+def list_scenario_manifest() -> list[ScenarioManifest]:
+    return list_catalog_scenario_manifest()
