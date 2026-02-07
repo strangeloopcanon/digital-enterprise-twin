@@ -44,9 +44,10 @@ Fully synthetic, MCP-native Slack/Mail/Browser world. A single MCP server expose
    - [Smoke Tests](#smoke-tests)
    - [Run the Demo](#run-the-demo)
    - [Testing](#testing)
-4. [Configuration Cheatsheet](#configuration-cheatsheet)
-5. [RL Environment & Offline Training](#rl-environment--offline-training)
-6. [Appendix](#appendix)
+4. [Library Embedding (SDK)](#library-embedding-sdk)
+5. [Configuration Cheatsheet](#configuration-cheatsheet)
+6. [RL Environment & Offline Training](#rl-environment--offline-training)
+7. [Appendix](#appendix)
    - [Deterministic Replay](#deterministic-replay)
    - [Artifacts & Scoring](#artifacts--scoring)
 
@@ -311,12 +312,45 @@ Use the contract-aligned Make targets to prepare, lint, and test the repo:
 make setup        # bootstrap .venv, install extras + tooling
 make check        # black/ruff/mypy/bandit/detect-secrets
 make test         # full pytest suite
-make llm-live     # runs vei-llm-test (needs OPENAI_API_KEY)
+make llm-live     # runs vei-llm-test in strict full-flow mode (needs OPENAI_API_KEY)
 make deps-audit   # pip-audit (advisory in baseline)
 make all          # check → test → llm-live → deps-audit
 ```
 
 Set `VEI_LLM_LIVE_BYPASS=1` when running in environments without LLM credentials; otherwise provide provider keys before invoking `make llm-live` or `make all`.
+
+## Library Embedding (SDK)
+You can embed VEI directly as a local Python dependency; PyPI publishing is optional.
+
+Install from local checkout:
+```bash
+pip install -e ".[llm,sse]"
+```
+
+Install from GitHub directly:
+```bash
+pip install "git+https://github.com/strangeloopcanon/digital-enterprise-twin.git@main"
+```
+
+Minimal SDK usage:
+```python
+from vei.sdk import create_session
+
+session = create_session(seed=42042, scenario_name="multi_channel", connector_mode="sim")
+obs = session.observe()
+result = session.call_tool(
+    "mail.compose",
+    {
+        "to": "sales@macrocompute.example",
+        "subj": "Quote request",
+        "body_text": "Please share quote and ETA.",
+    },
+)
+```
+
+Workflow + corpus helpers are also exposed from `vei.sdk`:
+- `compile_workflow_spec`, `validate_workflow_spec`, `run_workflow_spec`
+- `generate_enterprise_corpus`, `filter_enterprise_corpus`
 
 ## Configuration Cheatsheet
 - `VEI_ARTIFACTS_DIR` — where traces, transcripts, and scores are saved (set this for every run).

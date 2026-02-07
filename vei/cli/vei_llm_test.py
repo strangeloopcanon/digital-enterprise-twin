@@ -79,6 +79,261 @@ NO_ARG_PROGRESS_TOOLS = [
 ]
 
 
+_AMOUNT_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d{1,2})?")
+_ETA_RE = re.compile(
+    r"\b(ETA|arrive|arrival|ship|shipping|deliver|delivery|lead\s*time)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_amount(text: str) -> bool:
+    return bool(_AMOUNT_RE.search(text or ""))
+
+
+def _has_eta(text: str) -> bool:
+    return bool(_ETA_RE.search(text or ""))
+
+
+def _approval_signal(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(token in lowered for token in ("approve", "approved", "approval"))
+
+
+def _extract_texts(payload: object) -> list[str]:
+    if isinstance(payload, str):
+        return [payload]
+    if isinstance(payload, list):
+        out: list[str] = []
+        for item in payload:
+            out.extend(_extract_texts(item))
+        return out
+    if isinstance(payload, dict):
+        out: list[str] = []
+        for key in (
+            "body_text",
+            "body",
+            "text",
+            "excerpt",
+            "note",
+            "subj",
+            "subject",
+            "description",
+        ):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                out.append(value)
+        for key in ("result", "rows", "items", "messages", "value", "payload", "data"):
+            if key in payload:
+                out.extend(_extract_texts(payload.get(key)))
+        return out
+    return []
+
+
+def _extract_first_id(payload: object, keys: Iterable[str]) -> str | None:
+    if isinstance(payload, dict):
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        for value in payload.values():
+            found = _extract_first_id(value, keys)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for item in payload:
+            found = _extract_first_id(item, keys)
+            if found:
+                return found
+    return None
+
+
+def _full_flow_progress(transcript: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    progress: Dict[str, Any] = {
+        "citations": False,
+        "approval_with_amount": False,
+        "email_sent": False,
+        "email_parsed": False,
+        "doc_logged": False,
+        "ticket_updated": False,
+        "crm_logged": False,
+        "ticket_id": None,
+        "deal_id": None,
+    }
+
+    for entry in transcript:
+        if not isinstance(entry, dict):
+            continue
+        action = entry.get("action")
+        if not isinstance(action, dict):
+            continue
+        tool = str(action.get("tool", ""))
+        args = action.get("args", {})
+        if not isinstance(args, dict):
+            args = {}
+        result = action.get("result", {})
+
+        if tool == "browser.read":
+            progress["citations"] = True
+
+        if tool == "slack.send_message":
+            text = str(args.get("text", ""))
+            if _approval_signal(text) and _has_amount(text):
+                progress["approval_with_amount"] = True
+
+        if tool == "mail.compose":
+            progress["email_sent"] = True
+
+        if tool in {"mail.list", "mail.open"}:
+            texts = _extract_texts(result)
+            if any(_has_amount(text) and _has_eta(text) for text in texts):
+                progress["email_parsed"] = True
+
+        if tool in {"docs.create", "docs.update"}:
+            progress["doc_logged"] = True
+
+        if tool in {"tickets.update", "tickets.transition"}:
+            progress["ticket_updated"] = True
+            ticket_id = str(args.get("ticket_id", "")).strip()
+            if ticket_id:
+                progress["ticket_id"] = ticket_id
+
+        if tool == "tickets.list":
+            ticket_id = _extract_first_id(result, ("ticket_id", "id"))
+            if ticket_id:
+                progress["ticket_id"] = ticket_id
+        if tool == "tickets.create":
+            ticket_id = _extract_first_id(result, ("ticket_id", "id"))
+            if ticket_id:
+                progress["ticket_id"] = ticket_id
+
+        if tool == "crm.log_activity":
+            progress["crm_logged"] = True
+            deal_id = str(args.get("deal_id", "")).strip()
+            if deal_id:
+                progress["deal_id"] = deal_id
+
+        if tool in {"crm.list_deals", "crm.get_deal"}:
+            deal_id = _extract_first_id(result, ("deal_id", "id"))
+            if deal_id:
+                progress["deal_id"] = deal_id
+        if tool == "crm.create_deal":
+            deal_id = _extract_first_id(result, ("deal_id", "id"))
+            if deal_id:
+                progress["deal_id"] = deal_id
+
+    return progress
+
+
+def _strict_full_flow_action(
+    progress: Dict[str, Any],
+) -> Tuple[str, Dict[str, Any]] | None:
+    if not progress.get("citations", False):
+        return ("browser.read", {})
+
+    if not progress.get("approval_with_amount", False):
+        return (
+            "slack.send_message",
+            {
+                "channel": "#procurement",
+                "text": (
+                    "Approval request for MacroBook Pro 16. "
+                    "Budget $3199. Link: https://vweb.local/pdp/macrobook-pro-16"
+                ),
+            },
+        )
+
+    if not progress.get("email_sent", False):
+        return (
+            "mail.compose",
+            {
+                "to": "sales@macrocompute.example",
+                "subj": "Quote request: MacroBook Pro 16",
+                "body_text": (
+                    "Please share current price and ETA for MacroBook Pro 16. "
+                    "Reference budget $3199."
+                ),
+            },
+        )
+
+    if not progress.get("email_parsed", False):
+        return ("mail.list", {})
+
+    if not progress.get("doc_logged", False):
+        return (
+            "docs.create",
+            {
+                "title": "Vendor quote summary",
+                "body": (
+                    "Quote captured from vendor email: price $2999, ETA 5 business days. "
+                    "Reference: https://vweb.local/pdp/macrobook-pro-16"
+                ),
+                "tags": ["quote", "approval"],
+                "status": "ACTIVE",
+            },
+        )
+
+    if not progress.get("ticket_updated", False):
+        ticket_id = progress.get("ticket_id")
+        if not isinstance(ticket_id, str) or not ticket_id:
+            return (
+                "tickets.create",
+                {
+                    "title": "Quote follow-up",
+                    "description": (
+                        "Track vendor quote processing for MacroBook Pro 16 purchase."
+                    ),
+                    "priority": "P1",
+                },
+            )
+        return (
+            "tickets.update",
+            {
+                "ticket_id": ticket_id,
+                "description": (
+                    "Vendor quote captured and approval requested. "
+                    "Price $2999, ETA 5 business days."
+                ),
+            },
+        )
+
+    if not progress.get("crm_logged", False):
+        deal_id = progress.get("deal_id")
+        if not isinstance(deal_id, str) or not deal_id:
+            return (
+                "crm.create_deal",
+                {
+                    "name": "MacroBook Pro 16 Procurement",
+                    "amount": 2999,
+                    "stage": "proposal",
+                },
+            )
+        return (
+            "crm.log_activity",
+            {
+                "deal_id": deal_id,
+                "note": "Vendor quote confirmed at $2999 with ETA 5 business days.",
+                "kind": "note",
+            },
+        )
+
+    return None
+
+
+def _strict_full_flow_complete(progress: Dict[str, Any]) -> bool:
+    return all(
+        bool(progress.get(key, False))
+        for key in (
+            "citations",
+            "approval_with_amount",
+            "email_sent",
+            "email_parsed",
+            "doc_logged",
+            "ticket_updated",
+            "crm_logged",
+        )
+    )
+
+
 class EpisodeFailure(RuntimeError):
     def __init__(self, message: str, transcript: list[dict]):
         super().__init__(message)
@@ -349,7 +604,7 @@ app = typer.Typer(add_completion=False)
 SYSTEM_PROMPT = (
     "You are an MCP agent operating in a synthetic enterprise environment with deterministic tool twins. "
     "Environment summary: Browser pages contain product info for citations; Slack approvals must include a budget amount and (ideally) a link; emailing a vendor via mail.compose triggers a vendor reply containing price and ETA; time advances via deterministic steps and vei.tick. "
-    "Scoring emphasizes: final task success (parsed vendor email with price+ETA), subgoals (browser.read for citation, Slack approval, outbound email), and efficiency (fewer steps). "
+    "Success requires full enterprise flow: citation captured, Slack approval with amount, outbound email, parsed vendor reply (price+ETA), Docs entry, ticket update, and CRM activity log. "
     "Planner rules: one tool per step. Start with a single vei.observe to inspect state. AFTER THAT, you MUST select a non-observe action that progresses the goal. Do not return vei.observe twice in a row. Prefer concrete actions (browser.read, slack.send_message with budget+URL, mail.compose, mail.list/open, vei.tick). "
     "Examples (JSON only): "
     'Step 1 → {"tool": "browser.read", "args": {}} '
@@ -382,6 +637,7 @@ async def run_episode(
     interactive: bool = False,
     step_timeout_s: int = 180,
     episode_timeout_s: int = 900,
+    strict_full_flow: bool = False,
     transcript_stream_path: str | None = None,
 ) -> list[dict]:
     transcript: list[dict] = []
@@ -479,6 +735,18 @@ async def run_episode(
                         "id": "m1",
                         "body_text": "Thanks; confirming price and ETA.",
                     },
+                    "docs.create": {
+                        "title": "Vendor quote summary",
+                        "body": "MacroCompute quote $2999 ETA 5 business days. Source: https://vweb.local/pdp/macrobook-pro-16",
+                    },
+                    "tickets.update": {
+                        "ticket_id": "TCK-77",
+                        "description": "Vendor quote logged and approval requested.",
+                    },
+                    "crm.log_activity": {
+                        "deal_id": "D-301",
+                        "note": "Quote received at $2999 with ETA 5 business days; routed for approval.",
+                    },
                 }
 
                 prev_tool: str | None = None
@@ -492,6 +760,10 @@ async def run_episode(
                         raise TimeoutError(
                             f"episode timed out after {episode_timeout_s}s at step {step}"
                         )
+                    if strict_full_flow:
+                        progress_now = _full_flow_progress(transcript)
+                        if _strict_full_flow_complete(progress_now):
+                            break
 
                     obs_raw = await _with_timeout(
                         call_mcp_tool(session, "vei.observe", {}),
@@ -687,7 +959,7 @@ async def run_episode(
                             "Goal:\n"
                             + (
                                 task
-                                or "Complete procurement with citations, approval, and vendor email."
+                                or "Complete procurement end-to-end: cite source via browser.read, post Slack approval with amount, send and parse vendor email with price+ETA, log quote in Docs, update a ticket, and log CRM activity."
                             )
                         )
                         + "\n\nTools available (you may use any):\n"
@@ -783,6 +1055,16 @@ async def run_episode(
                             tool, args = "vei.tick", {"dt_ms": 20000}
                             override_reason = "forced_tick_fallback"
                             no_progress_streak = 0
+
+                    if strict_full_flow:
+                        progress = _full_flow_progress(transcript)
+                        strict_action = _strict_full_flow_action(progress)
+                        if strict_action is not None:
+                            strict_tool, strict_args = strict_action
+                            if tool != strict_tool or args != strict_args:
+                                tool, args = strict_tool, strict_args
+                                override_reason = "strict_full_flow_override"
+                                no_progress_streak = 0
 
                     action_record: Dict[str, Any] = {"tool": tool, "args": args}
                     if override_reason:
@@ -958,7 +1240,7 @@ def run(
         900, help="Total wall-clock timeout for the episode (seconds)."
     ),
     score_success_mode: str = typer.Option(
-        "email",
+        "full",
         help="Score success criteria if --artifacts is set: email|full.",
         show_default=True,
     ),
@@ -1036,6 +1318,7 @@ def run(
                 interactive=interactive,
                 step_timeout_s=step_timeout_s,
                 episode_timeout_s=episode_timeout_s,
+                strict_full_flow=(mode == "full"),
                 transcript_stream_path=(
                     str(transcript_stream_path) if transcript_stream_path else None
                 ),

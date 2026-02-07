@@ -1,12 +1,25 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol, Sequence
 
 from vei.world.scenario import Scenario
 
 
 class ObservationLike(Protocol):
     def model_dump(self) -> Dict[str, Any]: ...
+
+
+class RouterToolSpecLike(Protocol):
+    name: str
+    description: str
+
+
+class RouterToolProvider(Protocol):
+    def specs(self) -> Sequence[RouterToolSpecLike]: ...
+
+    def handles(self, tool: str) -> bool: ...
+
+    def call(self, tool: str, args: Dict[str, Any]) -> Any: ...
 
 
 class RouterAPI(Protocol):
@@ -20,6 +33,8 @@ class RouterAPI(Protocol):
     def act_and_observe(self, tool: str, args: Dict[str, Any]) -> Dict[str, Any]: ...
 
     def pending(self) -> Dict[str, int]: ...
+
+    def register_tool_provider(self, provider: RouterToolProvider) -> None: ...
 
 
 def create_router(
