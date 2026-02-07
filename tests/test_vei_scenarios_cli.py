@@ -33,3 +33,22 @@ def test_dump_existing_scenario() -> None:
     assert result.exit_code == 0, result.output
     data = json.loads(result.stdout)
     assert data["budget_cap_usd"] == 3500
+
+
+def test_manifest_lists_entries() -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(scenarios_app, ["manifest"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert isinstance(data, list)
+    assert any(item["name"] == "multi_channel" for item in data)
+
+
+def test_manifest_for_named_scenario() -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(scenarios_app, ["manifest", "--name", "identity_access"])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["name"] == "identity_access"
+    assert "okta" in data["tool_families"]
+    assert "servicedesk" in data["tool_families"]

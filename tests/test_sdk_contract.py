@@ -5,9 +5,12 @@ from typing import Any, Dict, Sequence
 from vei.router.tool_providers import PrefixToolProvider
 from vei.router.tool_registry import ToolSpec
 from vei.sdk import (
+    SessionHook,
     create_session,
     filter_enterprise_corpus,
     generate_enterprise_corpus,
+    get_scenario_manifest,
+    list_scenario_manifest,
     run_workflow_spec,
     validate_workflow_spec,
 )
@@ -30,6 +33,20 @@ class _EchoProvider(PrefixToolProvider):
         if tool == "ext.echo":
             return {"ok": True, "payload": dict(args)}
         raise RuntimeError(f"unsupported tool for _EchoProvider: {tool}")
+
+
+class _CaptureHook(SessionHook):
+    def __init__(self) -> None:
+        self.before_calls: list[tuple[str, Dict[str, Any]]] = []
+        self.after_calls: list[tuple[str, Dict[str, Any]]] = []
+
+    def before_call(self, tool: str, args: Dict[str, Any]) -> None:
+        self.before_calls.append((tool, dict(args)))
+
+    def after_call(
+        self, tool: str, args: Dict[str, Any], result: Dict[str, Any]
+    ) -> None:
+        self.after_calls.append((tool, dict(result)))
 
 
 def _workflow_spec() -> Dict[str, Any]:
@@ -85,6 +102,20 @@ def test_sdk_session_supports_custom_tool_provider_registration() -> None:
     assert result["payload"]["message"] == "hello"
 
 
+def test_sdk_session_supports_call_hooks() -> None:
+    session = create_session(seed=42042, scenario_name="multi_channel")
+    hook = _CaptureHook()
+    session.register_hook(hook)
+
+    _ = session.call_tool("browser.read", {})
+
+    assert len(hook.before_calls) == 1
+    assert hook.before_calls[0][0] == "browser.read"
+    assert len(hook.after_calls) == 1
+    assert hook.after_calls[0][0] == "browser.read"
+    assert "url" in hook.after_calls[0][1]
+
+
 def test_sdk_workflow_helpers_compile_validate_and_run() -> None:
     spec = _workflow_spec()
     validation = validate_workflow_spec(spec, seed=7)
@@ -119,3 +150,18 @@ def test_sdk_corpus_helpers_generate_and_filter() -> None:
 
     assert len(bundle.workflows) == 6
     assert len(report.accepted) + len(report.rejected) == len(bundle.workflows)
+
+
+def test_sdk_scenario_manifest_helpers() -> None:
+    manifest = get_scenario_manifest("multi_channel")
+    assert manifest.name == "multi_channel"
+    assert "slack" in manifest.tool_families
+    assert "mail" in manifest.tool_families
+    assert "docs" in manifest.tool_families
+    assert "tickets" in manifest.tool_families
+    assert "okta" in manifest.tool_families
+    assert "servicedesk" in manifest.tool_families
+
+    all_entries = list_scenario_manifest()
+    assert all_entries
+    assert any(entry.name == "multi_channel" for entry in all_entries)
