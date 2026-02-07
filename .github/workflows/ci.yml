@@ -23,7 +23,7 @@ jobs:
         run: make setup
 
       - name: Git Dependency Smoke
-        run: ./tools/git_dependency_smoke.sh "$GITHUB_WORKSPACE"
+        run: bash ./tools/git_dependency_smoke.sh "$GITHUB_WORKSPACE"
 
       - name: Check
         run: make check
