@@ -83,9 +83,10 @@ Agent ──MCP──► VEI Router (this repo)
 - **Artifacts**: `trace.jsonl`, `transcript.json`, and `score.json` land in the artifacts directory. The router auto-starts over stdio; no manual server step required.
 - **Troubleshooting**: If the run stalls waiting for email replies, advance time with `vei.tick {dt_ms:15000}` or increase `--max-steps`. Missing actions? inspect the transcript and `score.json["policy_findings"]`.
 
-### Latest Multi-Provider Snapshot
+### Historical Multi-Provider Snapshot (Oct 2025)
 
-Five providers attempted the seeded `VEI_SCENARIO=multi_channel` workflow (`_vei_out/datasets/multi_channel_seed42042.json`, cap 40 tool calls). None cleared every enterprise subgoal; use this as the current regression baseline.
+The table below is a pinned historical run for comparison (captured in October 2025), not a live status board.
+Regenerate current numbers with `./run_multi_provider_eval.sh` before using this section as a release baseline.
 
 | Model | Success | Actions | Subgoals (cit/appr/appr_amt/email_sent/email_parsed/doc/ticket/crm) | Policy (warn/err) | Warning highlights |
 | --- | --- | ---: | --- | --- | --- |
