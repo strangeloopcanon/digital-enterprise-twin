@@ -1,5 +1,8 @@
 # VEI Realism Roadmap
 
+Historical note: this roadmap captures the original phase sequencing.
+The current repo has already landed the `WorldSession` kernel, benchmark-family benchmarks, release packaging, and the `vei-world` CLI alias; keep this document as directional context, not a precise status ledger.
+
 ## Guiding Principles
 - Grow scope slowly; gate every leap behind deterministic tests and docs.
 - Simulate external systems locally; no live SaaS calls in default flows.
@@ -25,7 +28,7 @@
 - Add pluggable tool registry describing side effects, permissions, synthetic cost/latency.
 - Keep connectors purely simulated; adapt existing tools to read/write via `StateStore`.
 - Update stdio router to emit signed receipts and reference state revisions.
-- ✅ In-progress: state + receipts now persist to `VEI_STATE_DIR`, inspectable via `vei-state`.
+- ✅ Landed: state + receipts now persist to `VEI_STATE_DIR` through the `WorldSession` kernel, inspectable via `vei-world` (`vei-state` kept as a compatibility alias).
 - Deliverable: deterministic scenario replay, basic receipts, new unit tests.
 
 ## Phase 2 — Light Drift & Background Activity (1 sprint)
@@ -54,6 +57,6 @@
 - Security sandboxing / micro-VMs — plan once state/monitoring solid.
 
 ## Immediate Next Steps
-1. Confirm baseline tests (`pytest -q`).
+1. Confirm baseline tests (`make test`).
 2. Introduce placeholder config entries and state-store scaffolding (no behaviour change).
 3. Add design docs/examples for tool registry APIs before refactoring.

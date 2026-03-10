@@ -15,7 +15,7 @@ import typer
 from dotenv import load_dotenv
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from vei.llm.providers import plan_once, auto_provider_for_model
+from vei.llm.providers import auto_provider_for_model, plan_once_with_usage
 from vei.score_core import compute_score
 
 
@@ -639,11 +639,19 @@ async def run_episode(
     episode_timeout_s: int = 900,
     strict_full_flow: bool = False,
     transcript_stream_path: str | None = None,
+    metrics_path: str | None = None,
 ) -> list[dict]:
     transcript: list[dict] = []
     history: list[str] = []
     stream_file: TextIO | None = None
     started_at = time.monotonic()
+    llm_latencies_ms: list[int] = []
+    llm_prompt_tokens = 0
+    llm_completion_tokens = 0
+    llm_total_tokens = 0
+    llm_calls = 0
+    llm_cost_complete = True
+    llm_cost_usd = 0.0
     try:
         if transcript_stream_path:
             stream_path = Path(transcript_stream_path)
@@ -990,8 +998,9 @@ async def run_episode(
                             visible_tools,
                         )
 
-                    plan = await _with_timeout(
-                        plan_once(
+                    plan_started_at = time.monotonic()
+                    plan_result = await _with_timeout(
+                        plan_once_with_usage(
                             provider=eff_provider,
                             model=model,
                             system=base_prompt,
@@ -1022,6 +1031,18 @@ async def run_episode(
                         step_timeout_s + 5,
                         "plan_once",
                     )
+                    llm_calls += 1
+                    llm_prompt_tokens += int(plan_result.usage.prompt_tokens)
+                    llm_completion_tokens += int(plan_result.usage.completion_tokens)
+                    llm_total_tokens += int(plan_result.usage.total_tokens)
+                    llm_latencies_ms.append(
+                        int((time.monotonic() - plan_started_at) * 1000)
+                    )
+                    if plan_result.usage.estimated_cost_usd is None:
+                        llm_cost_complete = False
+                    else:
+                        llm_cost_usd += float(plan_result.usage.estimated_cost_usd)
+                    plan = plan_result.plan
 
                     if eff_provider == "anthropic" and provider_alias_map:
                         tool_alias = plan.get("tool")
@@ -1160,6 +1181,35 @@ async def run_episode(
     finally:
         if stream_file is not None:
             stream_file.close()
+        if metrics_path:
+            ordered_latencies = sorted(llm_latencies_ms)
+            latency_p95_ms = (
+                ordered_latencies[int(0.95 * (len(ordered_latencies) - 1))]
+                if ordered_latencies
+                else 0
+            )
+            metrics_payload = {
+                "provider": auto_provider_for_model(
+                    model, (provider or "").strip().lower() or None
+                ),
+                "model": model,
+                "calls": llm_calls,
+                "prompt_tokens": llm_prompt_tokens,
+                "completion_tokens": llm_completion_tokens,
+                "total_tokens": llm_total_tokens,
+                "estimated_cost_usd": (
+                    round(llm_cost_usd, 8)
+                    if llm_calls > 0 and llm_cost_complete
+                    else None
+                ),
+                "latency_p95_ms": latency_p95_ms,
+                "latencies_ms": llm_latencies_ms,
+            }
+            metrics_file = Path(metrics_path)
+            metrics_file.parent.mkdir(parents=True, exist_ok=True)
+            metrics_file.write_text(
+                json.dumps(metrics_payload, indent=2), encoding="utf-8"
+            )
 
 
 def _ensure_sse_available(sse_url: str, autostart: bool) -> None:
@@ -1288,12 +1338,14 @@ def run(
     transcript_stream_path: Path | None = None
     transcript_json_path: Path | None = None
     score_json_path: Path | None = None
+    metrics_json_path: Path | None = None
     if artifacts:
         artifacts_dir = artifacts
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         transcript_stream_path = artifacts_dir / "llm_transcript.jsonl"
         transcript_json_path = artifacts_dir / "transcript.json"
         score_json_path = artifacts_dir / "score.json"
+        metrics_json_path = artifacts_dir / "llm_metrics.json"
 
     transcript: list[dict] = []
     run_error: str | None = None
@@ -1322,6 +1374,7 @@ def run(
                 transcript_stream_path=(
                     str(transcript_stream_path) if transcript_stream_path else None
                 ),
+                metrics_path=(str(metrics_json_path) if metrics_json_path else None),
             )
         )
     except EpisodeFailure as exc:
@@ -1374,6 +1427,18 @@ def run(
         "elapsed_ms": elapsed_ms,
         "success": score_obj.get("success") if score_obj else None,
     }
+    if metrics_json_path and metrics_json_path.exists():
+        metrics_payload = json.loads(metrics_json_path.read_text(encoding="utf-8"))
+        summary.update(
+            {
+                "llm_calls": metrics_payload.get("calls", 0),
+                "prompt_tokens": metrics_payload.get("prompt_tokens", 0),
+                "completion_tokens": metrics_payload.get("completion_tokens", 0),
+                "total_tokens": metrics_payload.get("total_tokens", 0),
+                "estimated_cost_usd": metrics_payload.get("estimated_cost_usd"),
+                "llm_latency_p95_ms": metrics_payload.get("latency_p95_ms", 0),
+            }
+        )
     typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
     if print_transcript:
         typer.echo(json.dumps(transcript, indent=2))

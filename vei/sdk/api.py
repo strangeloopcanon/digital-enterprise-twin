@@ -4,13 +4,29 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Optional, Protocol
 
 from vei.corpus.api import CorpusBundle, GeneratedWorkflowSpec, generate_corpus
+from vei.benchmark.api import (
+    BenchmarkFamilyManifest,
+    get_benchmark_family_manifest,
+    list_benchmark_family_manifest,
+)
 from vei.quality.api import QualityFilterReport, filter_workflow_corpus
-from vei.router.api import RouterAPI, RouterToolProvider, create_router
+from vei.release.api import (
+    BenchmarkReleaseResult,
+    DatasetReleaseResult,
+    NightlyReleaseResult,
+    build_release_version as _build_release_version,
+    export_dataset_release,
+    run_nightly_release,
+    snapshot_benchmark_release,
+)
+from vei.router.api import RouterAPI, RouterToolProvider
 from vei.scenario_engine.api import compile_workflow
 from vei.scenario_engine.compiler import CompiledWorkflow
 from vei.scenario_runner.api import run_workflow, validate_workflow
 from vei.scenario_runner.models import ScenarioRunResult, ValidationReport
 from vei.world.api import (
+    WorldSessionAPI,
+    create_world_session,
     get_catalog_scenario,
     get_catalog_scenario_manifest,
     list_catalog_scenario_manifest,
@@ -25,6 +41,7 @@ class SessionConfig:
     connector_mode: str = "sim"
     scenario_name: str = "multi_channel"
     scenario: Any | None = None
+    branch: str = "main"
 
 
 class SessionHook(Protocol):
@@ -45,27 +62,28 @@ class EnterpriseSession:
         scenario_obj = config.scenario
         if scenario_obj is None and config.scenario_name:
             scenario_obj = get_catalog_scenario(config.scenario_name)
-        self._router: RouterAPI = create_router(
+        self._world: WorldSessionAPI = create_world_session(
             seed=config.seed,
             artifacts_dir=config.artifacts_dir,
             scenario=scenario_obj,
             connector_mode=config.connector_mode,
+            branch=config.branch,
         )
         self._hooks: list[SessionHook] = []
 
     @property
     def router(self) -> RouterAPI:
-        return self._router
+        return self._world.router
 
     def observe(self, focus_hint: str | None = None) -> Dict[str, Any]:
-        return self._router.observe(focus_hint=focus_hint).model_dump()
+        return self._world.observe(focus_hint=focus_hint)
 
     def call_tool(
         self, tool: str, args: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         payload = dict(args or {})
         self._run_before_hooks(tool, payload)
-        result = self._router.call_and_step(tool, payload)
+        result = self._world.call_tool(tool, payload)
         self._run_after_hooks(tool, payload, result)
         return result
 
@@ -74,18 +92,22 @@ class EnterpriseSession:
     ) -> Dict[str, Any]:
         payload = dict(args or {})
         self._run_before_hooks(tool, payload)
-        result = self._router.act_and_observe(tool, payload)
+        result = self._world.act_and_observe(tool, payload)
         self._run_after_hooks(tool, payload, result)
         return result
 
     def pending(self) -> Dict[str, int]:
-        return self._router.pending()
+        return self._world.pending()
 
     def register_tool_provider(self, provider: RouterToolProvider) -> None:
-        self._router.register_tool_provider(provider)
+        self.router.register_tool_provider(provider)
 
     def register_hook(self, hook: SessionHook) -> None:
         self._hooks.append(hook)
+
+    @property
+    def world(self) -> WorldSessionAPI:
+        return self._world
 
     def _run_before_hooks(self, tool: str, args: Dict[str, Any]) -> None:
         for hook in self._hooks:
@@ -105,6 +127,7 @@ def create_session(
     connector_mode: str = "sim",
     scenario_name: str = "multi_channel",
     scenario: Any | None = None,
+    branch: str = "main",
 ) -> EnterpriseSession:
     return EnterpriseSession(
         SessionConfig(
@@ -113,6 +136,7 @@ def create_session(
             connector_mode=connector_mode,
             scenario_name=scenario_name,
             scenario=scenario,
+            branch=branch,
         )
     )
 
@@ -178,3 +202,84 @@ def get_scenario_manifest(name: str) -> ScenarioManifest:
 
 def list_scenario_manifest() -> list[ScenarioManifest]:
     return list_catalog_scenario_manifest()
+
+
+def get_benchmark_family_manifest_entry(name: str) -> BenchmarkFamilyManifest:
+    return get_benchmark_family_manifest(name)
+
+
+def list_benchmark_family_manifest_entries() -> list[BenchmarkFamilyManifest]:
+    return list_benchmark_family_manifest()
+
+
+def build_release_version(*, prefix: str | None = None) -> str:
+    return _build_release_version(prefix=prefix)
+
+
+def export_release_dataset(
+    *,
+    input_path: str,
+    release_root: str,
+    version: str,
+    label: str,
+    dataset_kind: str = "auto",
+) -> DatasetReleaseResult:
+    from pathlib import Path
+
+    return export_dataset_release(
+        input_path=Path(input_path),
+        release_root=Path(release_root),
+        version=version,
+        label=label,
+        dataset_kind=dataset_kind,  # type: ignore[arg-type]
+    )
+
+
+def export_release_benchmark(
+    *,
+    benchmark_dir: str,
+    release_root: str,
+    version: str,
+    label: str,
+) -> BenchmarkReleaseResult:
+    from pathlib import Path
+
+    return snapshot_benchmark_release(
+        benchmark_dir=Path(benchmark_dir),
+        release_root=Path(release_root),
+        version=version,
+        label=label,
+    )
+
+
+def run_release_nightly(
+    *,
+    release_root: str,
+    workspace_root: str,
+    version: str,
+    seed: int = 42042,
+    environment_count: int = 25,
+    scenarios_per_environment: int = 20,
+    realism_threshold: float = 0.55,
+    rollout_episodes: int = 3,
+    rollout_scenario: str = "multi_channel",
+    benchmark_scenarios: Iterable[str] | None = None,
+    llm_model: str | None = None,
+    llm_provider: str = "auto",
+) -> NightlyReleaseResult:
+    from pathlib import Path
+
+    return run_nightly_release(
+        release_root=Path(release_root),
+        workspace_root=Path(workspace_root),
+        version=version,
+        seed=seed,
+        environment_count=environment_count,
+        scenarios_per_environment=scenarios_per_environment,
+        realism_threshold=realism_threshold,
+        rollout_episodes=rollout_episodes,
+        rollout_scenario=rollout_scenario,
+        benchmark_scenarios=list(benchmark_scenarios or ["multi_channel"]),
+        llm_model=llm_model,
+        llm_provider=llm_provider,
+    )

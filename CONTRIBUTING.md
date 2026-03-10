@@ -18,12 +18,6 @@ make deps-audit
 
 ## `bd` issue tracking after repo rename/fork
 
-If `bd` reports a daemon repo-id mismatch, run:
+`bd` state lives in the local `.beads/` directory and should stay uncommitted.
 
-```bash
-bd --no-daemon migrate --update-repo-id
-bd --no-daemon sync --flush-only
-bd daemon restart
-```
-
-Then continue normal `bd` usage (`bd ready`, `bd update`, `bd close`).
+If `bd` reports repo-id drift after a rename or fork, use the current `bd` export/import workflow described by `bd help`; older `bd sync` and daemon commands are no longer valid in newer `bd` releases.

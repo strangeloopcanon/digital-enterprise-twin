@@ -4,7 +4,15 @@
 ![VEI Virtual Office](docs/assets/virtual_office.gif)
 <p align="center"><sub>Conceptual office view</sub></p>
 
-Digital Enterprise Twin is a deterministic, MCP-native virtual enterprise. It emulates enterprise software surfaces (Slack, Mail, Browser, Docs, Tickets, DB, ERP/CRM aliases, Okta-style identity, ServiceDesk) so agents can run realistic office workflows without touching live SaaS.
+Digital Enterprise Twin is a deterministic, MCP-native virtual enterprise. It emulates enterprise software surfaces (Slack, Mail, Browser, Docs, Tickets, DB, ERP/CRM aliases, Okta-style identity, ServiceDesk, Google Admin, SIEM, Datadog, PagerDuty, feature flags, HRIS, and Jira-style issue flows) so agents can run realistic office workflows without touching live SaaS.
+
+## License
+
+This repository is licensed under the Business Source License 1.1 in `LICENSE`.
+Current repository parameters:
+- Additional Use Grant: `None`
+- Change Date: `2030-03-10`
+- Change License: `GPL-2.0-or-later`
 
 ## Quick Start
 
@@ -36,19 +44,23 @@ vei-llm-test --model gpt-5 \
 
 - Deterministic simulator and replayable traces
 - Realistic multi-tool workflows (procurement, compliance, identity/access, incident ops)
+- Stable `WorldSession` kernel with snapshot, branch, restore, replay, inject, and event inspection APIs
 - Typed SDK for embedding in other Python projects
 - Scenario DSL + corpus generation/filtering pipeline
+- Reusable benchmark families for security containment, onboarding/migration, and revenue incident response
 - CLI and CI gates for quality and live checks
 
 ## Architecture
 ```text
 Agent ──MCP──► VEI Router
-                  ├─ slack.* / mail.* / browser.* / docs.* / tickets.* / db.*
-                  ├─ okta.* (identity twin)
-                  ├─ servicedesk.* (incident/request twin)
-                  └─ vei.* (observe/state/control)
-                           ▲
-                     Seeded Event Bus
+                  └─ transport + tool dispatch
+                            │
+                            ▼
+                      WorldSession Kernel
+                  ├─ unified world state
+                  ├─ snapshots / branch / replay / inject
+                  ├─ actor state + receipts
+                  └─ enterprise twins and control planes
 ```
 
 ## Use It As A Library (Git Dependency)
@@ -65,6 +77,16 @@ from vei.sdk import create_session
 session = create_session(seed=42042, scenario_name="multi_channel", connector_mode="sim")
 obs = session.observe()
 page = session.call_tool("browser.read", {})
+```
+
+Stable world-kernel API:
+```python
+from vei.world.api import create_world_session
+
+world = create_world_session(seed=42042, scenario_name="multi_channel")
+obs = world.observe()
+snapshot = world.snapshot("before-run")
+events = world.list_events()
 ```
 
 Hookable embedding (before/after tool calls):
@@ -86,6 +108,16 @@ session.call_tool("browser.read", {})
 Scenario manifest helpers:
 - `list_scenario_manifest()`
 - `get_scenario_manifest(name)`
+
+Benchmark family helpers:
+- `list_benchmark_family_manifest_entries()`
+- `get_benchmark_family_manifest_entry(name)`
+
+Release helpers:
+- `build_release_version()`
+- `export_release_dataset(...)`
+- `export_release_benchmark(...)`
+- `run_release_nightly(...)`
 
 Reference docs and examples:
 - `examples/sdk_playground_min.py`
@@ -110,10 +142,11 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
 
 ## Core CLI Surface
 
-- Runtime: `vei-chat`, `vei-llm-test`, `vei-smoke`, `vei-demo`, `vei-state`
+- Runtime: `vei-chat`, `vei-llm-test`, `vei-smoke`, `vei-demo`, `vei-world`, `vei-state` (compat alias)
+- Release/Ops: `vei-release dataset|benchmark|nightly`
 - Scenarios: `vei-scenarios list`, `vei-scenarios manifest`, `vei-scenarios dump`
 - DSL/corpus: `vei-det sample-workflow|compile-workflow|run-workflow|generate-corpus|filter-corpus`
-- Policy/eval: `vei-rollout`, `vei-train`, `vei-eval`, `vei-score`
+- Policy/eval: `vei-rollout`, `vei-train`, `vei-eval`, `vei-eval-frontier`, `vei-score`
 - Visualization: `vei-visualize replay|flow|dashboard|export`
 
 ## Built-in Software Twins
@@ -122,16 +155,13 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
 - Knowledge/Docs: Browser, Docs
 - Operations: Tickets, ServiceDesk (incidents/requests)
 - Identity: Okta-style users/groups/apps
+- Control planes: Google Admin, SIEM, Datadog, PagerDuty, feature flags
+- Business systems: HRIS, Jira-style issues
 - Data systems: DB + ERP/CRM twins (with alias packs)
 
 ## Contributor Notes
 
-If `bd` shows a repo-id mismatch after path/remote changes:
-```bash
-bd --no-daemon migrate --update-repo-id
-bd --no-daemon sync --flush-only
-bd daemon restart
-```
+`bd` state is local-only under `.beads/` and should stay out of Git. If you hit repo-id drift after a rename or fork, use the current `bd` CLI help and export/import flow rather than the older `bd sync` / daemon commands.
 
 ---
 
@@ -144,6 +174,63 @@ export VEI_ARTIFACTS_DIR=_vei_out/gpt5_llmtest
 VEI_SEED=42042 vei-llm-test --model gpt-5 --max-steps 32 \
   --task "Open product page, cite specs, post approval under $3200, email sales@macrocompute.example for a quote, wait for reply."
 vei-score --artifacts-dir _vei_out/gpt5_llmtest --success-mode full
+```
+
+### Unified Benchmark Runs
+Batch evaluation now runs through a shared benchmark pipeline that writes:
+- `aggregate_results.json` for `vei-report`
+- per-scenario `benchmark_result.json` with replay/snapshot diagnostics
+- `benchmark_summary.json` with batch totals
+- family-level dimension scores such as evidence preservation, blast radius, least privilege, oversharing avoidance, deadline compliance, comms correctness, and safe rollback
+
+```bash
+# Kernel-backed baseline benchmark
+vei-eval benchmark \
+  --runner scripted \
+  --scenario multi_channel \
+  --artifacts-root _vei_out/benchmark \
+  --run-id scripted_multi
+
+# Family-level benchmark using reusable enterprise capability buckets
+vei-eval benchmark \
+  --runner scripted \
+  --family security_containment \
+  --artifacts-root _vei_out/benchmark \
+  --run-id security_family
+
+# Frontier batch on one model
+vei-eval-frontier run \
+  --runner llm \
+  --model gpt-5 \
+  --scenario-set reasoning \
+  --artifacts-root _vei_out/frontier_eval
+```
+
+### Release Bundles
+Versioned release tooling now packages datasets and benchmark runs with manifests and checksums:
+
+```bash
+# Export a rollout dataset release
+vei-release dataset \
+  --input-path _vei_out/rollout.json \
+  --label rollout \
+  --version v20260310
+
+# Snapshot a benchmark run for archival/repro
+vei-release benchmark \
+  --benchmark-dir _vei_out/benchmark/scripted_multi \
+  --label scripted-benchmark \
+  --version v20260310
+
+# One-shot nightly bundle: corpus + rollout + scripted benchmark snapshot
+vei-release nightly \
+  --release-root _vei_out/releases \
+  --workspace-root _vei_out/nightly \
+  --version nightly-20260310 \
+  --environments 5 \
+  --scenarios-per-environment 5 \
+  --rollout-episodes 2 \
+  --benchmark-scenario multi_channel
 ```
 
 ### Historical Multi-Provider Snapshot (Oct 2025)
@@ -191,7 +278,7 @@ vei-det filter-corpus --corpus ./_vei_out/corpus/generated.json --output ./_vei_
 <summary><strong>Advanced: Dataset, RL, and Policy Evaluation</strong></summary>
 
 ```bash
-vei-rollout procurement --episodes 5 --seed 42042 --output ./_vei_out/rollout.json
+vei-rollout procurement --episodes 5 --seed 42042 --scenario multi_channel --output ./_vei_out/rollout.json
 vei-train bc --dataset ./_vei_out/rollout.json --output ./_vei_out/bc_policy.json
 vei-eval scripted --seed 42042 --artifacts ./_vei_out/eval_scripted
 vei-eval bc --model ./_vei_out/bc_policy.json --seed 42042 --artifacts ./_vei_out/eval_bc

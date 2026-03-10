@@ -8,51 +8,29 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from vei.world.scenarios import list_scenarios
+from vei.benchmark.api import (
+    FRONTIER_SCENARIO_SETS,
+    resolve_scenarios,
+    run_benchmark_batch,
+)
+from vei.benchmark.models import BenchmarkCaseSpec
 from vei.score_frontier import compute_frontier_score
+from vei.world.scenarios import list_scenarios
 
 app = typer.Typer(name="vei-eval-frontier", help="Run frontier model evaluations")
 
 
-FRONTIER_SCENARIO_SETS = {
-    "all_frontier": [
-        "f1_budget_reconciliation",
-        "f2_knowledge_qa",
-        "f3_vague_urgent_request",
-        "f4_contradictory_requirements",
-        "f5_vendor_comparison",
-        "f7_compliance_audit",
-        "f9_cascading_failure",
-        "f13_ethical_dilemma",
-        "f14_data_privacy",
-    ],
-    "reasoning": [
-        "f1_budget_reconciliation",
-        "f4_contradictory_requirements",
-    ],
-    "safety": [
-        "f13_ethical_dilemma",
-        "f14_data_privacy",
-    ],
-    "expertise": [
-        "f7_compliance_audit",
-        "f9_cascading_failure",
-    ],
-}
-
-
 @app.command(name="run")
 def run_frontier_eval(
-    model: str = typer.Option(..., help="Model name (e.g., gpt-5, claude-sonnet-4-5)"),
+    model: Optional[str] = typer.Option(
+        None, help="Model name (e.g., gpt-5, claude-sonnet-4-5)"
+    ),
     scenario: Optional[str] = typer.Option(
         None, help="Single scenario to run (e.g., f1_budget_reconciliation)"
     ),
@@ -62,6 +40,10 @@ def run_frontier_eval(
     provider: str = typer.Option(
         "auto", help="LLM provider: openai, anthropic, google, openrouter, auto"
     ),
+    runner: str = typer.Option("llm", help="Runner: llm|scripted|bc"),
+    bc_model: Optional[Path] = typer.Option(
+        None, exists=True, readable=True, help="BC policy path when runner=bc"
+    ),
     max_steps: int = typer.Option(80, help="Maximum steps per scenario"),
     artifacts_root: Path = typer.Option(
         Path("_vei_out/frontier_eval"), help="Root directory for artifacts"
@@ -70,171 +52,75 @@ def run_frontier_eval(
     use_llm_judge: bool = typer.Option(
         False, help="Use LLM-as-judge for communication quality scoring"
     ),
-    verbose: bool = typer.Option(False, help="Verbose output"),
+    task: Optional[str] = typer.Option(
+        None, help="Optional task prompt for llm runner"
+    ),
 ) -> None:
-    """Run frontier evaluation on specified scenarios.
+    normalized_runner = runner.strip().lower()
+    if normalized_runner not in {"llm", "scripted", "bc"}:
+        raise typer.BadParameter("runner must be llm, scripted, or bc")
+    if normalized_runner == "llm" and not model:
+        raise typer.BadParameter("llm runner requires --model")
+    if normalized_runner == "bc" and bc_model is None:
+        raise typer.BadParameter("bc runner requires --bc-model")
 
-    This command runs vei-llm-test for each scenario and computes multi-dimensional scores.
-    """
+    scenario_names = resolve_scenarios(
+        scenario_names=[scenario] if scenario else [],
+        scenario_set=scenario_set or "all_frontier",
+    )
 
-    # Determine which scenarios to run
-    scenarios_to_run = []
-
-    if scenario:
-        scenarios_to_run = [scenario]
-    elif scenario_set:
-        if scenario_set not in FRONTIER_SCENARIO_SETS:
-            typer.echo(f"❌ Unknown scenario set: {scenario_set}", err=True)
-            typer.echo(
-                f"Available sets: {', '.join(FRONTIER_SCENARIO_SETS.keys())}", err=True
-            )
-            raise typer.Exit(1)
-        scenarios_to_run = FRONTIER_SCENARIO_SETS[scenario_set]
-    else:
-        typer.echo("❌ Must specify either --scenario or --scenario-set", err=True)
-        raise typer.Exit(1)
-
-    # Validate scenarios exist
-    available_scenarios = list_scenarios()
-    for s in scenarios_to_run:
-        if s not in available_scenarios:
-            typer.echo(f"❌ Unknown scenario: {s}", err=True)
-            raise typer.Exit(1)
-
-    # Create artifacts root
-    artifacts_root.mkdir(parents=True, exist_ok=True)
-
-    # Generate run ID
-    run_id = f"{model.replace('/', '_')}_{int(time.time())}"
+    run_id = f"{(model or normalized_runner).replace('/', '_')}_{int(time.time())}"
     run_dir = artifacts_root / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
+    specs = [
+        BenchmarkCaseSpec(
+            runner=normalized_runner,  # type: ignore[arg-type]
+            scenario_name=scenario_name,
+            seed=seed,
+            artifacts_dir=run_dir / scenario_name,
+            branch=scenario_name,
+            frontier=True,
+            model=model,
+            provider=provider,
+            bc_model_path=bc_model,
+            task=task,
+            max_steps=max_steps,
+            use_llm_judge=use_llm_judge,
+        )
+        for scenario_name in scenario_names
+    ]
+    batch = run_benchmark_batch(specs, run_id=run_id, output_dir=run_dir)
 
-    typer.echo(f"🚀 Starting frontier evaluation: {len(scenarios_to_run)} scenarios")
-    typer.echo(f"   Model: {model}")
-    typer.echo(f"   Provider: {provider}")
-    typer.echo(f"   Artifacts: {run_dir}")
+    typer.echo(f"Starting frontier evaluation: {len(specs)} scenarios")
+    typer.echo(f"Runner: {normalized_runner}")
+    if model:
+        typer.echo(f"Model: {model}")
+    typer.echo(f"Artifacts: {run_dir}")
     typer.echo("")
 
-    # Run each scenario
-    results = []
+    for result in batch.results:
+        score = result.score
+        success_icon = "✅" if score.get("success") else "❌"
+        composite = float(score.get("composite_score", 0.0))
+        typer.echo(f"{result.spec.scenario_name}")
+        typer.echo(
+            f"  {success_icon} Composite Score: {composite:.3f} | Steps: {score.get('steps_taken', 0)} | Status: {result.status}"
+        )
+        if result.error:
+            typer.echo(f"  Error: {result.error}")
 
-    for idx, scenario_name in enumerate(scenarios_to_run, 1):
-        typer.echo(f"[{idx}/{len(scenarios_to_run)}] Running scenario: {scenario_name}")
-
-        scenario_dir = run_dir / scenario_name
-        scenario_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save scenario metadata
-        scenario_obj = available_scenarios[scenario_name]
-        metadata = getattr(scenario_obj, "metadata", {})
-        with open(scenario_dir / "scenario_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        # Run vei-llm-test
-        cmd = [
-            sys.executable,
-            "-m",
-            "vei.cli.vei_llm_test",
-            "--model",
-            model,
-            "--provider",
-            provider,
-            "--max-steps",
-            str(max_steps),
-            "--artifacts",
-            str(scenario_dir),
-        ]
-
-        # Set environment variable for scenario
-        env = os.environ.copy()
-        env["VEI_SCENARIO"] = scenario_name
-        env["VEI_SEED"] = str(seed)
-
-        if verbose:
-            typer.echo(f"   Command: {' '.join(cmd)}")
-
-        try:
-            result = subprocess.run(
-                cmd,
-                env=env,
-                capture_output=not verbose,
-                text=True,
-                timeout=600,  # 10 minute timeout per scenario
-            )
-
-            if result.returncode != 0 and not verbose:
-                typer.echo(f"   ⚠️  Non-zero exit code: {result.returncode}")
-                typer.echo(f"   stderr: {result.stderr[:500]}")
-
-        except subprocess.TimeoutExpired:
-            typer.echo("   ❌ Timeout after 10 minutes")
-            continue
-        except Exception as e:
-            typer.echo(f"   ❌ Error: {e}")
-            continue
-
-        # Compute frontier score
-        try:
-            score = compute_frontier_score(scenario_dir, use_llm_judge=use_llm_judge)
-
-            # Save score
-            with open(scenario_dir / "frontier_score.json", "w") as f:
-                json.dump(score, f, indent=2)
-
-            # Display summary
-            success_icon = "✅" if score.get("success") else "❌"
-            composite = score.get("composite_score", 0.0)
-            typer.echo(
-                f"   {success_icon} Composite Score: {composite:.3f} | Steps: {score.get('steps_taken', 0)}"
-            )
-
-            results.append(
-                {
-                    "scenario": scenario_name,
-                    "model": model,
-                    "provider": provider,
-                    "score": score,
-                }
-            )
-
-        except Exception as e:
-            typer.echo(f"   ❌ Scoring error: {e}")
-            results.append(
-                {
-                    "scenario": scenario_name,
-                    "model": model,
-                    "provider": provider,
-                    "score": {"success": False, "error": str(e)},
-                }
-            )
-
-        typer.echo("")
-
-    # Save aggregate results
-    aggregate_path = run_dir / "aggregate_results.json"
-    with open(aggregate_path, "w") as f:
-        json.dump(results, f, indent=2)
-
-    # Print summary
+    typer.echo("")
     typer.echo("=" * 70)
-    typer.echo(f"📊 Evaluation Complete: {run_id}")
+    typer.echo(f"Evaluation Complete: {run_id}")
     typer.echo("=" * 70)
-
-    success_count = sum(1 for r in results if r["score"].get("success"))
-    avg_composite = (
-        sum(r["score"].get("composite_score", 0.0) for r in results) / len(results)
-        if results
-        else 0.0
-    )
-
     typer.echo(
-        f"Success Rate: {success_count}/{len(results)} ({success_count/len(results)*100:.1f}%)"
+        f"Success Rate: {batch.summary.success_count}/{batch.summary.total_runs} ({batch.summary.success_rate*100:.1f}%)"
     )
-    typer.echo(f"Average Composite Score: {avg_composite:.3f}")
+    typer.echo(f"Average Composite Score: {batch.summary.average_composite_score:.3f}")
+    typer.echo(f"P95 Latency (trace): {batch.summary.p95_latency_ms} ms")
     typer.echo(f"\nResults saved to: {run_dir}")
-    typer.echo(f"Aggregate: {aggregate_path}")
+    typer.echo(f"Aggregate: {run_dir / 'aggregate_results.json'}")
     typer.echo("")
-    typer.echo("💡 Generate detailed report with: vei-report --root " + str(run_dir))
+    typer.echo("Generate detailed report with: vei-report --root " + str(run_dir))
 
 
 @app.command(name="list")
@@ -243,7 +129,7 @@ def list_frontier_scenarios() -> None:
     scenarios = list_scenarios()
     frontier_scenarios = {k: v for k, v in scenarios.items() if k.startswith("f")}
 
-    typer.echo("🎯 Frontier Evaluation Scenarios")
+    typer.echo("Frontier Evaluation Scenarios")
     typer.echo("=" * 70)
 
     for name, scenario in sorted(frontier_scenarios.items()):
@@ -276,29 +162,28 @@ def score_existing_run(
     """Score an existing run with frontier scoring system."""
 
     if not artifacts_dir.exists():
-        typer.echo(f"❌ Directory not found: {artifacts_dir}", err=True)
+        typer.echo(f"Directory not found: {artifacts_dir}", err=True)
         raise typer.Exit(1)
 
     trace_path = artifacts_dir / "trace.jsonl"
     if not trace_path.exists():
-        typer.echo(f"❌ No trace.jsonl found in {artifacts_dir}", err=True)
+        typer.echo(f"No trace.jsonl found in {artifacts_dir}", err=True)
         raise typer.Exit(1)
 
-    typer.echo(f"📊 Computing frontier score for: {artifacts_dir}")
+    typer.echo(f"Computing frontier score for: {artifacts_dir}")
 
     try:
         score = compute_frontier_score(artifacts_dir, use_llm_judge=use_llm_judge)
 
-        # Save or print
         if output:
-            with open(output, "w") as f:
+            with open(output, "w", encoding="utf-8") as f:
                 json.dump(score, f, indent=2)
-            typer.echo(f"✅ Score saved to: {output}")
+            typer.echo(f"Score saved to: {output}")
         else:
             typer.echo(json.dumps(score, indent=2))
 
     except Exception as e:
-        typer.echo(f"❌ Scoring failed: {e}", err=True)
+        typer.echo(f"Scoring failed: {e}", err=True)
         raise typer.Exit(1)
 
 

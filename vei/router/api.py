@@ -43,6 +43,7 @@ def create_router(
     artifacts_dir: Optional[str] = None,
     scenario: Optional[Scenario] = None,
     connector_mode: Optional[str] = None,
+    branch: str = "main",
 ) -> RouterAPI:
     """Factory for the router runtime exposed as a typed module API."""
     from .core import Router
@@ -52,4 +53,5 @@ def create_router(
         artifacts_dir=artifacts_dir,
         scenario=scenario,
         connector_mode=connector_mode,
+        branch=branch,
     )

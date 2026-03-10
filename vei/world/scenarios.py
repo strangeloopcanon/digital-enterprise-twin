@@ -488,12 +488,452 @@ def scenario_identity_access() -> Scenario:
     )
 
 
+def scenario_oauth_app_containment() -> Scenario:
+    return Scenario(
+        slack_initial_message=(
+            "Security incident: suspected malicious OAuth app observed in Google "
+            "Workspace. Contain quickly, preserve evidence, and avoid broad disruption."
+        ),
+        browser_nodes={
+            "home": {
+                "url": "https://admin.vweb.local/google/oauth",
+                "title": "Workspace Admin — OAuth App Audit",
+                "excerpt": "1 high-risk OAuth app is requesting broad mail and drive access.",
+                "affordances": [
+                    {"tool": "browser.read", "args": {}},
+                    {"tool": "browser.click", "args": {"node_id": "CLICK:open_app#0"}},
+                ],
+                "next": {"CLICK:open_app#0": "oauth_app"},
+            },
+            "oauth_app": {
+                "url": "https://admin.vweb.local/google/oauth/OAUTH-9001",
+                "title": "Workspace Admin — App Risk Detail",
+                "excerpt": (
+                    "Travel Calendar Assistant is unverified and requested gmail.modify, "
+                    "drive.readonly, and admin.directory.group.readonly."
+                ),
+                "affordances": [{"tool": "browser.back", "args": {}}],
+                "next": {"BACK": "home"},
+            },
+        },
+        documents={
+            "IR-RUNBOOK-1": Document(
+                doc_id="IR-RUNBOOK-1",
+                title="OAuth Containment Runbook",
+                body=(
+                    "Preserve evidence before disabling app access. Avoid tenant-wide "
+                    "revocation unless blast radius demands it."
+                ),
+                tags=["security", "incident-response"],
+            )
+        },
+        tickets={
+            "SEC-417": Ticket(
+                ticket_id="SEC-417",
+                title="Investigate suspicious OAuth grant activity",
+                status="open",
+                assignee="ir-oncall",
+                description="Determine blast radius, preserve evidence, and decide notification.",
+                history=[{"status": "open"}],
+            )
+        },
+        identity_users={
+            "USR-SEC-1": IdentityUserSeed(
+                user_id="USR-SEC-1",
+                email="ir.oncall@example.com",
+                login="ir.oncall",
+                first_name="Iris",
+                last_name="Ng",
+                title="Security Incident Lead",
+                department="Security",
+                status="ACTIVE",
+                groups=["GRP-security"],
+                applications=["APP-slack", "APP-admin"],
+            ),
+            "USR-EMP-9": IdentityUserSeed(
+                user_id="USR-EMP-9",
+                email="sales.rep@example.com",
+                login="sales.rep",
+                first_name="Sam",
+                last_name="Rep",
+                title="Account Executive",
+                department="Sales",
+                status="ACTIVE",
+                groups=["GRP-sales"],
+                applications=["APP-google", "APP-slack"],
+            ),
+        },
+        identity_groups={
+            "GRP-security": IdentityGroupSeed(
+                group_id="GRP-security",
+                name="Security",
+                members=["USR-SEC-1"],
+            ),
+            "GRP-sales": IdentityGroupSeed(
+                group_id="GRP-sales",
+                name="Sales",
+                members=["USR-EMP-9"],
+            ),
+        },
+        identity_applications={
+            "APP-admin": IdentityApplicationSeed(
+                app_id="APP-admin",
+                label="Admin Console",
+                assignments=["USR-SEC-1"],
+            ),
+            "APP-google": IdentityApplicationSeed(
+                app_id="APP-google",
+                label="Google Workspace",
+                assignments=["USR-EMP-9"],
+            ),
+            "APP-slack": IdentityApplicationSeed(
+                app_id="APP-slack",
+                label="Slack",
+                assignments=["USR-SEC-1", "USR-EMP-9"],
+            ),
+        },
+        google_admin={
+            "oauth_apps": {
+                "OAUTH-9001": {
+                    "app_id": "OAUTH-9001",
+                    "name": "Travel Calendar Assistant",
+                    "publisher": "Unknown Vendor Ltd",
+                    "status": "ACTIVE",
+                    "risk_level": "critical",
+                    "verified": False,
+                    "scopes": [
+                        "gmail.modify",
+                        "drive.readonly",
+                        "admin.directory.group.readonly",
+                    ],
+                    "affected_users": [
+                        "sales.rep@example.com",
+                        "revops@example.com",
+                        "support.lead@example.com",
+                    ],
+                    "evidence_hold": False,
+                    "history": [],
+                }
+            },
+            "drive_shares": {
+                "GDRIVE-9001": {
+                    "doc_id": "GDRIVE-9001",
+                    "title": "Customer Notification Draft",
+                    "owner": "security.comms@example.com",
+                    "visibility": "internal",
+                    "classification": "restricted",
+                    "shared_with": ["legal@example.com"],
+                    "history": [],
+                }
+            },
+        },
+        siem={
+            "alerts": {
+                "ALT-9001": {
+                    "alert_id": "ALT-9001",
+                    "title": "Unverified OAuth app consented by 3 users",
+                    "status": "OPEN",
+                    "severity": "critical",
+                    "source": "workspace.audit",
+                    "artifact_refs": ["OAUTH-9001"],
+                    "evidence_preserved": False,
+                    "history": [],
+                }
+            },
+            "cases": {
+                "CASE-0001": {
+                    "case_id": "CASE-0001",
+                    "title": "Investigate Travel Calendar Assistant",
+                    "status": "OPEN",
+                    "severity": "critical",
+                    "owner": "ir.oncall@example.com",
+                    "alert_id": "ALT-9001",
+                    "customer_notification_required": None,
+                    "evidence_refs": [],
+                    "notes": [],
+                }
+            },
+        },
+        metadata={
+            "benchmark_family": "security_containment",
+            "scenario_type": "acceptance",
+            "difficulty": "hard",
+            "expected_steps": [8, 16],
+            "tags": ["security", "oauth", "containment", "evidence"],
+        },
+    )
+
+
+def scenario_acquired_sales_onboarding() -> Scenario:
+    return Scenario(
+        slack_initial_message=(
+            "By 9 AM virtual time tomorrow, onboard 147 acquired sales users while "
+            "fixing identity conflicts, preserving least privilege, and preventing oversharing."
+        ),
+        documents={
+            "POL-ACCESS-9": Document(
+                doc_id="POL-ACCESS-9",
+                title="Acquisition Access Policy",
+                body=(
+                    "Grant least privilege first. Sales users receive CRM + Slack. "
+                    "No external Drive sharing until manager review is complete."
+                ),
+                tags=["policy", "identity", "acquisition"],
+            )
+        },
+        tickets={
+            "JRA-204": Ticket(
+                ticket_id="JRA-204",
+                title="Acquisition Wave 1 onboarding tracker",
+                status="open",
+                assignee="it-integration",
+                description="Resolve identity conflicts and confirm document ownership migration.",
+                history=[{"status": "open"}],
+            )
+        },
+        identity_users={
+            "USR-ACQ-1": IdentityUserSeed(
+                user_id="USR-ACQ-1",
+                email="jordan.sellers@oldco.example.com",
+                login="jordan.sellers",
+                first_name="Jordan",
+                last_name="Sellers",
+                title="Account Executive",
+                department="Sales",
+                status="PROVISIONED",
+                groups=["GRP-acquired-sales"],
+                applications=["APP-slack"],
+            ),
+            "USR-ACQ-2": IdentityUserSeed(
+                user_id="USR-ACQ-2",
+                email="maya.rex@example.com",
+                login="maya.rex",
+                first_name="Maya",
+                last_name="Rex",
+                title="Sales Manager",
+                department="Sales",
+                status="ACTIVE",
+                groups=["GRP-sales-managers"],
+                applications=["APP-slack", "APP-crm"],
+            ),
+        },
+        identity_groups={
+            "GRP-acquired-sales": IdentityGroupSeed(
+                group_id="GRP-acquired-sales",
+                name="Acquired Sales",
+                members=["USR-ACQ-1"],
+            ),
+            "GRP-sales-managers": IdentityGroupSeed(
+                group_id="GRP-sales-managers",
+                name="Sales Managers",
+                members=["USR-ACQ-2"],
+            ),
+        },
+        identity_applications={
+            "APP-crm": IdentityApplicationSeed(
+                app_id="APP-crm",
+                label="Salesforce",
+                assignments=["USR-ACQ-2"],
+            ),
+            "APP-slack": IdentityApplicationSeed(
+                app_id="APP-slack",
+                label="Slack",
+                assignments=["USR-ACQ-1", "USR-ACQ-2"],
+            ),
+        },
+        google_admin={
+            "oauth_apps": {},
+            "drive_shares": {
+                "GDRIVE-2201": {
+                    "doc_id": "GDRIVE-2201",
+                    "title": "Enterprise Accounts Playbook",
+                    "owner": "departed.manager@oldco.example.com",
+                    "visibility": "external_link",
+                    "classification": "internal",
+                    "shared_with": [
+                        "channel-partner@example.net",
+                        "maya.rex@example.com",
+                    ],
+                    "history": [],
+                }
+            },
+        },
+        hris={
+            "employees": {
+                "EMP-2201": {
+                    "employee_id": "EMP-2201",
+                    "email": "jordan.sellers@oldco.example.com",
+                    "display_name": "Jordan Sellers",
+                    "department": "Sales",
+                    "manager": "maya.rex@example.com",
+                    "status": "pre_start",
+                    "cohort": "acquired-sales-wave-1",
+                    "identity_conflict": True,
+                    "onboarded": False,
+                    "notes": [],
+                },
+                "EMP-2202": {
+                    "employee_id": "EMP-2202",
+                    "email": "erin.falcon@oldco.example.com",
+                    "display_name": "Erin Falcon",
+                    "department": "Sales",
+                    "manager": "maya.rex@example.com",
+                    "status": "pre_start",
+                    "cohort": "acquired-sales-wave-1",
+                    "identity_conflict": False,
+                    "onboarded": False,
+                    "notes": [],
+                },
+            }
+        },
+        crm={
+            "companies": [
+                {
+                    "id": "CO-100",
+                    "name": "Northwind Retail",
+                    "domain": "northwind.example.com",
+                    "created_ms": 1700000000000,
+                }
+            ],
+            "contacts": [
+                {
+                    "id": "C-100",
+                    "email": "buyer@northwind.example.com",
+                    "first_name": "Nina",
+                    "last_name": "Buyer",
+                    "do_not_contact": False,
+                    "company_id": "CO-100",
+                    "created_ms": 1700000000000,
+                }
+            ],
+            "deals": [
+                {
+                    "id": "D-100",
+                    "name": "Northwind Expansion",
+                    "amount": 240000,
+                    "stage": "Negotiation",
+                    "contact_id": "C-100",
+                    "company_id": "CO-100",
+                    "owner": "departed.manager@oldco.example.com",
+                    "created_ms": 1700000000000,
+                }
+            ],
+        },
+        metadata={
+            "benchmark_family": "enterprise_onboarding_migration",
+            "scenario_type": "acceptance",
+            "difficulty": "hard",
+            "expected_steps": [10, 20],
+            "allowed_application_ids": ["APP-slack", "APP-crm"],
+            "tags": ["onboarding", "identity", "salesforce", "least-privilege"],
+        },
+    )
+
+
+def scenario_checkout_spike_mitigation() -> Scenario:
+    return Scenario(
+        slack_initial_message=(
+            "Checkout conversion is dropping. Mitigate the spike, keep customer comms accurate, "
+            "and avoid data corruption while revenue risk is high."
+        ),
+        tickets={
+            "INC-812": Ticket(
+                ticket_id="INC-812",
+                title="Checkout failure spike",
+                status="in_progress",
+                assignee="commerce-oncall",
+                description="Mitigate incident without corrupting order state.",
+                history=[{"status": "open"}, {"status": "in_progress"}],
+            )
+        },
+        documents={
+            "RUN-CHK-1": Document(
+                doc_id="RUN-CHK-1",
+                title="Checkout Incident Checklist",
+                body=(
+                    "If rollback is needed, first disable risky rollout and verify no duplicate charge writes."
+                ),
+                tags=["incident", "commerce"],
+            )
+        },
+        datadog={
+            "services": {
+                "svc-checkout": {
+                    "service_id": "svc-checkout",
+                    "name": "checkout-api",
+                    "status": "degraded",
+                    "error_rate_pct": 18.4,
+                    "latency_p95_ms": 2240,
+                    "revenue_tier": "critical",
+                    "notes": [],
+                }
+            },
+            "monitors": {
+                "mon-5001": {
+                    "monitor_id": "mon-5001",
+                    "title": "Checkout 5xx spike",
+                    "service_id": "svc-checkout",
+                    "status": "alert",
+                    "severity": "critical",
+                    "threshold": "5xx > 3%",
+                    "current_value": "18.4%",
+                    "muted": False,
+                    "history": [],
+                }
+            },
+        },
+        pagerduty={
+            "incidents": {
+                "PD-9001": {
+                    "incident_id": "PD-9001",
+                    "title": "Checkout latency and error spike",
+                    "status": "triggered",
+                    "urgency": "high",
+                    "service_id": "svc-checkout",
+                    "assignee": "oncall-commerce",
+                    "notes": [],
+                }
+            }
+        },
+        feature_flags={
+            "flags": {
+                "checkout_v2": {
+                    "flag_key": "checkout_v2",
+                    "service": "checkout-api",
+                    "env": "prod",
+                    "enabled": True,
+                    "rollout_pct": 100,
+                    "history": [],
+                },
+                "checkout_kill_switch": {
+                    "flag_key": "checkout_kill_switch",
+                    "service": "checkout-api",
+                    "env": "prod",
+                    "enabled": False,
+                    "rollout_pct": 0,
+                    "history": [],
+                },
+            }
+        },
+        metadata={
+            "benchmark_family": "revenue_incident_mitigation",
+            "scenario_type": "acceptance",
+            "difficulty": "hard",
+            "expected_steps": [8, 16],
+            "tags": ["incident", "checkout", "feature-flags", "reliability"],
+        },
+    )
+
+
 _CATALOG: Dict[str, Scenario] = {
     "macrocompute_default": scenario_macrocompute_default(),
     "extended_store": scenario_extended_store(),
     "multi_channel": scenario_multi_channel(),
     "multi_channel_compliance": scenario_multi_channel_compliance(),
     "identity_access": scenario_identity_access(),
+    "oauth_app_containment": scenario_oauth_app_containment(),
+    "acquired_sales_onboarding": scenario_acquired_sales_onboarding(),
+    "checkout_spike_mitigation": scenario_checkout_spike_mitigation(),
 }
 
 

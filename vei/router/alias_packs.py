@@ -61,6 +61,7 @@ CRM_ALIAS_PACKS: Dict[str, List[Tuple[str, str]]] = {
         ("hubspot.deals.get", "crm.get_deal"),
         ("hubspot.deals.list", "crm.list_deals"),
         ("hubspot.deals.update_stage", "crm.update_deal_stage"),
+        ("hubspot.deals.reassign_owner", "crm.reassign_deal_owner"),
         ("hubspot.activities.log", "crm.log_activity"),
     ],
     # Salesforce-style (Sales Cloud)
@@ -76,6 +77,7 @@ CRM_ALIAS_PACKS: Dict[str, List[Tuple[str, str]]] = {
         ("salesforce.opportunity.get", "crm.get_deal"),
         ("salesforce.opportunity.list", "crm.list_deals"),
         ("salesforce.opportunity.update_stage", "crm.update_deal_stage"),
+        ("salesforce.opportunity.transfer_owner", "crm.reassign_deal_owner"),
         ("salesforce.activity.log", "crm.log_activity"),
     ],
 }

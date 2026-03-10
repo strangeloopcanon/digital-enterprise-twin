@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 import inspect
 import json
 import os
@@ -24,6 +25,22 @@ except Exception:  # pragma: no cover
     genai = None  # type: ignore
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+
+
+@dataclass
+class PlanUsage:
+    provider: str
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float | None = None
+
+
+@dataclass
+class PlanResult:
+    plan: Dict[str, Any]
+    usage: PlanUsage
 
 
 def _parse_plan_text(raw: str) -> Dict[str, Any]:
@@ -62,6 +79,56 @@ def auto_provider_for_model(model: str, explicit: Optional[str] = None) -> str:
     return "openai"
 
 
+def _rate_from_env(provider: str, model: str, side: str) -> float | None:
+    model_key = re.sub(r"[^A-Z0-9]+", "_", model.upper()).strip("_")
+    keys = [
+        f"VEI_{provider.upper()}_{model_key}_{side}_USD_PER_1M",
+        f"VEI_{provider.upper()}_{side}_USD_PER_1M",
+        f"VEI_LLM_{side}_USD_PER_1M",
+    ]
+    for key in keys:
+        value = os.environ.get(key)
+        if value is None or not value.strip():
+            continue
+        try:
+            return float(value)
+        except ValueError:
+            continue
+    return None
+
+
+def _build_usage(
+    *,
+    provider: str,
+    model: str,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    total_tokens: int | None = None,
+) -> PlanUsage:
+    total = (
+        int(total_tokens)
+        if total_tokens is not None
+        else int(prompt_tokens) + int(completion_tokens)
+    )
+    input_rate = _rate_from_env(provider, model, "INPUT")
+    output_rate = _rate_from_env(provider, model, "OUTPUT")
+    estimated_cost_usd: float | None = None
+    if input_rate is not None and output_rate is not None:
+        estimated_cost_usd = round(
+            ((int(prompt_tokens) / 1_000_000) * input_rate)
+            + ((int(completion_tokens) / 1_000_000) * output_rate),
+            8,
+        )
+    return PlanUsage(
+        provider=provider,
+        model=model,
+        prompt_tokens=int(prompt_tokens),
+        completion_tokens=int(completion_tokens),
+        total_tokens=total,
+        estimated_cost_usd=estimated_cost_usd,
+    )
+
+
 async def _openai_plan(
     *,
     model: str,
@@ -71,7 +138,7 @@ async def _openai_plan(
     timeout_s: int = 240,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> PlanResult:
     """OpenAI provider. Uses Responses API for gpt-5, Chat Completions for others."""
     if AsyncOpenAI is None:
         raise RuntimeError("openai SDK not installed; install with extras [llm]")
@@ -96,6 +163,20 @@ async def _openai_plan(
             resp = await asyncio.wait_for(
                 client.responses.create(**kwargs), timeout=timeout_s
             )
+            usage = _build_usage(
+                provider="openai",
+                model=model,
+                prompt_tokens=int(
+                    getattr(getattr(resp, "usage", None), "input_tokens", 0) or 0
+                ),
+                completion_tokens=int(
+                    getattr(getattr(resp, "usage", None), "output_tokens", 0) or 0
+                ),
+                total_tokens=int(
+                    getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
+                )
+                or None,
+            )
             raw = getattr(resp, "output_text", None)
             if not raw and resp.status == "incomplete":
                 detail = getattr(resp, "incomplete_details", None)
@@ -108,7 +189,7 @@ async def _openai_plan(
                             ):
                                 content = getattr(item, "content", None)
                                 if isinstance(content, dict):
-                                    return content
+                                    return PlanResult(plan=content, usage=usage)
                                 raw = json.dumps(content)
                                 break
                     except Exception:
@@ -116,7 +197,7 @@ async def _openai_plan(
                 if not raw:
                     raise RuntimeError(f"Response incomplete: {detail}")
             if raw:
-                return _parse_plan_text(raw)
+                return PlanResult(plan=_parse_plan_text(raw), usage=usage)
         except Exception:
             raise
     else:
@@ -139,11 +220,28 @@ async def _openai_plan(
                 ),
                 timeout=timeout_s,
             )
+            usage = _build_usage(
+                provider="openai",
+                model=model,
+                prompt_tokens=int(
+                    getattr(getattr(resp, "usage", None), "prompt_tokens", 0) or 0
+                ),
+                completion_tokens=int(
+                    getattr(getattr(resp, "usage", None), "completion_tokens", 0) or 0
+                ),
+                total_tokens=int(
+                    getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
+                )
+                or None,
+            )
             choice = resp.choices[0]
             if choice.finish_reason == "length":
                 raise RuntimeError("OpenAI response truncated due to max_tokens.")
             if choice.message.content:
-                return _parse_plan_text(choice.message.content)
+                return PlanResult(
+                    plan=_parse_plan_text(choice.message.content),
+                    usage=usage,
+                )
         except BadRequestError as e:
             # Handle specific error for gpt-5 if it was routed here by mistake
             if "max_completion_tokens" in str(e):
@@ -155,7 +253,10 @@ async def _openai_plan(
             raise
 
     # Fallback if no content extracted
-    return {"tool": "vei.observe", "args": {}}
+    return PlanResult(
+        plan={"tool": "vei.observe", "args": {}},
+        usage=_build_usage(provider="openai", model=model),
+    )
 
 
 async def _anthropic_plan(
@@ -167,7 +268,7 @@ async def _anthropic_plan(
     api_key: Optional[str] = None,
     tool_schemas: Optional[list[Dict[str, Any]]] = None,
     alias_map: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+) -> PlanResult:
     """Anthropic provider using Messages API."""
     if AsyncAnthropic is None:
         raise RuntimeError("anthropic SDK not installed; install with extras [llm]")
@@ -232,6 +333,16 @@ async def _anthropic_plan(
                 ),
                 timeout=timeout_s,
             )
+        usage = _build_usage(
+            provider="anthropic",
+            model=model,
+            prompt_tokens=int(
+                getattr(getattr(msg, "usage", None), "input_tokens", 0) or 0
+            ),
+            completion_tokens=int(
+                getattr(getattr(msg, "usage", None), "output_tokens", 0) or 0
+            ),
+        )
 
         if msg.stop_reason == "max_tokens":
             raise RuntimeError(
@@ -252,15 +363,21 @@ async def _anthropic_plan(
                             if not isinstance(args, dict):
                                 args = {}
                             if actual_tool:
-                                return {"tool": actual_tool, "args": args}
+                                return PlanResult(
+                                    plan={"tool": actual_tool, "args": args},
+                                    usage=usage,
+                                )
                         raise RuntimeError(
                             "Claude returned vei_call without valid tool/args"
                         )
                     tool_name = alias_map.get(alias, alias) if alias_map else alias
-                    return {
-                        "tool": tool_name,
-                        "args": tool_input if isinstance(tool_input, dict) else {},
-                    }
+                    return PlanResult(
+                        plan={
+                            "tool": tool_name,
+                            "args": tool_input if isinstance(tool_input, dict) else {},
+                        },
+                        usage=usage,
+                    )
 
         for block in msg.content:
             if hasattr(block, "text") and block.text:
@@ -281,12 +398,15 @@ async def _anthropic_plan(
                         if not isinstance(args, dict):
                             args = {}
                         if actual_tool:
-                            return {"tool": actual_tool, "args": args}
+                            return PlanResult(
+                                plan={"tool": actual_tool, "args": args},
+                                usage=usage,
+                            )
                     if alias_map:
                         alias = parsed.get("tool")
                         if alias in alias_map:
                             parsed["tool"] = alias_map[alias]
-                    return parsed
+                    return PlanResult(plan=parsed, usage=usage)
 
         raise RuntimeError(f"No text content in Claude response: {msg}")
 
@@ -301,7 +421,7 @@ async def _google_plan(
     user: str,
     timeout_s: int = 30,
     api_key: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> PlanResult:
     """Google Gemini provider using genai library with JSON mode."""
     if genai is None:
         raise RuntimeError("google-genai not installed; install with extras [llm]")
@@ -334,6 +454,27 @@ async def _google_plan(
             ),
             timeout=timeout_s,
         )
+        usage = _build_usage(
+            provider="google",
+            model=model,
+            prompt_tokens=int(
+                getattr(getattr(resp, "usage_metadata", None), "prompt_token_count", 0)
+                or 0
+            ),
+            completion_tokens=int(
+                getattr(
+                    getattr(resp, "usage_metadata", None),
+                    "candidates_token_count",
+                    0,
+                )
+                or 0
+            ),
+            total_tokens=int(
+                getattr(getattr(resp, "usage_metadata", None), "total_token_count", 0)
+                or 0
+            )
+            or None,
+        )
 
         candidates = getattr(resp, "candidates", None) or []
         if candidates:
@@ -343,7 +484,7 @@ async def _google_plan(
                 raise RuntimeError("Google response truncated due to max_tokens.")
 
         if hasattr(resp, "text") and resp.text:
-            return _parse_plan_text(resp.text)
+            return PlanResult(plan=_parse_plan_text(resp.text), usage=usage)
 
         for cand in candidates:
             content = getattr(cand, "content", None)
@@ -353,7 +494,7 @@ async def _google_plan(
             for part in parts:
                 text = getattr(part, "text", None)
                 if text:
-                    return _parse_plan_text(text)
+                    return PlanResult(plan=_parse_plan_text(text), usage=usage)
 
     except Exception:
         raise
@@ -365,7 +506,10 @@ async def _google_plan(
             if inspect.isawaitable(maybe_awaitable):
                 await maybe_awaitable
 
-    return {"tool": "vei.observe", "args": {}}
+    return PlanResult(
+        plan={"tool": "vei.observe", "args": {}},
+        usage=_build_usage(provider="google", model=model),
+    )
 
 
 async def _openrouter_plan(
@@ -375,7 +519,7 @@ async def _openrouter_plan(
     user: str,
     timeout_s: int = 90,
     api_key: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> PlanResult:
     """OpenRouter provider using OpenAI-compatible API."""
     if AsyncOpenAI is None:
         raise RuntimeError("openai SDK not installed; install with extras [llm]")
@@ -413,6 +557,20 @@ async def _openrouter_plan(
             ),
             timeout=timeout_s,
         )
+        usage = _build_usage(
+            provider="openrouter",
+            model=model,
+            prompt_tokens=int(
+                getattr(getattr(resp, "usage", None), "prompt_tokens", 0) or 0
+            ),
+            completion_tokens=int(
+                getattr(getattr(resp, "usage", None), "completion_tokens", 0) or 0
+            ),
+            total_tokens=int(
+                getattr(getattr(resp, "usage", None), "total_tokens", 0) or 0
+            )
+            or None,
+        )
 
         choice = resp.choices[0]
         if choice.finish_reason == "length":
@@ -420,7 +578,10 @@ async def _openrouter_plan(
 
         if choice.message.content:
             try:
-                return json.loads(choice.message.content)
+                return PlanResult(
+                    plan=json.loads(choice.message.content),
+                    usage=usage,
+                )
             except json.JSONDecodeError as exc:
                 snippet = choice.message.content.strip()
                 if len(snippet) > 200:
@@ -432,10 +593,13 @@ async def _openrouter_plan(
     except Exception:
         raise
 
-    return {"tool": "vei.observe", "args": {}}
+    return PlanResult(
+        plan={"tool": "vei.observe", "args": {}},
+        usage=_build_usage(provider="openrouter", model=model),
+    )
 
 
-async def plan_once(
+async def plan_once_with_usage(
     *,
     provider: str,
     model: str,
@@ -450,7 +614,7 @@ async def plan_once(
     openrouter_api_key: Optional[str] = None,
     tool_schemas: Optional[list[Dict[str, Any]]] = None,
     alias_map: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+) -> PlanResult:
     p = (provider or "openai").strip().lower()
     if p == "auto":
         p = auto_provider_for_model(model)
@@ -492,3 +656,37 @@ async def plan_once(
             api_key=openrouter_api_key,
         )
     raise ValueError(f"Unknown provider: {provider}")
+
+
+async def plan_once(
+    *,
+    provider: str,
+    model: str,
+    system: str,
+    user: str,
+    plan_schema: Optional[dict] = None,
+    timeout_s: int = 240,
+    openai_base_url: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+    anthropic_api_key: Optional[str] = None,
+    google_api_key: Optional[str] = None,
+    openrouter_api_key: Optional[str] = None,
+    tool_schemas: Optional[list[Dict[str, Any]]] = None,
+    alias_map: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
+    result = await plan_once_with_usage(
+        provider=provider,
+        model=model,
+        system=system,
+        user=user,
+        plan_schema=plan_schema,
+        timeout_s=timeout_s,
+        openai_base_url=openai_base_url,
+        openai_api_key=openai_api_key,
+        anthropic_api_key=anthropic_api_key,
+        google_api_key=google_api_key,
+        openrouter_api_key=openrouter_api_key,
+        tool_schemas=tool_schemas,
+        alias_map=alias_map,
+    )
+    return result.plan

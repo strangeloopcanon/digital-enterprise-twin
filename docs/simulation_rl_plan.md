@@ -12,7 +12,7 @@ This document outlines how VEI should evolve to support realistic, data-driven v
 
 ## 1.1 Execution Cadence & Testing Rhythm
 - Work through the roadmap in order (Simulation Foundation → Behavior/RL → Replay) with compact, reviewable commits but no pauses waiting for approval between phases.
-- After each major batch, run targeted pytest subsets; at least once mid-plan (after Behavior/RL deliverables) execute the live LLM test `pytest -q -k llm_stdio_smoke` assuming `.env` exposes `OPENAI_API_KEY`.
+- After each major batch, run the repo gates (`make check`, `make test`); at least once mid-plan (after Behavior/RL deliverables) execute `make llm-live` assuming `.env` exposes `OPENAI_API_KEY`.
 - Maintain parsimony: new modules should be thin adapters around existing primitives, with shared utilities centralized when reuse emerges instead of duplicating logic.
 
 ## 2. Simulation Without Enterprise Traces
@@ -146,21 +146,21 @@ This mirrors existing `ErpSim` and `CrmSim` but provides a clear checklist.
 - Monitors: `slack.approval_format`, `email.subject_quality`, basic `pii.leak` regex.
 - CLI: `vei-scenarios` extended to list/validate DSL packs.
 - Tests: unit for compiler and twins; integration: stdio run across default pack.
-- Post-batch check: run `pytest -q` (core suite) before progressing.
+- Post-batch check: run `make test` before progressing.
 
 ### Sprint B (2 weeks): Behavior v1 + RL Env
 - Behavior trees + memory store (`vei/behavior/*`), scripted teachers for procurement.
 - RL wrappers: action mask, arg spaces, feature extractor; vectorized env.
 - CLIs: `vei-train` (BC baseline) and `vei-eval` (score + policy findings).
 - Tests: RL env action validity, reward correctness, deterministic rollouts.
-- Mid-plan live LLM test: execute `pytest -q -k llm_stdio_smoke` (requires valid `OPENAI_API_KEY`).
+- Mid-plan live LLM test: execute `make llm-live` (requires valid `OPENAI_API_KEY`).
 
 ### Sprint C (2 weeks): Semi‑Sim & Replay Hooks
 - Canonical event models (`vei/data/models.py`) and stub importers.
 - Replay adapter to EventBus; semi-sim windowing.
 - CLI: `vei-pack` to package scenario packs (.jsonl + assets) and metadata.
 - Tests: replay determinism; semi-sim snap-to-window behavior.
-- Final validation: full `pytest -q` plus `vei-smoke --transport stdio` to confirm end-to-end stability.
+- Final validation: `make check`, `make test`, and `vei-smoke --transport stdio` to confirm end-to-end stability.
 
 ## 10. Risks & Mitigations
 - Argument space explosion → templated text generation and typed heads; leverage scenario compiler for canonical channels/entities.

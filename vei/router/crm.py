@@ -38,14 +38,31 @@ class CrmSim:
         import os
 
         self.bus = bus
-        self.contacts: Dict[str, Dict[str, Any]] = {}
-        self.companies: Dict[str, Dict[str, Any]] = {}
-        self.deals: Dict[str, Dict[str, Any]] = {}
-        self.activities: List[Dict[str, Any]] = []
-        self._c_seq = 1
-        self._co_seq = 1
-        self._d_seq = 1
-        self._a_seq = 1
+        seed = (scenario.crm or {}) if scenario else {}
+        self.contacts: Dict[str, Dict[str, Any]] = {
+            str(contact["id"]): dict(contact)
+            for contact in seed.get("contacts", [])
+            if isinstance(contact, dict) and "id" in contact
+        }
+        self.companies: Dict[str, Dict[str, Any]] = {
+            str(company["id"]): dict(company)
+            for company in seed.get("companies", [])
+            if isinstance(company, dict) and "id" in company
+        }
+        self.deals: Dict[str, Dict[str, Any]] = {
+            str(deal["id"]): dict(deal)
+            for deal in seed.get("deals", [])
+            if isinstance(deal, dict) and "id" in deal
+        }
+        self.activities: List[Dict[str, Any]] = [
+            dict(activity)
+            for activity in seed.get("activities", [])
+            if isinstance(activity, dict)
+        ]
+        self._c_seq = _next_seq(self.contacts, prefix="C-")
+        self._co_seq = _next_seq(self.companies, prefix="CO-")
+        self._d_seq = _next_seq(self.deals, prefix="D-")
+        self._a_seq = max(len(self.activities) + 1, 1)
         try:
             self.error_rate = float(os.environ.get("VEI_CRM_ERROR_RATE", "0"))
         except Exception:
@@ -316,6 +333,17 @@ class CrmSim:
         d["stage_history"] = history
         return {"ok": True, "stage": next_stage}
 
+    def reassign_deal_owner(self, id: str, owner: str) -> Dict[str, Any]:
+        d = self.deals.get(id)
+        if not d:
+            raise MCPError("unknown_deal", f"Unknown deal: {id}")
+        d["owner"] = owner
+        d["updated_ms"] = self.bus.clock_ms
+        history = list(d.get("owner_history", []))
+        history.append({"owner": owner, "time_ms": self.bus.clock_ms})
+        d["owner_history"] = history
+        return {"ok": True, "owner": owner}
+
     # Activities
     def log_activity(
         self,
@@ -424,3 +452,15 @@ def _sortable(value: object) -> object:
     if isinstance(value, (int, float, str)):
         return value
     return str(value)
+
+
+def _next_seq(rows: Dict[str, Dict[str, Any]], *, prefix: str) -> int:
+    seq = 1
+    for key in rows:
+        if not key.startswith(prefix):
+            continue
+        try:
+            seq = max(seq, int(key[len(prefix) :]) + 1)
+        except ValueError:
+            continue
+    return seq

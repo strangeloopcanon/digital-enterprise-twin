@@ -9,7 +9,7 @@ except Exception as _e:  # pragma: no cover - optional extra
     gym = None  # type: ignore[assignment]
     spaces = None  # type: ignore[assignment]
 
-from vei.router.api import create_router
+from vei.world.api import create_world_session
 
 
 class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
@@ -28,7 +28,8 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
     def __init__(self, seed: int = 42042, reward_mode: str = "sparse") -> None:
         self.seed_value = int(seed)
         self.reward_mode = reward_mode
-        self.router = create_router(seed=self.seed_value, artifacts_dir=None)
+        self.session = create_world_session(seed=self.seed_value, artifacts_dir=None)
+        self.router = self.session.router
         # Lazy spaces if gymnasium is available
         if spaces is not None:
             self.observation_space = spaces.Dict({})  # free-form dict
@@ -60,14 +61,15 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if seed is not None:
             self.seed_value = int(seed)
-        self.router = create_router(seed=self.seed_value, artifacts_dir=None)
+        self.session = create_world_session(seed=self.seed_value, artifacts_dir=None)
+        self.router = self.session.router
         self._saw_browser_read = False
         self._sent_email = False
         self._saw_approval = False
         self._email_parsed = False
         self.steps = 0
         self.elapsed_ms = 0
-        obs = self.router.observe().model_dump()
+        obs = self.session.observe()
         return obs, {}
 
     # Gymnasium signature: step(self, action) -> obs, reward, terminated, truncated, info
@@ -76,7 +78,7 @@ class VEIEnv:  # Gymnasium-compatible but avoids hard dependency at import time
     ) -> Tuple[Dict[str, Any], float, bool, bool, Dict[str, Any]]:
         tool = action.get("tool", "vei.observe")
         args = action.get("args", {})
-        data = self.router.act_and_observe(tool, args)
+        data = self.session.act_and_observe(tool, args)
         obs = data["observation"]
 
         # Update subgoal flags from trace and last call

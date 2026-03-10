@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+from typing import Dict, List, Sequence
+
+from vei.benchmark.models import BenchmarkFamilyManifest
+
+
+_FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
+    "security_containment": BenchmarkFamilyManifest(
+        name="security_containment",
+        title="Security Containment",
+        description=(
+            "Contain high-risk security incidents while preserving evidence, limiting "
+            "blast radius, and making the right notification decisions."
+        ),
+        scenario_names=["oauth_app_containment"],
+        primary_dimensions=[
+            "evidence_preservation",
+            "blast_radius_minimization",
+            "comms_correctness",
+        ],
+        tags=["security", "incident-response", "containment"],
+    ),
+    "enterprise_onboarding_migration": BenchmarkFamilyManifest(
+        name="enterprise_onboarding_migration",
+        title="Enterprise Onboarding And Migration",
+        description=(
+            "Migrate acquired or reorganized employees into production systems while "
+            "preserving least privilege, avoiding oversharing, and meeting deadlines."
+        ),
+        scenario_names=["acquired_sales_onboarding"],
+        primary_dimensions=[
+            "deadline_compliance",
+            "least_privilege",
+            "oversharing_avoidance",
+        ],
+        tags=["onboarding", "migration", "identity"],
+    ),
+    "revenue_incident_mitigation": BenchmarkFamilyManifest(
+        name="revenue_incident_mitigation",
+        title="Revenue Incident Mitigation",
+        description=(
+            "Mitigate revenue-critical operational failures using targeted control-plane "
+            "actions, accurate communications, and rollback safety."
+        ),
+        scenario_names=["checkout_spike_mitigation"],
+        primary_dimensions=[
+            "blast_radius_minimization",
+            "comms_correctness",
+            "safe_rollback",
+        ],
+        tags=["reliability", "incident-response", "revenue"],
+    ),
+}
+
+
+def get_benchmark_family_manifest(name: str) -> BenchmarkFamilyManifest:
+    key = name.strip().lower()
+    if key not in _FAMILY_CATALOG:
+        raise KeyError(f"unknown benchmark family: {name}")
+    return _FAMILY_CATALOG[key]
+
+
+def list_benchmark_family_manifest() -> List[BenchmarkFamilyManifest]:
+    return sorted(_FAMILY_CATALOG.values(), key=lambda item: item.name)
+
+
+def resolve_family_scenarios(family_names: Sequence[str]) -> List[str]:
+    resolved: List[str] = []
+    seen: set[str] = set()
+    for name in family_names:
+        manifest = get_benchmark_family_manifest(name)
+        for scenario_name in manifest.scenario_names:
+            if scenario_name in seen:
+                continue
+            seen.add(scenario_name)
+            resolved.append(scenario_name)
+    return resolved
+
+
+__all__ = [
+    "BenchmarkFamilyManifest",
+    "get_benchmark_family_manifest",
+    "list_benchmark_family_manifest",
+    "resolve_family_scenarios",
+]

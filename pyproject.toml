@@ -8,7 +8,7 @@ version = "0.2.0a1"
 description = "Digital Enterprise Twin (VEI) — MCP-native synthetic Slack/Mail/Browser world"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [
   { name = "VEI", email = "noreply@example.com" }
 ]
@@ -58,11 +58,13 @@ vei-scenarios = "vei.cli.vei_scenarios:app"
 vei-demo = "vei.cli.vei_demo:app"
 vei-serve = "vei.cli.vei_serve:app"
 vei-state = "vei.cli.vei_state:state"
+vei-world = "vei.cli.vei_world:app"
 vei-pack = "vei.cli.vei_pack:app"
 vei-rollout = "vei.cli.vei_rollout:app"
 vei-train = "vei.cli.vei_train:app"
 vei-eval = "vei.cli.vei_eval:app"
 vei-eval-frontier = "vei.cli.vei_eval_frontier:app"
+vei-release = "vei.cli.vei_release:app"
 vei-report = "vei.cli.vei_report:app"
 vei-visualize = "vei.cli.vei_visualize:app"
 vei-det = "vei.cli.vei_det_pipeline:app"

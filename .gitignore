@@ -94,6 +94,7 @@ archive_data/
 
 # Project tooling
 .cursor/
+.beads/
 
 # Logs
 *.log

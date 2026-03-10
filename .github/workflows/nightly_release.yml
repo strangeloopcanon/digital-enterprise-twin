@@ -1,0 +1,42 @@
+name: nightly-release
+
+on:
+  schedule:
+    - cron: "15 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    env:
+      AGENT_MODE: baseline
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Setup
+        run: make setup
+
+      - name: Build Nightly Release Bundle
+        run: |
+          . .venv/bin/activate
+          vei-release nightly \
+            --release-root _vei_out/releases \
+            --workspace-root _vei_out/nightly \
+            --environments 5 \
+            --scenarios-per-environment 5 \
+            --rollout-episodes 2 \
+            --benchmark-scenario multi_channel
+
+      - name: Upload Nightly Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vei-nightly-release
+          path: |
+            _vei_out/releases/**
+            _vei_out/nightly/**

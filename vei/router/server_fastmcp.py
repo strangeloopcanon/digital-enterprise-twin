@@ -1076,6 +1076,24 @@ def create_mcp_server(
         for alias, base in CRM_ALIAS_PACKS.get(pack, []):
             _register_alias(alias, base)
 
+    def _register_passthrough(tool_name: str, description: str) -> None:
+        @srv.tool(name=tool_name, description=description)
+        def _provider_passthrough(**kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
+            return _safe_call(tool_name, dict(kwargs))
+
+    dynamic_prefixes = (
+        "google_admin.",
+        "siem.",
+        "datadog.",
+        "pagerduty.",
+        "feature_flags.",
+        "hris.",
+        "jira.",
+    )
+    for spec in sorted(R().registry.list(), key=lambda item: item.name):
+        if spec.name.startswith(dynamic_prefixes):
+            _register_passthrough(spec.name, spec.description)
+
     @srv.tool(
         name="vei.observe", description="Get current observation summary + action menu"
     )

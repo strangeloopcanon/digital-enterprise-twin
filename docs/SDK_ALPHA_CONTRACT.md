@@ -10,6 +10,7 @@ Stable-for-alpha surface (import from `vei.sdk`):
 - `EnterpriseSession`
 - `SessionConfig`
 - `SessionHook`
+- `EnterpriseSession.world`
 - `compile_workflow_spec`
 - `validate_workflow_spec`
 - `run_workflow_spec`
@@ -17,6 +18,12 @@ Stable-for-alpha surface (import from `vei.sdk`):
 - `filter_enterprise_corpus`
 - `list_scenario_manifest`
 - `get_scenario_manifest`
+- `list_benchmark_family_manifest_entries`
+- `get_benchmark_family_manifest_entry`
+- `build_release_version`
+- `export_release_dataset`
+- `export_release_benchmark`
+- `run_release_nightly`
 
 Anything outside `vei.sdk` is internal and may change without notice.
 
@@ -26,8 +33,9 @@ For all `0.2.0a*` releases:
 
 1. Existing symbols listed above will not be renamed or removed.
 2. Existing method signatures on `EnterpriseSession` will remain backward-compatible.
-3. Existing manifest fields will not be removed (new optional fields may be added).
-4. Existing scenario names in the built-in catalog will remain available.
+3. Existing methods on `EnterpriseSession.world` (`observe`, `call_tool`, `snapshot`, `restore`, `branch`, `replay`, `inject`, `list_events`, `cancel_event`) will remain backward-compatible for the alpha line.
+4. Existing manifest fields will not be removed (new optional fields may be added).
+5. Existing scenario names and benchmark family names in the built-in catalog will remain available.
 
 If a breaking change is unavoidable, it will be documented in this file and the README before release.
 

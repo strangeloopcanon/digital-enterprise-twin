@@ -138,6 +138,7 @@ class Scenario:
     calendar_events: Optional[List[CalendarEvent]] = None
     tickets: Optional[Dict[str, Ticket]] = None
     database_tables: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    crm: Optional[Dict[str, Any]] = None
     triggers: Optional[List[Dict[str, Any]]] = None
     metadata: Optional[Dict[str, Any]] = None
     identity_users: Optional[Dict[str, IdentityUserSeed]] = None
@@ -145,3 +146,11 @@ class Scenario:
     identity_applications: Optional[Dict[str, IdentityApplicationSeed]] = None
     service_incidents: Optional[Dict[str, ServiceDeskIncident]] = None
     service_requests: Optional[Dict[str, ServiceDeskRequest]] = None
+
+    # Enterprise control-plane / admin surfaces
+    google_admin: Optional[Dict[str, Any]] = None
+    siem: Optional[Dict[str, Any]] = None
+    datadog: Optional[Dict[str, Any]] = None
+    pagerduty: Optional[Dict[str, Any]] = None
+    feature_flags: Optional[Dict[str, Any]] = None
+    hris: Optional[Dict[str, Any]] = None

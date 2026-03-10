@@ -25,8 +25,15 @@ from vei.world.drift import DriftEngine
 from vei.world.state import Event as StateEvent, StateStore
 from .alias_packs import CRM_ALIAS_PACKS, ERP_ALIAS_PACKS
 from .calendar import CalendarSim
+from .datadog import DatadogSim, DatadogToolProvider
 from .database import DatabaseSim
 from .docs import DocsSim
+from .feature_flags import FeatureFlagSim, FeatureFlagToolProvider
+from .google_admin import GoogleAdminSim, GoogleAdminToolProvider
+from .hris import HrisSim, HrisToolProvider
+from .jira import JiraToolProvider
+from .pagerduty import PagerDutySim, PagerDutyToolProvider
+from .siem import SiemSim, SiemToolProvider
 from .tickets import TicketsSim
 from .errors import MCPError
 from .tool_providers import ToolProvider
@@ -55,6 +62,10 @@ class Event:
     t_due_ms: int
     target: str
     payload: Dict[str, Any]
+    event_id: str
+    source: str = "system"
+    actor_id: Optional[str] = None
+    kind: str = "scheduled"
 
 
 class LinearCongruentialGenerator:
@@ -79,10 +90,29 @@ class EventBus:
         self._heap: list[tuple[int, int, Event]] = []
         self._seq = 0
 
-    def schedule(self, dt_ms: int, target: str, payload: Dict[str, Any]) -> None:
-        evt = Event(self.clock_ms + dt_ms, target, payload)
+    def schedule(
+        self,
+        dt_ms: int,
+        target: str,
+        payload: Dict[str, Any],
+        *,
+        event_id: Optional[str] = None,
+        source: str = "system",
+        actor_id: Optional[str] = None,
+        kind: str = "scheduled",
+    ) -> str:
         self._seq += 1
+        evt = Event(
+            self.clock_ms + dt_ms,
+            target,
+            payload,
+            event_id=event_id or f"evt-{self._seq:08d}",
+            source=source,
+            actor_id=actor_id,
+            kind=kind,
+        )
         heapq.heappush(self._heap, (evt.t_due_ms, self._seq, evt))
+        return evt.event_id
 
     def next_if_due(self) -> Optional[Event]:
         if self._heap and self._heap[0][0] <= self.clock_ms:
@@ -100,6 +130,24 @@ class EventBus:
         if target is None:
             return len(self._heap)
         return sum(1 for _, _, e in self._heap if e.target == target)
+
+    def cancel(self, event_id: str) -> bool:
+        remaining = [
+            item
+            for item in self._heap
+            if getattr(item[2], "event_id", None) != event_id
+        ]
+        if len(remaining) == len(self._heap):
+            return False
+        self._heap = remaining
+        heapq.heapify(self._heap)
+        return True
+
+    def clear(self) -> None:
+        self._heap = []
+
+    def list_events(self) -> List[Event]:
+        return [event for _, _, event in sorted(self._heap)]
 
 
 class TraceLogger:
@@ -663,12 +711,15 @@ class Router:
         artifacts_dir: Optional[str] = None,
         scenario: Optional[Scenario] = None,
         connector_mode: Optional[str] = None,
+        branch: str = "main",
     ):
+        self.seed = int(seed)
+        self.world_session = None
         self.bus = EventBus(seed)
 
         state_dir_env = os.environ.get("VEI_STATE_DIR")
         base_dir = Path(state_dir_env).expanduser() if state_dir_env else None
-        self.state_store = StateStore(base_dir=base_dir)
+        self.state_store = StateStore(base_dir=base_dir, branch=branch)
         self.state_store.register_reducer("router.init", _reduce_router_init)
         self.state_store.register_reducer("tool.call", _reduce_tool_call)
         self.state_store.register_reducer("event.delivery", _reduce_event_delivery)
@@ -718,6 +769,8 @@ class Router:
                     rules.append(PromoteMonitorRule(token, severity="warning"))
         self.policy_engine = PolicyEngine(rules)
         self._policy_findings: List[Dict[str, Any]] = []
+        self.actor_states: Dict[str, Any] = {}
+        self._replay_state: Dict[str, Any] = {}
 
         self.trace = TraceLogger(artifacts_dir)
         self.scenario = scenario or load_from_env(seed)
@@ -772,6 +825,21 @@ class Router:
         # ServiceDesk twin
         self.servicedesk = ServiceDeskSim(self.scenario)
         self.register_tool_provider(ServiceDeskToolProvider(self.servicedesk))
+
+        # Admin / control-plane twins
+        self.google_admin = GoogleAdminSim(self.scenario)
+        self.register_tool_provider(GoogleAdminToolProvider(self.google_admin))
+        self.siem = SiemSim(self.scenario)
+        self.register_tool_provider(SiemToolProvider(self.siem))
+        self.datadog = DatadogSim(self.scenario)
+        self.register_tool_provider(DatadogToolProvider(self.datadog))
+        self.pagerduty = PagerDutySim(self.scenario)
+        self.register_tool_provider(PagerDutyToolProvider(self.pagerduty))
+        self.feature_flags = FeatureFlagSim(self.scenario)
+        self.register_tool_provider(FeatureFlagToolProvider(self.feature_flags))
+        self.hris = HrisSim(self.scenario)
+        self.register_tool_provider(HrisToolProvider(self.hris))
+        self.register_tool_provider(JiraToolProvider(self.tickets))
 
         self.connector_mode = parse_adapter_mode(
             connector_mode or os.environ.get("VEI_CONNECTOR_MODE")
@@ -832,6 +900,7 @@ class Router:
                 self._policy_findings.extend(findings)
 
         self._record_router_init(seed)
+        self._sync_world_snapshot(label="router.init")
 
     @staticmethod
     def _jsonable(value: Any) -> Any:
@@ -860,7 +929,7 @@ class Router:
         event_clock = self.bus.clock_ms if clock_ms is None else int(clock_ms)
         event = self.state_store.append(kind, payload_map, clock_ms=event_clock)
         if self._snapshot_interval and event.index % self._snapshot_interval == 0:
-            self.state_store.take_snapshot()
+            self._sync_world_snapshot(label=kind)
         return event
 
     def _record_router_init(self, seed: int) -> None:
@@ -872,7 +941,18 @@ class Router:
         }
         self._append_state("router.init", payload)
         if self._snapshot_interval:
-            self.state_store.take_snapshot()
+            self._sync_world_snapshot(label="router.init")
+
+    def _sync_world_snapshot(self, label: Optional[str] = None) -> None:
+        try:
+            from vei.world.session import WorldSession
+
+            if self.world_session is None:
+                self.world_session = WorldSession.attach_router(self)
+            self.world_session.snapshot(label=label)
+        except Exception:
+            # Snapshotting is best-effort to preserve runtime continuity.
+            pass
 
     def _record_tool_call(self, tool: str, args: Dict[str, Any], result: Any) -> None:
         payload = {
@@ -961,7 +1041,20 @@ class Router:
             return self.tickets.deliver(payload)
         if target in {"db", "database"}:
             return self.database.deliver(payload)
-        if target in {"erp", "crm", "servicedesk", "okta", "tool"}:
+        if target in {
+            "erp",
+            "crm",
+            "servicedesk",
+            "okta",
+            "google_admin",
+            "siem",
+            "datadog",
+            "pagerduty",
+            "feature_flags",
+            "hris",
+            "jira",
+            "tool",
+        }:
             tool = payload.get("tool")
             args = payload.get("args", {})
             if not isinstance(tool, str):
@@ -1063,6 +1156,24 @@ class Router:
             "mode": self.connector_mode.value,
             "last_receipt": self.connector_runtime.last_receipt(),
         }
+        snapshot["scheduled_events"] = [
+            {
+                "event_id": getattr(event, "event_id", None),
+                "target": event.target,
+                "due_ms": event.t_due_ms,
+                "source": getattr(event, "source", "system"),
+                "actor_id": getattr(event, "actor_id", None),
+                "kind": getattr(event, "kind", "scheduled"),
+            }
+            for event in self.bus.list_events()
+        ]
+        snapshot["actors"] = {
+            actor_id: (
+                state.model_dump() if hasattr(state, "model_dump") else dict(state)
+            )
+            for actor_id, state in self.actor_states.items()
+        }
+        snapshot["replay"] = dict(self._replay_state)
         if include_receipts:
             snapshot["receipts"] = (
                 list(self._receipts[-tool_tail:]) if tool_tail else list(self._receipts)
@@ -1514,6 +1625,11 @@ class Router:
                 permissions=("crm:write",),
             ),
             ToolSpec(
+                name="crm.reassign_deal_owner",
+                description="Transfer deal ownership.",
+                permissions=("crm:write",),
+            ),
+            ToolSpec(
                 name="crm.log_activity",
                 description="Log an activity.",
                 permissions=("crm:write",),
@@ -1802,6 +1918,8 @@ class Router:
                 return crm.list_deals(**args)
             if tool == "crm.update_deal_stage":
                 return crm.update_deal_stage(**args)
+            if tool == "crm.reassign_deal_owner":
+                return crm.reassign_deal_owner(**args)
             if tool == "crm.log_activity":
                 return crm.log_activity(**args)
             raise MCPError("unknown_tool", f"No such tool: {tool}")
@@ -1858,6 +1976,13 @@ class Router:
             "browser",
             "okta",
             "servicedesk",
+            "google_admin",
+            "siem",
+            "datadog",
+            "pagerduty",
+            "feature_flags",
+            "hris",
+            "jira",
         ):
             if resolved.startswith(f"{prefix}."):
                 return prefix
@@ -1869,8 +1994,14 @@ class Router:
         self, target: str, payload: Dict[str, Any], dt_ms: int = 0
     ) -> Dict[str, Any]:
         """Inject an external event into the bus."""
-        self.bus.schedule(dt_ms=dt_ms, target=target, payload=payload)
-        return {"ok": True}
+        event_id = self.bus.schedule(
+            dt_ms=dt_ms,
+            target=target,
+            payload=payload,
+            source="legacy_inject",
+            kind="injected",
+        )
+        return {"ok": True, "event_id": event_id}
 
     def pending(self) -> Dict[str, int]:
         """Return pending event counts per target without advancing time."""
@@ -1892,6 +2023,13 @@ class Router:
             "crm": 0,
             "okta": 0,
             "servicedesk": 0,
+            "google_admin": 0,
+            "siem": 0,
+            "datadog": 0,
+            "pagerduty": 0,
+            "feature_flags": 0,
+            "hris": 0,
+            "jira": 0,
             "tool": 0,
         }
         target_time = self.bus.clock_ms + max(0, int(dt_ms))
@@ -2004,6 +2142,55 @@ class Router:
                 f"{incidents.get('total', incidents.get('count', 0))} incidents, "
                 f"{request_rows.get('total', request_rows.get('count', 0))} requests"
             )
+        if focus == "google_admin":
+            apps = self.google_admin.list_oauth_apps(limit=1)
+            shares = self.google_admin.list_drive_shares(limit=1)
+            return (
+                "Google Admin: "
+                f"{apps.get('total', apps.get('count', 0))} OAuth apps, "
+                f"{shares.get('total', shares.get('count', 0))} drive shares"
+            )
+        if focus == "siem":
+            alerts = self.siem.list_alerts(limit=1)
+            cases = self.siem.list_cases(limit=1)
+            return (
+                "SIEM: "
+                f"{alerts.get('total', alerts.get('count', 0))} alerts, "
+                f"{cases.get('total', cases.get('count', 0))} cases"
+            )
+        if focus == "datadog":
+            services = self.datadog.list_services(limit=1)
+            monitors = self.datadog.list_monitors(limit=1)
+            return (
+                "Datadog: "
+                f"{services.get('total', services.get('count', 0))} services, "
+                f"{monitors.get('total', monitors.get('count', 0))} monitors"
+            )
+        if focus == "pagerduty":
+            incidents = self.pagerduty.list_incidents(limit=1)
+            return (
+                "PagerDuty: "
+                f"{incidents.get('total', incidents.get('count', 0))} incidents"
+            )
+        if focus == "feature_flags":
+            flags = self.feature_flags.list_flags(limit=1)
+            return (
+                "Feature Flags: " f"{flags.get('total', flags.get('count', 0))} flags"
+            )
+        if focus == "hris":
+            employees = self.hris.list_employees(limit=1)
+            return (
+                "HRIS: "
+                f"{employees.get('total', employees.get('count', 0))} employees"
+            )
+        if focus == "jira":
+            issues = self.tickets.list(limit=1)
+            total = (
+                issues.get("total", issues.get("count", 0))
+                if isinstance(issues, dict)
+                else len(issues)
+            )
+            return f"Jira: {total} issues"
         return ""
 
     def _pending_counts(self) -> Dict[str, int]:
@@ -2018,6 +2205,13 @@ class Router:
             "crm": 0,
             "okta": 0,
             "servicedesk": 0,
+            "google_admin": 0,
+            "siem": 0,
+            "datadog": 0,
+            "pagerduty": 0,
+            "feature_flags": 0,
+            "hris": 0,
+            "jira": 0,
             "tool": 0,
         }
         for _, _, event in self.bus._heap:
@@ -2337,6 +2531,10 @@ class Router:
                     },
                 },
                 {
+                    "tool": "crm.reassign_deal_owner",
+                    "args_schema": {"id": "str", "owner": "str"},
+                },
+                {
                     "tool": "crm.log_activity",
                     "args_schema": {
                         "kind": "str",
@@ -2436,6 +2634,228 @@ class Router:
                         "approval_status": "str?",
                         "comment": "str?",
                     },
+                },
+            ]
+        if focus == "google_admin":
+            return [
+                {
+                    "tool": "google_admin.list_oauth_apps",
+                    "args_schema": {
+                        "status": "str?",
+                        "risk_level": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {
+                    "tool": "google_admin.get_oauth_app",
+                    "args_schema": {"app_id": "str"},
+                },
+                {
+                    "tool": "google_admin.suspend_oauth_app",
+                    "args_schema": {"app_id": "str", "reason": "str?"},
+                },
+                {
+                    "tool": "google_admin.preserve_oauth_evidence",
+                    "args_schema": {"app_id": "str", "note": "str?"},
+                },
+                {
+                    "tool": "google_admin.list_drive_shares",
+                    "args_schema": {
+                        "visibility": "str?",
+                        "owner": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {
+                    "tool": "google_admin.restrict_drive_share",
+                    "args_schema": {
+                        "doc_id": "str",
+                        "visibility": "str?",
+                        "note": "str?",
+                    },
+                },
+            ]
+        if focus == "siem":
+            return [
+                {
+                    "tool": "siem.list_alerts",
+                    "args_schema": {
+                        "status": "str?",
+                        "severity": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {"tool": "siem.get_alert", "args_schema": {"alert_id": "str"}},
+                {
+                    "tool": "siem.create_case",
+                    "args_schema": {
+                        "title": "str",
+                        "alert_id": "str?",
+                        "severity": "str?",
+                        "owner": "str?",
+                    },
+                },
+                {
+                    "tool": "siem.list_cases",
+                    "args_schema": {"status": "str?", "owner": "str?"},
+                },
+                {"tool": "siem.get_case", "args_schema": {"case_id": "str"}},
+                {
+                    "tool": "siem.preserve_evidence",
+                    "args_schema": {
+                        "alert_id": "str",
+                        "case_id": "str?",
+                        "note": "str?",
+                    },
+                },
+                {
+                    "tool": "siem.update_case",
+                    "args_schema": {
+                        "case_id": "str",
+                        "status": "str?",
+                        "owner": "str?",
+                        "customer_notification_required": "bool?",
+                        "note": "str?",
+                    },
+                },
+            ]
+        if focus == "datadog":
+            return [
+                {
+                    "tool": "datadog.list_services",
+                    "args_schema": {"status": "str?", "query": "str?"},
+                },
+                {"tool": "datadog.get_service", "args_schema": {"service_id": "str"}},
+                {
+                    "tool": "datadog.update_service",
+                    "args_schema": {
+                        "service_id": "str",
+                        "status": "str?",
+                        "note": "str?",
+                    },
+                },
+                {
+                    "tool": "datadog.list_monitors",
+                    "args_schema": {
+                        "status": "str?",
+                        "severity": "str?",
+                        "service_id": "str?",
+                    },
+                },
+                {"tool": "datadog.get_monitor", "args_schema": {"monitor_id": "str"}},
+                {
+                    "tool": "datadog.mute_monitor",
+                    "args_schema": {"monitor_id": "str", "reason": "str?"},
+                },
+            ]
+        if focus == "pagerduty":
+            return [
+                {
+                    "tool": "pagerduty.list_incidents",
+                    "args_schema": {
+                        "status": "str?",
+                        "urgency": "str?",
+                        "service_id": "str?",
+                    },
+                },
+                {
+                    "tool": "pagerduty.get_incident",
+                    "args_schema": {"incident_id": "str"},
+                },
+                {
+                    "tool": "pagerduty.ack_incident",
+                    "args_schema": {"incident_id": "str", "assignee": "str?"},
+                },
+                {
+                    "tool": "pagerduty.escalate_incident",
+                    "args_schema": {"incident_id": "str", "assignee": "str"},
+                },
+                {
+                    "tool": "pagerduty.resolve_incident",
+                    "args_schema": {"incident_id": "str", "note": "str?"},
+                },
+            ]
+        if focus == "feature_flags":
+            return [
+                {
+                    "tool": "feature_flags.list_flags",
+                    "args_schema": {"service": "str?", "env": "str?", "limit": "int?"},
+                },
+                {"tool": "feature_flags.get_flag", "args_schema": {"flag_key": "str"}},
+                {
+                    "tool": "feature_flags.set_flag",
+                    "args_schema": {
+                        "flag_key": "str",
+                        "enabled": "bool",
+                        "env": "str?",
+                        "reason": "str?",
+                    },
+                },
+                {
+                    "tool": "feature_flags.update_rollout",
+                    "args_schema": {
+                        "flag_key": "str",
+                        "rollout_pct": "int",
+                        "env": "str?",
+                        "reason": "str?",
+                    },
+                },
+            ]
+        if focus == "hris":
+            return [
+                {
+                    "tool": "hris.list_employees",
+                    "args_schema": {
+                        "status": "str?",
+                        "cohort": "str?",
+                        "query": "str?",
+                        "limit": "int?",
+                        "cursor": "str?",
+                    },
+                },
+                {"tool": "hris.get_employee", "args_schema": {"employee_id": "str"}},
+                {
+                    "tool": "hris.resolve_identity",
+                    "args_schema": {
+                        "employee_id": "str",
+                        "corporate_email": "str?",
+                        "manager": "str?",
+                        "note": "str?",
+                    },
+                },
+                {
+                    "tool": "hris.mark_onboarded",
+                    "args_schema": {"employee_id": "str", "note": "str?"},
+                },
+            ]
+        if focus == "jira":
+            return [
+                {
+                    "tool": "jira.list_issues",
+                    "args_schema": {"status": "str?", "assignee": "str?"},
+                },
+                {"tool": "jira.get_issue", "args_schema": {"issue_id": "str"}},
+                {
+                    "tool": "jira.create_issue",
+                    "args_schema": {
+                        "title": "str",
+                        "description": "str?",
+                        "assignee": "str?",
+                    },
+                },
+                {
+                    "tool": "jira.transition_issue",
+                    "args_schema": {"issue_id": "str", "status": "str"},
+                },
+                {
+                    "tool": "jira.add_comment",
+                    "args_schema": {"issue_id": "str", "body": "str", "author": "str?"},
                 },
             ]
         return []

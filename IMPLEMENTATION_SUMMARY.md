@@ -1,5 +1,7 @@
 # Frontier Evaluation Implementation Summary
 
+Historical note: this document captures the frontier-evaluation expansion that landed before the later `WorldSession`, benchmark-family, release tooling, and licensing updates. Treat it as a point-in-time summary for frontier eval work, not the canonical current architecture reference.
+
 ## Overview
 
 A comprehensive frontier model evaluation system has been implemented to address the critiques of the original basic evaluation. The system moves from simple binary success metrics to **multi-dimensional assessment** across 7 complex scenarios requiring 35-80 steps each.

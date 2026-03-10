@@ -25,10 +25,12 @@ app = typer.Typer(
 def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
     """Recursively load all frontier_score.json and score.json files."""
     results = []
+    aggregate_roots: set[Path] = set()
 
     # Look for aggregate_results.json first (batch runs)
     for aggregate_file in root_dir.rglob("aggregate_results.json"):
         try:
+            aggregate_roots.add(aggregate_file.parent.resolve())
             with open(aggregate_file, "r") as f:
                 batch = json.load(f)
                 for item in batch:
@@ -36,8 +38,50 @@ def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
         except Exception:
             continue
 
+    # Per-run benchmark artifacts already contain normalized score payloads.
+    for benchmark_file in root_dir.rglob("benchmark_result.json"):
+        benchmark_parent = benchmark_file.parent.resolve()
+        if any(
+            root == benchmark_parent or root in benchmark_parent.parents
+            for root in aggregate_roots
+        ):
+            continue
+        if (benchmark_file.parent / "aggregate_results.json").exists():
+            continue
+        try:
+            with open(benchmark_file, "r", encoding="utf-8") as f:
+                result = json.load(f)
+            spec = result.get("spec", {})
+            score = result.get("score", {})
+            if not isinstance(spec, dict) or not isinstance(score, dict):
+                continue
+            results.append(
+                {
+                    "scenario": spec.get("scenario_name", "unknown"),
+                    "family": score.get("benchmark_family"),
+                    "model": spec.get("model") or spec.get("runner", "unknown"),
+                    "provider": spec.get("provider")
+                    or (
+                        "baseline"
+                        if spec.get("runner") in {"scripted", "bc"}
+                        else "unknown"
+                    ),
+                    "score": score,
+                }
+            )
+        except Exception:
+            continue
+
     # Also look for individual score files
     for score_file in root_dir.rglob("frontier_score.json"):
+        score_parent = score_file.parent.resolve()
+        if any(
+            root == score_parent or root in score_parent.parents
+            for root in aggregate_roots
+        ):
+            continue
+        if (score_file.parent / "benchmark_result.json").exists():
+            continue
         try:
             with open(score_file, "r") as f:
                 score = json.load(f)
@@ -67,8 +111,16 @@ def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
 
     # Also check for legacy score.json
     for score_file in root_dir.rglob("score.json"):
+        score_parent = score_file.parent.resolve()
+        if any(
+            root == score_parent or root in score_parent.parents
+            for root in aggregate_roots
+        ):
+            continue
         # Skip if we already have frontier_score.json in same dir
         if (score_file.parent / "frontier_score.json").exists():
+            continue
+        if (score_file.parent / "benchmark_result.json").exists():
             continue
 
         try:
@@ -127,6 +179,7 @@ def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
 def generate_csv_report(results: List[Dict], output_path: Path) -> None:
     """Generate CSV report with all results."""
 
+    dimension_keys = _ordered_dimension_keys(results)
     rows = []
     for r in results:
         score = r["score"]
@@ -136,18 +189,15 @@ def generate_csv_report(results: List[Dict], output_path: Path) -> None:
             "model": r["model"],
             "provider": r.get("provider", "unknown"),
             "scenario": r["scenario"],
+            "family": r.get("family") or score.get("benchmark_family"),
             "success": score.get("success", False),
             "composite_score": score.get("composite_score", 0.0),
-            "correctness": dims.get("correctness", 0.0),
-            "completeness": dims.get("completeness", 0.0),
-            "efficiency": dims.get("efficiency", 0.0),
-            "communication_quality": dims.get("communication_quality", 0.0),
-            "domain_knowledge": dims.get("domain_knowledge", 0.0),
-            "safety_alignment": dims.get("safety_alignment", 0.0),
             "steps_taken": score.get("steps_taken", 0),
             "time_ms": score.get("time_elapsed_ms", 0),
             "difficulty": score.get("scenario_difficulty", "unknown"),
         }
+        for key in dimension_keys:
+            row[key] = dims.get(key, 0.0)
         rows.append(row)
 
     if not rows:
@@ -214,6 +264,7 @@ def generate_markdown_leaderboard(results: List[Dict]) -> str:
     )
 
     # Build markdown
+    dimension_keys = _ordered_dimension_keys(results)
     lines = [
         "# 🏆 Frontier Model Evaluation Leaderboard",
         "",
@@ -245,21 +296,14 @@ def generate_markdown_leaderboard(results: List[Dict]) -> str:
 
     lines.extend(["", "---", "", "## Dimension Breakdown", ""])
 
-    # Dimension table
-    lines.append(
-        "| Model | Correctness | Completeness | Efficiency | Communication | Domain | Safety |"
-    )
-    lines.append(
-        "|-------|-------------|--------------|------------|---------------|--------|--------|"
-    )
+    dimension_header = " | ".join(_dimension_label(key) for key in dimension_keys)
+    lines.append(f"| Model | {dimension_header} |")
+    lines.append("|-------|" + "|".join("---" for _ in dimension_keys) + "|")
 
     for stat in model_stats:
         dims = stat["avg_dims"]
-        lines.append(
-            f"| {stat['model']} | {dims.get('correctness', 0):.2f} | {dims.get('completeness', 0):.2f} | "
-            f"{dims.get('efficiency', 0):.2f} | {dims.get('communication_quality', 0):.2f} | "
-            f"{dims.get('domain_knowledge', 0):.2f} | {dims.get('safety_alignment', 0):.2f} |"
-        )
+        values = " | ".join(f"{dims.get(key, 0):.2f}" for key in dimension_keys)
+        lines.append(f"| {stat['model']} | {values} |")
 
     lines.extend(["", "---", "", "## Detailed Results by Scenario", ""])
 
@@ -519,6 +563,36 @@ def quick_summary(
         )
 
     typer.echo("=" * 70)
+
+
+def _ordered_dimension_keys(results: List[Dict[str, Any]]) -> List[str]:
+    preferred = [
+        "evidence_preservation",
+        "blast_radius_minimization",
+        "least_privilege",
+        "oversharing_avoidance",
+        "deadline_compliance",
+        "comms_correctness",
+        "safe_rollback",
+        "correctness",
+        "completeness",
+        "efficiency",
+        "communication_quality",
+        "domain_knowledge",
+        "safety_alignment",
+    ]
+    seen = {
+        key
+        for item in results
+        for key in item.get("score", {}).get("dimensions", {}).keys()
+    }
+    ordered = [key for key in preferred if key in seen]
+    ordered.extend(sorted(seen - set(ordered)))
+    return ordered
+
+
+def _dimension_label(name: str) -> str:
+    return name.replace("_", " ").title()
 
 
 if __name__ == "__main__":

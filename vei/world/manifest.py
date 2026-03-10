@@ -14,6 +14,7 @@ class ScenarioManifest(BaseModel):
     name: str
     scenario_type: str = "core"
     difficulty: str = "standard"
+    benchmark_family: str | None = None
     expected_steps_min: int | None = None
     expected_steps_max: int | None = None
     tool_families: list[str] = Field(default_factory=list)
@@ -50,6 +51,8 @@ def _infer_tool_families(scenario: Scenario) -> list[str]:
         families.add("tickets")
     if scenario.database_tables:
         families.add("db")
+    if scenario.crm:
+        families.add("crm")
     if (
         scenario.identity_users
         or scenario.identity_groups
@@ -58,6 +61,18 @@ def _infer_tool_families(scenario: Scenario) -> list[str]:
         families.add("okta")
     if scenario.service_incidents or scenario.service_requests:
         families.add("servicedesk")
+    if scenario.google_admin:
+        families.add("google_admin")
+    if scenario.siem:
+        families.add("siem")
+    if scenario.datadog:
+        families.add("datadog")
+    if scenario.pagerduty:
+        families.add("pagerduty")
+    if scenario.feature_flags:
+        families.add("feature_flags")
+    if scenario.hris:
+        families.add("hris")
     return sorted(families)
 
 
@@ -76,6 +91,11 @@ def build_scenario_manifest(name: str, scenario: Scenario) -> ScenarioManifest:
         name=name,
         scenario_type=str(metadata.get("scenario_type", "core")),
         difficulty=str(metadata.get("difficulty", "standard")),
+        benchmark_family=(
+            str(metadata.get("benchmark_family"))
+            if metadata.get("benchmark_family") is not None
+            else None
+        ),
         expected_steps_min=expected_min,
         expected_steps_max=expected_max,
         tool_families=_infer_tool_families(scenario),
