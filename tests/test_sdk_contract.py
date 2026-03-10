@@ -9,9 +9,14 @@ from vei.sdk import (
     create_session,
     filter_enterprise_corpus,
     generate_enterprise_corpus,
+    get_benchmark_family_workflow_spec,
+    get_benchmark_family_workflow_variant,
     get_scenario_manifest,
     list_scenario_manifest,
+    list_benchmark_family_workflow_variants,
+    run_benchmark_family_workflow,
     run_workflow_spec,
+    validate_benchmark_family_workflow,
     validate_workflow_spec,
 )
 
@@ -165,3 +170,38 @@ def test_sdk_scenario_manifest_helpers() -> None:
     all_entries = list_scenario_manifest()
     assert all_entries
     assert any(entry.name == "multi_channel" for entry in all_entries)
+
+
+def test_sdk_benchmark_family_workflow_helpers() -> None:
+    workflow = get_benchmark_family_workflow_spec("security_containment")
+    assert workflow.name == "security_containment"
+    assert workflow.metadata["workflow_variant"] == "customer_notify"
+
+    variant = get_benchmark_family_workflow_variant(
+        "security_containment", "internal_only_review"
+    )
+    assert variant.variant_name == "internal_only_review"
+    assert any(
+        item.name == "notification_required" and item.value is False
+        for item in variant.parameters
+    )
+
+    variants = list_benchmark_family_workflow_variants("revenue_incident_mitigation")
+    assert {item.variant_name for item in variants} == {
+        "kill_switch_backstop",
+        "canary_floor",
+    }
+
+    validation = validate_benchmark_family_workflow("security_containment", seed=9)
+    assert validation.ok
+
+    result = run_benchmark_family_workflow(
+        "security_containment",
+        variant_name="internal_only_review",
+        seed=9,
+    )
+    assert result.ok
+    assert result.workflow_name == "security_containment"
+    assert result.final_state["scenario"]["metadata"]["workflow_variant"] == (
+        "internal_only_review"
+    )

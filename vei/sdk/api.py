@@ -6,8 +6,15 @@ from typing import Any, Dict, Iterable, Optional, Protocol
 from vei.corpus.api import CorpusBundle, GeneratedWorkflowSpec, generate_corpus
 from vei.benchmark.api import (
     BenchmarkFamilyManifest,
+    BenchmarkWorkflowVariantManifest,
     get_benchmark_family_manifest,
     list_benchmark_family_manifest,
+)
+from vei.benchmark.workflows import (
+    get_benchmark_family_workflow_spec as _get_benchmark_family_workflow_spec,
+    get_benchmark_family_workflow_variant as _get_benchmark_family_workflow_variant,
+    list_benchmark_family_workflow_specs as _list_benchmark_family_workflow_specs,
+    list_benchmark_family_workflow_variants as _list_benchmark_family_workflow_variants,
 )
 from vei.quality.api import QualityFilterReport, filter_workflow_corpus
 from vei.release.api import (
@@ -22,6 +29,7 @@ from vei.release.api import (
 from vei.router.api import RouterAPI, RouterToolProvider
 from vei.scenario_engine.api import compile_workflow
 from vei.scenario_engine.compiler import CompiledWorkflow
+from vei.scenario_engine.models import WorkflowScenarioSpec
 from vei.scenario_runner.api import run_workflow, validate_workflow
 from vei.scenario_runner.models import ScenarioRunResult, ValidationReport
 from vei.world.api import (
@@ -210,6 +218,50 @@ def get_benchmark_family_manifest_entry(name: str) -> BenchmarkFamilyManifest:
 
 def list_benchmark_family_manifest_entries() -> list[BenchmarkFamilyManifest]:
     return list_benchmark_family_manifest()
+
+
+def get_benchmark_family_workflow_spec(name: str) -> WorkflowScenarioSpec:
+    return _get_benchmark_family_workflow_spec(name)
+
+
+def list_benchmark_family_workflow_specs() -> list[WorkflowScenarioSpec]:
+    return _list_benchmark_family_workflow_specs()
+
+
+def get_benchmark_family_workflow_variant(
+    family_name: str, variant_name: str
+) -> BenchmarkWorkflowVariantManifest:
+    return _get_benchmark_family_workflow_variant(family_name, variant_name)
+
+
+def list_benchmark_family_workflow_variants(
+    family_name: str | None = None,
+) -> list[BenchmarkWorkflowVariantManifest]:
+    return _list_benchmark_family_workflow_variants(family_name)
+
+
+def validate_benchmark_family_workflow(
+    name: str, *, seed: int = 42042, available_tools: Iterable[str] | None = None
+) -> ValidationReport:
+    spec = _get_benchmark_family_workflow_spec(name)
+    return validate_workflow_spec(spec, seed=seed, available_tools=available_tools)
+
+
+def run_benchmark_family_workflow(
+    name: str,
+    *,
+    variant_name: str | None = None,
+    seed: int = 42042,
+    artifacts_dir: str | None = None,
+    connector_mode: str = "sim",
+) -> ScenarioRunResult:
+    spec = _get_benchmark_family_workflow_spec(name, variant_name=variant_name)
+    return run_workflow_spec(
+        spec,
+        seed=seed,
+        artifacts_dir=artifacts_dir,
+        connector_mode=connector_mode,
+    )
 
 
 def build_release_version(*, prefix: str | None = None) -> str:

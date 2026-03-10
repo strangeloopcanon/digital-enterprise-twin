@@ -31,10 +31,13 @@ class AssertionSpec(BaseModel):
         "result_equals",
         "observation_contains",
         "pending_max",
+        "state_contains",
+        "state_equals",
+        "state_exists",
     ]
     field: Optional[str] = None
     contains: Optional[str] = None
-    equals: Optional[str] = None
+    equals: Any = None
     focus: Optional[str] = None
     max_value: Optional[int] = None
     description: Optional[str] = None

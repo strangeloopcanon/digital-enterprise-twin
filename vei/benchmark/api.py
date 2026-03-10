@@ -16,6 +16,12 @@ from vei.benchmark.families import (
     list_benchmark_family_manifest,
     resolve_family_scenarios,
 )
+from vei.benchmark.workflows import (
+    get_benchmark_family_workflow_spec,
+    get_benchmark_family_workflow_variant,
+    list_benchmark_family_workflow_variants,
+    resolve_benchmark_workflow_name,
+)
 from vei.behavior import ScriptedProcurementPolicy
 from vei.benchmark.models import (
     BenchmarkBatchResult,
@@ -24,9 +30,12 @@ from vei.benchmark.models import (
     BenchmarkCaseSpec,
     BenchmarkDiagnostics,
     BenchmarkMetrics,
+    BenchmarkWorkflowVariantManifest,
 )
 from vei.data.models import VEIDataset
 from vei.rl.policy_bc import BCPPolicy, run_policy
+from vei.scenario_engine.api import compile_workflow
+from vei.scenario_runner.api import run_workflow
 from vei.score_core import compute_score
 from vei.score_frontier import compute_frontier_score
 from vei.world.api import create_world_session
@@ -99,6 +108,8 @@ def run_benchmark_case(spec: BenchmarkCaseSpec) -> BenchmarkCaseResult:
     try:
         if spec.runner == "llm":
             result = _run_llm_case(spec)
+        elif spec.runner == "workflow":
+            result = _run_workflow_case(spec)
         else:
             result = _run_local_case(spec)
         result.metrics.elapsed_ms = int((time.monotonic() - started_at) * 1000)
@@ -197,6 +208,107 @@ def _run_local_case(spec: BenchmarkCaseSpec) -> BenchmarkCaseResult:
             else None
         ),
     )
+    return BenchmarkCaseResult(
+        spec=spec,
+        status="ok",
+        success=bool(score.get("success", False)),
+        score=score,
+        raw_score=raw_score,
+        metrics=metrics,
+        diagnostics=diagnostics,
+    )
+
+
+def _run_workflow_case(spec: BenchmarkCaseSpec) -> BenchmarkCaseResult:
+    workflow_name = spec.workflow_name or resolve_benchmark_workflow_name(
+        scenario_name=spec.scenario_name
+    )
+    if workflow_name is None:
+        raise ValueError(
+            f"no benchmark workflow is registered for scenario {spec.scenario_name}"
+        )
+
+    workflow_spec = get_benchmark_family_workflow_spec(workflow_name)
+    workflow_variant = None
+    if isinstance(workflow_spec.metadata, dict):
+        raw_variant = workflow_spec.metadata.get("workflow_variant")
+        if raw_variant is not None:
+            workflow_variant = str(raw_variant)
+    if spec.workflow_variant:
+        workflow_spec = get_benchmark_family_workflow_spec(
+            workflow_name, variant_name=spec.workflow_variant
+        )
+        workflow_variant = spec.workflow_variant
+    compiled = compile_workflow(workflow_spec, seed=spec.seed)
+    workflow_result = run_workflow(
+        compiled,
+        seed=spec.seed,
+        artifacts_dir=str(spec.artifacts_dir),
+        connector_mode="sim",
+    )
+    _write_json(
+        spec.artifacts_dir / "workflow_result.json",
+        workflow_result.model_dump(mode="json"),
+    )
+
+    final_state = (
+        WorldState.model_validate(workflow_result.final_state)
+        if workflow_result.final_state
+        else None
+    )
+    raw_score = {
+        "success": workflow_result.ok,
+        "workflow_name": workflow_result.workflow_name,
+        "workflow_variant": workflow_variant,
+        "costs": {
+            "actions": len(workflow_result.steps),
+            "time_ms": int(workflow_result.metadata.get("time_ms", 0)),
+        },
+        "workflow": {
+            "static_ok": workflow_result.static_validation.ok,
+            "dynamic_ok": workflow_result.dynamic_validation.ok,
+            "issue_count": len(workflow_result.dynamic_validation.issues),
+        },
+    }
+    _write_json(spec.artifacts_dir / "workflow_score.json", raw_score)
+
+    score = _normalize_score(
+        raw_score=raw_score,
+        frontier=False,
+        scenario_name=spec.scenario_name,
+        artifacts_dir=spec.artifacts_dir,
+        state=final_state,
+    )
+    score["workflow_validation"] = {
+        "ok": workflow_result.ok,
+        "static_ok": workflow_result.static_validation.ok,
+        "dynamic_ok": workflow_result.dynamic_validation.ok,
+        "issue_count": len(workflow_result.dynamic_validation.issues),
+    }
+    score["workflow_name"] = workflow_result.workflow_name
+    score["workflow_variant"] = workflow_variant
+    if "success" in score:
+        score["success"] = bool(score.get("success", False) and workflow_result.ok)
+    else:
+        score["success"] = workflow_result.ok
+
+    metrics = _collect_metrics(
+        artifacts_dir=spec.artifacts_dir,
+        raw_score=raw_score,
+    )
+    diagnostics = _collect_world_diagnostics(
+        artifacts_dir=spec.artifacts_dir,
+        state=final_state,
+    )
+    diagnostics.branch = workflow_result.branch
+    diagnostics.workflow_name = workflow_result.workflow_name
+    diagnostics.workflow_variant = workflow_variant
+    diagnostics.workflow_valid = workflow_result.ok
+    diagnostics.workflow_step_count = len(workflow_result.steps)
+    diagnostics.initial_snapshot_id = workflow_result.initial_snapshot_id
+    diagnostics.final_snapshot_id = workflow_result.final_snapshot_id
+    diagnostics.latest_snapshot_label = workflow_result.final_snapshot_label
+
     return BenchmarkCaseResult(
         spec=spec,
         status="ok",
@@ -454,6 +566,21 @@ def _collect_world_diagnostics(
             is not None
             else None
         ),
+        workflow_name=(
+            str(state_obj.scenario.get("metadata", {}).get("workflow_name"))
+            if isinstance(state_obj.scenario, dict)
+            and isinstance(state_obj.scenario.get("metadata"), dict)
+            and state_obj.scenario.get("metadata", {}).get("workflow_name") is not None
+            else None
+        ),
+        workflow_variant=(
+            str(state_obj.scenario.get("metadata", {}).get("workflow_variant"))
+            if isinstance(state_obj.scenario, dict)
+            and isinstance(state_obj.scenario.get("metadata"), dict)
+            and state_obj.scenario.get("metadata", {}).get("workflow_variant")
+            is not None
+            else None
+        ),
         snapshot_count=snapshot_count,
         initial_snapshot_id=initial_snapshot.snapshot_id if initial_snapshot else None,
         final_snapshot_id=(
@@ -532,7 +659,9 @@ def _summarize_batch(results: Sequence[BenchmarkCaseResult]) -> BenchmarkBatchSu
 def _report_item(result: BenchmarkCaseResult) -> Dict[str, Any]:
     model_name = result.spec.model or result.spec.runner
     provider_name = result.spec.provider or (
-        "baseline" if result.spec.runner in {"scripted", "bc"} else "unknown"
+        "baseline"
+        if result.spec.runner in {"scripted", "bc", "workflow"}
+        else "unknown"
     )
     return {
         "scenario": result.spec.scenario_name,
@@ -623,8 +752,11 @@ __all__ = [
     "BenchmarkCaseSpec",
     "BenchmarkDiagnostics",
     "BenchmarkMetrics",
+    "BenchmarkWorkflowVariantManifest",
     "get_benchmark_family_manifest",
     "list_benchmark_family_manifest",
+    "get_benchmark_family_workflow_variant",
+    "list_benchmark_family_workflow_variants",
     "resolve_scenarios",
     "run_benchmark_batch",
     "run_benchmark_case",

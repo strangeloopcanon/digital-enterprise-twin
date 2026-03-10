@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer.testing
 
-from vei.cli.vei_state import app as state_app
+from vei.cli.vei_world import app as world_app
 from vei.world.state import Event, StateStore
 
 
@@ -23,19 +23,19 @@ def _seed_state(base: Path) -> None:
     store.take_snapshot()
 
 
-def test_vei_state_cli_list_and_show(tmp_path: Path) -> None:
+def test_vei_world_cli_list_and_show(tmp_path: Path) -> None:
     runner = typer.testing.CliRunner()
     base = tmp_path / "state"
     _seed_state(base)
 
-    result = runner.invoke(state_app, ["list", "--state-dir", str(base)])
+    result = runner.invoke(world_app, ["list", "--state-dir", str(base)])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload["branch"] == "main"
     assert len(payload["snapshots"]) == 2
 
     result_show = runner.invoke(
-        state_app,
+        world_app,
         [
             "show",
             "--state-dir",
@@ -51,13 +51,13 @@ def test_vei_state_cli_list_and_show(tmp_path: Path) -> None:
     assert show_payload["data"]["count"] == 1
 
 
-def test_vei_state_cli_diff(tmp_path: Path) -> None:
+def test_vei_world_cli_diff(tmp_path: Path) -> None:
     runner = typer.testing.CliRunner()
     base = tmp_path / "state"
     _seed_state(base)
 
     result = runner.invoke(
-        state_app,
+        world_app,
         [
             "diff",
             "--state-dir",

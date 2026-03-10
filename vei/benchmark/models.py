@@ -6,12 +6,15 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-BenchmarkRunner = Literal["scripted", "bc", "llm"]
+BenchmarkRunner = Literal["scripted", "bc", "llm", "workflow"]
+BenchmarkWorkflowValueType = Literal["str", "int", "float", "bool"]
 
 
 class BenchmarkCaseSpec(BaseModel):
     runner: BenchmarkRunner
     scenario_name: str
+    workflow_name: Optional[str] = None
+    workflow_variant: Optional[str] = None
     seed: int = 42042
     artifacts_dir: Path
     branch: Optional[str] = None
@@ -35,9 +38,29 @@ class BenchmarkFamilyManifest(BaseModel):
     name: str
     title: str
     description: str
+    workflow_name: Optional[str] = None
+    primary_workflow_variant: Optional[str] = None
+    workflow_variants: List[str] = Field(default_factory=list)
     scenario_names: List[str] = Field(default_factory=list)
     primary_dimensions: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
+
+
+class BenchmarkWorkflowParameter(BaseModel):
+    name: str
+    value: str | int | float | bool
+    value_type: BenchmarkWorkflowValueType
+    description: Optional[str] = None
+
+
+class BenchmarkWorkflowVariantManifest(BaseModel):
+    family_name: str
+    workflow_name: str
+    variant_name: str
+    title: str
+    description: str
+    scenario_name: str
+    parameters: List[BenchmarkWorkflowParameter] = Field(default_factory=list)
 
 
 class BenchmarkMetrics(BaseModel):
@@ -55,6 +78,10 @@ class BenchmarkMetrics(BaseModel):
 class BenchmarkDiagnostics(BaseModel):
     branch: str = "main"
     benchmark_family: Optional[str] = None
+    workflow_name: Optional[str] = None
+    workflow_variant: Optional[str] = None
+    workflow_valid: Optional[bool] = None
+    workflow_step_count: int = 0
     snapshot_count: int = 0
     initial_snapshot_id: Optional[int] = None
     final_snapshot_id: Optional[int] = None

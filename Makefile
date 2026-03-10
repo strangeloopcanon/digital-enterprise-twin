@@ -31,7 +31,7 @@ check: $(SETUP_STAMP)
 	. $(VENV)/bin/activate && mypy --follow-imports=skip vei/router/identity.py vei/router/tool_providers.py vei/identity vei/world/api.py vei/world/replay.py vei/router/api.py
 	. $(VENV)/bin/activate && bandit -q -r vei -ll
 	@mkdir -p .artifacts
-	. $(VENV)/bin/activate && detect-secrets scan --all-files --exclude-files '(\\.venv|_vei_out|\\.artifacts|vei\\.egg-info)' > .artifacts/detect-secrets.json
+	. $(VENV)/bin/activate && detect-secrets scan $$(git ls-files) > .artifacts/detect-secrets.json
 	@if [ -f .secrets.baseline ]; then \
 		. $(VENV)/bin/activate && detect-secrets-hook --baseline .secrets.baseline $$(git ls-files); \
 	else \

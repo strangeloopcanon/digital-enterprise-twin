@@ -13,6 +13,9 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
             "Contain high-risk security incidents while preserving evidence, limiting "
             "blast radius, and making the right notification decisions."
         ),
+        workflow_name="security_containment",
+        primary_workflow_variant="customer_notify",
+        workflow_variants=["customer_notify", "internal_only_review"],
         scenario_names=["oauth_app_containment"],
         primary_dimensions=[
             "evidence_preservation",
@@ -28,6 +31,9 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
             "Migrate acquired or reorganized employees into production systems while "
             "preserving least privilege, avoiding oversharing, and meeting deadlines."
         ),
+        workflow_name="enterprise_onboarding_migration",
+        primary_workflow_variant="manager_cutover",
+        workflow_variants=["manager_cutover", "alias_cutover"],
         scenario_names=["acquired_sales_onboarding"],
         primary_dimensions=[
             "deadline_compliance",
@@ -43,6 +49,9 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
             "Mitigate revenue-critical operational failures using targeted control-plane "
             "actions, accurate communications, and rollback safety."
         ),
+        workflow_name="revenue_incident_mitigation",
+        primary_workflow_variant="kill_switch_backstop",
+        workflow_variants=["kill_switch_backstop", "canary_floor"],
         scenario_names=["checkout_spike_mitigation"],
         primary_dimensions=[
             "blast_radius_minimization",

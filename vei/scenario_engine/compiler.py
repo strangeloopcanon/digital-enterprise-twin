@@ -65,8 +65,13 @@ def compile_workflow_spec(spec: Any, seed: int = 42042) -> CompiledWorkflow:
                 approval.model_dump() for approval in workflow.approvals
             ],
             "workflow_tags": list(workflow.tags),
+            "workflow_metadata": dict(workflow.metadata),
         }
     )
+    if workflow.metadata:
+        for key in ("benchmark_family", "workflow_variant", "workflow_parameters"):
+            if key in workflow.metadata:
+                merged_metadata[key] = workflow.metadata[key]
     scenario.metadata = merged_metadata
 
     steps: List[CompiledStep] = []

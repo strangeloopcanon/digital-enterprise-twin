@@ -75,12 +75,14 @@ def evaluate_assertions(
     result: Any,
     observation: dict[str, Any],
     pending: dict[str, int],
+    state: dict[str, Any],
 ) -> List[str]:
     return evaluate_assertion_specs(
         assertions=step.expect,
         result=result,
         observation=observation,
         pending=pending,
+        state=state,
     )
 
 
@@ -90,6 +92,7 @@ def evaluate_assertion_specs(
     result: Any,
     observation: dict[str, Any],
     pending: dict[str, int],
+    state: dict[str, Any],
 ) -> List[str]:
     failures: List[str] = []
     for assertion in assertions:
@@ -98,6 +101,7 @@ def evaluate_assertion_specs(
             result=result,
             observation=observation,
             pending=pending,
+            state=state,
         )
         if msg:
             failures.append(msg)
@@ -110,6 +114,7 @@ def _assertion_failure(
     result: Any,
     observation: dict[str, Any],
     pending: dict[str, int],
+    state: dict[str, Any],
 ) -> Optional[str]:
     if assertion.kind == "result_contains":
         value = _resolve_field(result, assertion.field)
@@ -120,9 +125,12 @@ def _assertion_failure(
 
     if assertion.kind == "result_equals":
         value = _resolve_field(result, assertion.field)
-        expected = assertion.equals or ""
-        if str(value) != expected:
-            return f"expected result field '{assertion.field}' == '{expected}', got '{value}'"
+        expected = assertion.equals
+        if value != expected:
+            return (
+                f"expected result field '{assertion.field}' == {expected!r}, "
+                f"got {value!r}"
+            )
         return None
 
     if assertion.kind == "observation_contains":
@@ -145,6 +153,29 @@ def _assertion_failure(
             return f"expected pending '{field}' <= {max_value}, got {numeric}"
         return None
 
+    if assertion.kind == "state_contains":
+        value = _resolve_field(state, assertion.field)
+        needle = assertion.contains or ""
+        if needle not in str(value):
+            return f"expected state field '{assertion.field}' to contain '{needle}'"
+        return None
+
+    if assertion.kind == "state_equals":
+        value = _resolve_field(state, assertion.field)
+        expected = assertion.equals
+        if value != expected:
+            return (
+                f"expected state field '{assertion.field}' == {expected!r}, "
+                f"got {value!r}"
+            )
+        return None
+
+    if assertion.kind == "state_exists":
+        value = _resolve_field(state, assertion.field)
+        if value is None:
+            return f"expected state field '{assertion.field}' to exist"
+        return None
+
     return f"unknown assertion kind: {assertion.kind}"
 
 
@@ -155,6 +186,12 @@ def _resolve_field(payload: Any, field: str | None) -> Any:
     for key in field.split("."):
         if isinstance(current, dict):
             current = current.get(key)
-        else:
-            return None
+            continue
+        if isinstance(current, list):
+            try:
+                current = current[int(key)]
+            except Exception:  # noqa: BLE001
+                return None
+            continue
+        return None
     return current

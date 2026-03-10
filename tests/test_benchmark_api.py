@@ -6,14 +6,17 @@ from pathlib import Path
 import typer.testing
 
 from vei.benchmark.api import (
+    get_benchmark_family_workflow_variant,
     get_benchmark_family_manifest,
     list_benchmark_family_manifest,
+    list_benchmark_family_workflow_variants,
     resolve_scenarios,
     run_benchmark_batch,
     run_benchmark_case,
     score_enterprise_dimensions,
 )
 from vei.benchmark.models import BenchmarkCaseSpec
+from vei.benchmark.workflows import get_benchmark_family_workflow_spec
 from vei.cli.vei_eval import app as eval_app
 from vei.cli.vei_report import load_all_results
 from vei.data.rollout import rollout_procurement
@@ -136,6 +139,7 @@ def test_report_loads_batch_results_without_double_counting(tmp_path: Path) -> N
     assert len(results) == 1
     assert results[0]["model"] == "scripted"
     assert results[0]["provider"] == "baseline"
+    assert results[0]["runner"] == "scripted"
 
 
 def test_benchmark_family_catalog_and_resolution() -> None:
@@ -144,12 +148,36 @@ def test_benchmark_family_catalog_and_resolution() -> None:
     assert "security_containment" in families
     assert "enterprise_onboarding_migration" in families
     assert "revenue_incident_mitigation" in families
+    assert families["security_containment"].workflow_name == "security_containment"
+    assert families["security_containment"].primary_workflow_variant == (
+        "customer_notify"
+    )
+    assert families["security_containment"].workflow_variants == [
+        "customer_notify",
+        "internal_only_review",
+    ]
     assert get_benchmark_family_manifest("security_containment").scenario_names == [
         "oauth_app_containment"
     ]
     assert resolve_scenarios(family_names=["revenue_incident_mitigation"]) == [
         "checkout_spike_mitigation"
     ]
+    assert (
+        get_benchmark_family_workflow_spec("revenue_incident_mitigation").name
+        == "revenue_incident_mitigation"
+    )
+    assert (
+        get_benchmark_family_workflow_variant(
+            "security_containment", "internal_only_review"
+        ).variant_name
+        == "internal_only_review"
+    )
+    assert {
+        item.variant_name for item in list_benchmark_family_workflow_variants()
+    } >= {
+        "manager_cutover",
+        "canary_floor",
+    }
 
 
 def test_enterprise_dimension_scoring_for_security_containment(
@@ -211,3 +239,129 @@ def test_run_benchmark_case_for_family_scenario_includes_family_dimensions(
     assert result.score["benchmark_family"] == "security_containment"
     assert result.diagnostics.benchmark_family == "security_containment"
     assert "evidence_preservation" in result.score["dimensions"]
+
+
+def test_run_benchmark_case_workflow_runner(tmp_path: Path) -> None:
+    artifacts = tmp_path / "workflow_case"
+    spec = BenchmarkCaseSpec(
+        runner="workflow",
+        scenario_name="oauth_app_containment",
+        workflow_name="security_containment",
+        seed=909,
+        artifacts_dir=artifacts,
+    )
+
+    result = run_benchmark_case(spec)
+
+    assert result.status == "ok"
+    assert result.success is True
+    assert result.score["workflow_name"] == "security_containment"
+    assert result.diagnostics.workflow_name == "security_containment"
+    assert result.diagnostics.workflow_variant == "customer_notify"
+    assert result.diagnostics.workflow_valid is True
+    assert result.diagnostics.workflow_step_count == 5
+    assert result.diagnostics.initial_snapshot_id is not None
+    assert result.diagnostics.final_snapshot_id is not None
+    assert result.diagnostics.latest_snapshot_label == "workflow.final"
+    assert (artifacts / "workflow_result.json").exists()
+    assert (artifacts / "workflow_score.json").exists()
+
+
+def test_run_benchmark_case_workflow_runner_variant(tmp_path: Path) -> None:
+    artifacts = tmp_path / "workflow_variant_case"
+    spec = BenchmarkCaseSpec(
+        runner="workflow",
+        scenario_name="checkout_spike_mitigation",
+        workflow_name="revenue_incident_mitigation",
+        workflow_variant="canary_floor",
+        seed=910,
+        artifacts_dir=artifacts,
+    )
+
+    result = run_benchmark_case(spec)
+
+    assert result.status == "ok"
+    assert result.success is True
+    assert result.score["workflow_variant"] == "canary_floor"
+    assert result.diagnostics.workflow_variant == "canary_floor"
+    assert (
+        result.diagnostics.scenario_metadata["workflow_parameters"]["rollout_pct"] == 5
+    )
+
+
+def test_vei_eval_benchmark_cli_workflow_runner(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        eval_app,
+        [
+            "benchmark",
+            "--runner",
+            "workflow",
+            "--family",
+            "security_containment",
+            "--artifacts-root",
+            str(tmp_path),
+            "--run-id",
+            "workflow_cli",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "workflow_cli" / "aggregate_results.json").exists()
+    assert (tmp_path / "workflow_cli" / "oauth_app_containment").exists()
+
+
+def test_vei_eval_benchmark_cli_workflow_runner_with_explicit_workflow_name(
+    tmp_path: Path,
+) -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        eval_app,
+        [
+            "benchmark",
+            "--runner",
+            "workflow",
+            "--scenario",
+            "oauth_app_containment",
+            "--workflow-name",
+            "security_containment",
+            "--workflow-variant",
+            "internal_only_review",
+            "--artifacts-root",
+            str(tmp_path),
+            "--run-id",
+            "workflow_named_cli",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    aggregate = json.loads(
+        (tmp_path / "workflow_named_cli" / "aggregate_results.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert aggregate[0]["diagnostics"]["workflow_name"] == "security_containment"
+    assert aggregate[0]["diagnostics"]["workflow_variant"] == "internal_only_review"
+    assert aggregate[0]["provider"] == "baseline"
+
+
+def test_report_loads_workflow_benchmark_diagnostics(tmp_path: Path) -> None:
+    run_dir = tmp_path / "workflow_report"
+    run_benchmark_case(
+        BenchmarkCaseSpec(
+            runner="workflow",
+            scenario_name="oauth_app_containment",
+            workflow_name="security_containment",
+            seed=515,
+            artifacts_dir=run_dir / "oauth_app_containment",
+        )
+    )
+
+    results = load_all_results(run_dir)
+
+    assert len(results) == 1
+    assert results[0]["runner"] == "workflow"
+    assert results[0]["provider"] == "baseline"
+    assert results[0]["diagnostics"]["workflow_name"] == "security_containment"
+    assert results[0]["diagnostics"]["initial_snapshot_id"] is not None
+    assert results[0]["metrics"]["elapsed_ms"] >= 0

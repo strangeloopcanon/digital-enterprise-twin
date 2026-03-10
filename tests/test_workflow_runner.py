@@ -67,6 +67,12 @@ def test_compile_and_run_workflow_success() -> None:
     assert result.static_validation.ok
     assert result.dynamic_validation.ok
     assert result.ok
+    assert result.branch == "main"
+    assert result.initial_snapshot_id is not None
+    assert result.final_snapshot_id is not None
+    assert result.initial_snapshot_id <= result.final_snapshot_id
+    assert result.initial_snapshot_label == "workflow.start"
+    assert result.final_snapshot_label == "workflow.final"
     assert len(result.steps) == 3
     assert all(step.ok for step in result.steps)
 
@@ -141,3 +147,74 @@ def test_run_workflow_supports_salesforce_alias_and_db_steps(
     result = run_workflow(compiled, seed=99, connector_mode="sim")
     assert result.ok
     assert all(step.ok for step in result.steps)
+
+
+def test_run_workflow_supports_state_assertions_and_list_indexing() -> None:
+    spec = {
+        "name": "workflow-state-assertions",
+        "objective": {
+            "statement": "Restrict an inherited drive share.",
+            "success": ["share restricted"],
+        },
+        "world": {"catalog": "acquired_sales_onboarding"},
+        "steps": [
+            {
+                "step_id": "restrict_share",
+                "description": "Restrict inherited sharing",
+                "tool": "google_admin.restrict_drive_share",
+                "args": {
+                    "doc_id": "GDRIVE-2201",
+                    "visibility": "internal",
+                    "note": "Reduce oversharing during migration.",
+                },
+                "expect": [
+                    {
+                        "kind": "result_equals",
+                        "field": "shared_with_count",
+                        "equals": 1,
+                    },
+                    {
+                        "kind": "state_equals",
+                        "field": "components.google_admin.drive_shares.GDRIVE-2201.visibility",
+                        "equals": "internal",
+                    },
+                    {
+                        "kind": "state_equals",
+                        "field": "components.google_admin.drive_shares.GDRIVE-2201.shared_with.0",
+                        "equals": "maya.rex@example.com",
+                    },
+                ],
+            }
+        ],
+        "success_assertions": [
+            {
+                "kind": "state_exists",
+                "field": "components.google_admin.drive_shares.GDRIVE-2201.history.0",
+            }
+        ],
+    }
+    compiled = compile_workflow(spec, seed=55)
+    result = run_workflow(compiled, seed=55, connector_mode="sim")
+
+    assert result.ok
+    assert result.steps[0].ok
+    assert (
+        result.final_state["components"]["google_admin"]["drive_shares"]["GDRIVE-2201"][
+            "visibility"
+        ]
+        == "internal"
+    )
+
+
+def test_run_workflow_static_validation_failure_still_persists_snapshots() -> None:
+    spec = _workflow_spec()
+    spec["steps"][0]["tool"] = "browser.unknown"
+    compiled = compile_workflow(spec, seed=44)
+
+    result = run_workflow(compiled, seed=44, connector_mode="sim")
+
+    assert not result.ok
+    assert result.initial_snapshot_id is not None
+    assert result.final_snapshot_id is not None
+    assert result.initial_snapshot_label == "workflow.start"
+    assert result.final_snapshot_label == "workflow.static_invalid"
