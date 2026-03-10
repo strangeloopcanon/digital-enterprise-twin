@@ -282,11 +282,15 @@ def test_run_benchmark_case_for_family_scenario_includes_family_dimensions(
     assert "evidence_preservation" in result.score["dimensions"]
     assert result.score["workflow_name"] == "security_containment"
     assert result.score["workflow_variant"] == "customer_notify"
+    assert result.score["workflow_validation"]["contract_name"] == (
+        "security_containment.contract"
+    )
     assert result.score["workflow_validation"]["validation_mode"] == "state"
     assert result.score["workflow_validation"]["success_assertion_count"] == 5
     assert result.diagnostics.workflow_name == "security_containment"
     assert result.diagnostics.workflow_variant == "customer_notify"
     assert (artifacts / "workflow_validation.json").exists()
+    assert (artifacts / "contract.json").exists()
 
 
 def test_run_benchmark_case_workflow_runner(tmp_path: Path) -> None:
@@ -312,11 +316,15 @@ def test_run_benchmark_case_workflow_runner(tmp_path: Path) -> None:
     assert result.diagnostics.final_snapshot_id is not None
     assert result.diagnostics.latest_snapshot_label == "workflow.final"
     assert result.score["workflow_validation"]["validation_mode"] == "workflow"
+    assert result.score["workflow_validation"]["contract_name"] == (
+        "security_containment.contract"
+    )
     assert result.score["workflow_validation"]["success_assertion_count"] == 5
     assert result.score["workflow_validation"]["success_assertions_failed"] == 0
     assert (artifacts / "workflow_result.json").exists()
     assert (artifacts / "workflow_score.json").exists()
     assert (artifacts / "workflow_validation.json").exists()
+    assert (artifacts / "contract.json").exists()
 
 
 def test_run_benchmark_case_bc_family_includes_workflow_validation(
@@ -341,6 +349,9 @@ def test_run_benchmark_case_bc_family_includes_workflow_validation(
 
     assert result.status == "ok"
     assert result.score["workflow_name"] == "security_containment"
+    assert result.score["workflow_validation"]["contract_name"] == (
+        "security_containment.contract"
+    )
     assert result.score["workflow_validation"]["validation_mode"] == "state"
     assert result.score["workflow_validation"]["success_assertion_count"] == 5
     assert "success_assertions_failed" in result.score["workflow_validation"]
@@ -433,6 +444,9 @@ def test_run_benchmark_case_llm_family_includes_workflow_validation(
 
     assert result.status == "ok"
     assert result.score["workflow_name"] == "security_containment"
+    assert result.score["workflow_validation"]["contract_name"] == (
+        "security_containment.contract"
+    )
     assert result.score["workflow_validation"]["validation_mode"] == "state"
     assert result.score["workflow_validation"]["ok"] is True
     assert result.score["workflow_validation"]["success_assertions_failed"] == 0

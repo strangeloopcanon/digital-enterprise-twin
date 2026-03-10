@@ -44,19 +44,27 @@ def validate_workflow(
 def validate_workflow_outcome(
     workflow: CompiledWorkflow,
     *,
-    state: dict,
+    oracle_state: dict | None = None,
     time_ms: int = 0,
     available_tools: Iterable[str] | None = None,
     result: object | None = None,
-    observation: dict | None = None,
+    visible_observation: dict | None = None,
     pending: dict[str, int] | None = None,
+    state: dict | None = None,
+    observation: dict | None = None,
 ) -> WorkflowOutcomeValidation:
+    resolved_state = oracle_state if oracle_state is not None else state
+    if resolved_state is None:
+        raise ValueError("validate_workflow_outcome requires oracle_state")
+    resolved_observation = (
+        visible_observation if visible_observation is not None else observation
+    )
     return validate_compiled_workflow_outcome(
         workflow,
-        state=state,
+        oracle_state=resolved_state,
         time_ms=time_ms,
         available_tools=list(available_tools) if available_tools is not None else None,
         result=result,
-        observation=observation,
+        visible_observation=resolved_observation,
         pending=pending,
     )
