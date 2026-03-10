@@ -35,4 +35,10 @@ class ScenarioRunResult(BaseModel):
     dynamic_validation: ValidationReport
     steps: List[StepExecution] = Field(default_factory=list)
     artifacts_dir: Optional[str] = None
+    branch: str = "main"
+    initial_snapshot_id: Optional[int] = None
+    final_snapshot_id: Optional[int] = None
+    initial_snapshot_label: Optional[str] = None
+    final_snapshot_label: Optional[str] = None
+    final_state: Dict[str, Any] = Field(default_factory=dict)
     metadata: Dict[str, Any] = Field(default_factory=dict)

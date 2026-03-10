@@ -277,10 +277,11 @@ USE the bd tool instead of markdown for all new work. We only and always track w
 
 ### Build, Test, and Dev Commands
 - Install (with extras): `pip install -e ".[llm,browser,sse]"`
-- Quick setup check: `python test_vei_setup.py`
+- Repo validation: `make check && make test`
 - Run tests: `pytest -q`
 - Transport smoke (no API key): `vei-smoke --transport stdio --timeout-s 30`
-- Demo and CLI: `vei-demo --mode llm --model gpt-5 --artifacts-dir ./_vei_out/demo`
+- LLM evaluation: `vei-llm-test --provider openai --model gpt-5 --artifacts ./_vei_out/llm_eval`
+- World inspection: `vei-world list --state-dir ./_vei_out/state`
 - Start SSE server (optional): `VEI_SEED=42042 python -m vei.router.sse`
 - Dataset/rollout pipeline:
   - `vei-pack slack|mail|tickets|docs` to turn exports into canonical datasets.

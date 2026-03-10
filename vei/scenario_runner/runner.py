@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from vei.router.core import Router
 from vei.scenario_engine.compiler import CompiledWorkflow
+from vei.world.session import WorldSession
 
 from .models import ScenarioRunResult, StepExecution, ValidationIssue, ValidationReport
 from .validator import (
@@ -31,10 +32,13 @@ def run_compiled_workflow(
         scenario=workflow.scenario,
         connector_mode=connector_mode,
     )
+    world = WorldSession.attach_router(router)
+    initial_snapshot = world.snapshot("workflow.start")
     available_tools = [spec.name for spec in router.registry.list()]
     static_report = static_validate_workflow(workflow, available_tools=available_tools)
 
     if not static_report.ok:
+        final_snapshot = world.snapshot("workflow.static_invalid")
         return ScenarioRunResult(
             ok=False,
             workflow_name=workflow.spec.name,
@@ -42,7 +46,17 @@ def run_compiled_workflow(
             dynamic_validation=ValidationReport(ok=False, issues=[]),
             steps=[],
             artifacts_dir=str(artifacts) if artifacts else None,
-            metadata={"reason": "static validation failed"},
+            branch=final_snapshot.branch,
+            initial_snapshot_id=initial_snapshot.snapshot_id,
+            final_snapshot_id=final_snapshot.snapshot_id,
+            initial_snapshot_label=initial_snapshot.label,
+            final_snapshot_label=final_snapshot.label,
+            final_state=final_snapshot.data.model_dump(mode="json"),
+            metadata={
+                "reason": "static validation failed",
+                "initial_snapshot_id": initial_snapshot.snapshot_id,
+                "final_snapshot_id": final_snapshot.snapshot_id,
+            },
         )
 
     step_results: List[StepExecution] = []
@@ -69,11 +83,13 @@ def run_compiled_workflow(
                 _focus_for_tool(step.tool)
             ).model_dump()
             pending = router.pending()
+            current_state = world.current_state().model_dump(mode="json")
             assertion_failures = evaluate_assertions(
                 step=step,
                 result=result,
                 observation=observation,
                 pending=pending,
+                state=current_state,
             )
             ok = not assertion_failures
             step_results.append(
@@ -130,6 +146,8 @@ def run_compiled_workflow(
     # Evaluate top-level success assertions against final snapshot.
     final_observation = router.snapshot_observation("browser").model_dump()
     final_pending = router.pending()
+    final_snapshot = world.snapshot("workflow.final")
+    final_state = final_snapshot.data
     if workflow.spec.success_assertions:
         last_result = step_results[-1].result if step_results else {}
         for failure in evaluate_assertion_specs(
@@ -137,6 +155,7 @@ def run_compiled_workflow(
             result=last_result,
             observation=final_observation,
             pending=final_pending,
+            state=final_state.model_dump(mode="json"),
         ):
             dynamic_issues.append(
                 ValidationIssue(
@@ -156,11 +175,19 @@ def run_compiled_workflow(
         dynamic_validation=dynamic_report,
         steps=step_results,
         artifacts_dir=str(artifacts) if artifacts else None,
+        branch=final_snapshot.branch,
+        initial_snapshot_id=initial_snapshot.snapshot_id,
+        final_snapshot_id=final_snapshot.snapshot_id,
+        initial_snapshot_label=initial_snapshot.label,
+        final_snapshot_label=final_snapshot.label,
+        final_state=final_state.model_dump(mode="json"),
         metadata={
             "connector_mode": connector_mode,
             "state_head": router.state_store.head,
             "time_ms": router.bus.clock_ms,
             "connector_last_receipt": router.connector_runtime.last_receipt(),
+            "initial_snapshot_id": initial_snapshot.snapshot_id,
+            "final_snapshot_id": final_snapshot.snapshot_id,
         },
     )
 
@@ -192,6 +219,13 @@ def _focus_for_tool(tool: str) -> str:
         "browser",
         "okta",
         "servicedesk",
+        "google_admin",
+        "siem",
+        "datadog",
+        "pagerduty",
+        "feature_flags",
+        "hris",
+        "jira",
     ):
         if tool.startswith(f"{prefix}."):
             return prefix

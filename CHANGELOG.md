@@ -6,7 +6,7 @@
 - Reworked the benchmark/eval stack onto the kernel, including reusable benchmark families for security containment, onboarding/migration, and revenue incident response plus reusable enterprise scoring dimensions.
 - Added deterministic enterprise/control-plane twins for Google Admin, SIEM, Datadog, PagerDuty, feature flags, HRIS, and Jira-style issue workflows.
 - Added release/export tooling (`vei-release`) with benchmark/dataset manifests and a nightly GitHub Actions workflow.
-- Added the `vei-world` CLI surface and kept `vei-state` as a compatibility alias.
+- Consolidated the repo around `vei-world`, deleted compatibility-only CLIs and legacy transport wrappers, and pruned committed eval artifacts plus historical planning docs.
 - Licensed the repository under Business Source License 1.1 and removed tracked `.beads/` state from version control.
 
 ## 0.2.0a1 - 2026-02-06
@@ -18,5 +18,5 @@ Mini-alpha stabilization for external embedding.
 - Added CLI manifest output in `vei-scenarios manifest`.
 - Added external-consumer example: `examples/sdk_playground_min.py`.
 - Added git dependency smoke script for CI: `tools/git_dependency_smoke.sh`.
-- Added SDK compatibility contract docs: `docs/SDK_ALPHA_CONTRACT.md`.
+- Added an SDK surface guide for external consumers.
 - Added contributor guidance for `bd` repo-id mismatch: `CONTRIBUTING.md`.

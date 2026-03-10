@@ -82,7 +82,7 @@ def run_frontier_eval(
             branch=scenario_name,
             frontier=True,
             model=model,
-            provider=provider,
+            provider=provider if normalized_runner == "llm" else None,
             bc_model_path=bc_model,
             task=task,
             max_steps=max_steps,

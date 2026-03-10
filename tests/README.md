@@ -21,7 +21,7 @@ Targeted slices:
 
 ```bash
 # Focus on the kernel and benchmark-family surfaces
-python -m pytest -q tests/test_world_session.py tests/test_benchmark_api.py tests/test_control_plane_twins.py
+python -m pytest -q tests/test_world_session.py tests/test_benchmark_api.py tests/test_control_plane_twins.py tests/test_vei_world_cli.py
 
 # Keep `make check` green before opening a PR
 make check

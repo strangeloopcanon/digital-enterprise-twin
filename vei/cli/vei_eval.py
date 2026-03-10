@@ -9,11 +9,15 @@ from typer.models import OptionInfo
 
 from vei.benchmark.api import (
     FRONTIER_SCENARIO_SETS,
+    list_benchmark_family_manifest,
+    resolve_benchmark_workflow_name,
     resolve_scenarios,
     run_benchmark_batch,
     run_benchmark_case,
 )
 from vei.benchmark.models import BenchmarkCaseSpec
+from vei.benchmark.workflows import get_benchmark_family_workflow_spec
+from vei.benchmark.workflows import get_benchmark_family_workflow_variant
 
 
 app = typer.Typer(add_completion=False)
@@ -83,7 +87,7 @@ def bc(
 
 @app.command()
 def benchmark(
-    runner: str = typer.Option("llm", help="Runner: scripted|bc|llm"),
+    runner: str = typer.Option("llm", help="Runner: scripted|bc|llm|workflow"),
     scenario: list[str] = typer.Option(
         [], "--scenario", "-s", help="Scenario(s) to run"
     ),
@@ -93,6 +97,12 @@ def benchmark(
     scenario_set: str | None = typer.Option(
         None,
         help=f"Scenario set to run ({', '.join(FRONTIER_SCENARIO_SETS.keys())})",
+    ),
+    workflow_name: str | None = typer.Option(
+        None, help="Optional explicit workflow name when runner=workflow"
+    ),
+    workflow_variant: str | None = typer.Option(
+        None, help="Optional workflow variant name when runner=workflow"
     ),
     model: str | None = typer.Option(None, help="Model name for llm runner"),
     provider: str = typer.Option(
@@ -121,15 +131,23 @@ def benchmark(
     run_id: str | None = typer.Option(None, help="Optional benchmark run id"),
 ) -> None:
     normalized_runner = runner.strip().lower()
-    if normalized_runner not in {"scripted", "bc", "llm"}:
-        raise typer.BadParameter("runner must be one of scripted|bc|llm")
+    if normalized_runner not in {"scripted", "bc", "llm", "workflow"}:
+        raise typer.BadParameter("runner must be one of scripted|bc|llm|workflow")
     if normalized_runner == "llm" and not model:
         raise typer.BadParameter("llm runner requires --model")
     if normalized_runner == "bc" and bc_model is None:
         raise typer.BadParameter("bc runner requires --bc-model")
+    if workflow_name and normalized_runner != "workflow":
+        raise typer.BadParameter("--workflow-name only applies when runner=workflow")
+    if workflow_variant and normalized_runner != "workflow":
+        raise typer.BadParameter("--workflow-variant only applies when runner=workflow")
 
+    selected_families = family
     if scenario or family or scenario_set:
         selected = scenario
+    elif normalized_runner == "workflow":
+        selected = []
+        selected_families = [item.name for item in list_benchmark_family_manifest()]
     else:
         selected = (
             FRONTIER_SCENARIO_SETS["all_frontier"] if frontier else ["multi_channel"]
@@ -137,8 +155,35 @@ def benchmark(
     scenario_names = resolve_scenarios(
         scenario_names=selected,
         scenario_set=scenario_set,
-        family_names=family,
+        family_names=selected_families,
     )
+    if workflow_name:
+        if len(scenario_names) != 1:
+            raise typer.BadParameter(
+                "--workflow-name requires exactly one selected scenario"
+            )
+        try:
+            get_benchmark_family_workflow_spec(workflow_name)
+        except KeyError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    if workflow_variant:
+        if len(scenario_names) != 1:
+            raise typer.BadParameter(
+                "--workflow-variant requires exactly one selected scenario"
+            )
+        resolved_workflow_name = workflow_name or resolve_benchmark_workflow_name(
+            scenario_name=scenario_names[0]
+        )
+        if resolved_workflow_name is None:
+            raise typer.BadParameter(
+                f"no benchmark workflow is registered for scenario {scenario_names[0]}"
+            )
+        try:
+            get_benchmark_family_workflow_variant(
+                resolved_workflow_name, workflow_variant
+            )
+        except KeyError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     batch_id = run_id or f"{normalized_runner}_{int(time.time())}"
     run_dir = artifacts_root / batch_id
@@ -146,6 +191,15 @@ def benchmark(
         BenchmarkCaseSpec(
             runner=normalized_runner,  # type: ignore[arg-type]
             scenario_name=scenario_name,
+            workflow_name=(
+                workflow_name
+                or resolve_benchmark_workflow_name(scenario_name=scenario_name)
+                if normalized_runner == "workflow"
+                else None
+            ),
+            workflow_variant=(
+                workflow_variant if normalized_runner == "workflow" else None
+            ),
             seed=seed,
             artifacts_dir=run_dir / scenario_name,
             branch=scenario_name,
@@ -154,7 +208,7 @@ def benchmark(
             score_mode=score_success_mode.lower().strip(),
             frontier=frontier or scenario_name.startswith("f"),
             model=model,
-            provider=provider,
+            provider=provider if normalized_runner == "llm" else None,
             bc_model_path=bc_model,
             task=task,
             max_steps=max_steps,

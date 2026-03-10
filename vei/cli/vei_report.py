@@ -23,7 +23,7 @@ app = typer.Typer(
 
 
 def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
-    """Recursively load all frontier_score.json and score.json files."""
+    """Recursively load normalized benchmark, frontier, and legacy score artifacts."""
     results = []
     aggregate_roots: set[Path] = set()
 
@@ -58,15 +58,21 @@ def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:
             results.append(
                 {
                     "scenario": spec.get("scenario_name", "unknown"),
-                    "family": score.get("benchmark_family"),
+                    "family": score.get("benchmark_family")
+                    or result.get("diagnostics", {}).get("benchmark_family"),
                     "model": spec.get("model") or spec.get("runner", "unknown"),
                     "provider": spec.get("provider")
                     or (
                         "baseline"
-                        if spec.get("runner") in {"scripted", "bc"}
+                        if spec.get("runner") in {"scripted", "bc", "workflow"}
                         else "unknown"
                     ),
+                    "runner": spec.get("runner", "unknown"),
+                    "status": result.get("status", "unknown"),
                     "score": score,
+                    "diagnostics": result.get("diagnostics", {}),
+                    "metrics": result.get("metrics", {}),
+                    "artifacts_dir": str(benchmark_file.parent),
                 }
             )
         except Exception:
@@ -188,13 +194,28 @@ def generate_csv_report(results: List[Dict], output_path: Path) -> None:
         row = {
             "model": r["model"],
             "provider": r.get("provider", "unknown"),
+            "runner": r.get("runner", "unknown"),
+            "status": r.get("status", "unknown"),
             "scenario": r["scenario"],
             "family": r.get("family") or score.get("benchmark_family"),
+            "workflow_name": r.get("diagnostics", {}).get("workflow_name"),
+            "workflow_variant": r.get("diagnostics", {}).get("workflow_variant"),
+            "workflow_valid": r.get("diagnostics", {}).get("workflow_valid"),
+            "workflow_step_count": r.get("diagnostics", {}).get(
+                "workflow_step_count", 0
+            ),
             "success": score.get("success", False),
             "composite_score": score.get("composite_score", 0.0),
             "steps_taken": score.get("steps_taken", 0),
             "time_ms": score.get("time_elapsed_ms", 0),
             "difficulty": score.get("scenario_difficulty", "unknown"),
+            "latency_p95_ms": r.get("metrics", {}).get("latency_p95_ms", 0),
+            "llm_calls": r.get("metrics", {}).get("llm_calls", 0),
+            "total_tokens": r.get("metrics", {}).get("total_tokens", 0),
+            "estimated_cost_usd": r.get("metrics", {}).get("estimated_cost_usd"),
+            "initial_snapshot_id": r.get("diagnostics", {}).get("initial_snapshot_id"),
+            "final_snapshot_id": r.get("diagnostics", {}).get("final_snapshot_id"),
+            "artifacts_dir": r.get("artifacts_dir"),
         }
         for key in dimension_keys:
             row[key] = dims.get(key, 0.0)
