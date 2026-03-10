@@ -32,6 +32,7 @@ from vei.benchmark.models import (
     BenchmarkMetrics,
     BenchmarkWorkflowVariantManifest,
 )
+from vei.contract.api import build_contract_from_workflow
 from vei.data.models import VEIDataset
 from vei.rl.policy_bc import BCPPolicy, run_policy
 from vei.scenario_engine.api import compile_workflow
@@ -244,6 +245,10 @@ def _run_workflow_case(spec: BenchmarkCaseSpec) -> BenchmarkCaseResult:
         )
     workflow_spec, workflow_variant = workflow_contract
     compiled = compile_workflow(workflow_spec, seed=spec.seed)
+    _write_json(
+        spec.artifacts_dir / "contract.json",
+        build_contract_from_workflow(compiled).model_dump(mode="json"),
+    )
     workflow_result = run_workflow(
         compiled,
         seed=spec.seed,
@@ -539,12 +544,16 @@ def _validate_nonworkflow_case_against_contract(
         return None
     workflow_spec, workflow_variant = workflow_contract
     compiled = compile_workflow(workflow_spec, seed=spec.seed)
+    _write_json(
+        spec.artifacts_dir / "contract.json",
+        build_contract_from_workflow(compiled).model_dump(mode="json"),
+    )
     validation = validate_workflow_outcome(
         compiled,
-        state=state.model_dump(mode="json"),
+        oracle_state=state.model_dump(mode="json"),
         time_ms=time_ms,
         available_tools=available_tools,
-        observation=observation,
+        visible_observation=observation,
         pending=pending,
     )
     payload = _workflow_validation_from_outcome(
@@ -562,26 +571,65 @@ def _workflow_validation_from_workflow_run(
     workflow_variant: str | None,
     workflow_result: ScenarioRunResult,
 ) -> Dict[str, Any]:
-    failed_success_assertions = sum(
-        1
-        for issue in workflow_result.dynamic_validation.issues
-        if issue.code == "success_assertion.failed"
-    )
-    success_assertion_count = len(workflow.spec.success_assertions)
+    contract_validation = workflow_result.contract_validation
+    if contract_validation is not None:
+        static_ok = workflow_result.static_validation.ok
+        dynamic_ok = workflow_result.dynamic_validation.ok
+        issue_count = len(workflow_result.dynamic_validation.issues)
+        success_assertion_count = (
+            contract_validation.success_predicate_count
+            + contract_validation.forbidden_predicate_count
+        )
+        success_assertions_passed = contract_validation.success_predicates_passed + max(
+            0,
+            contract_validation.forbidden_predicate_count
+            - contract_validation.forbidden_predicates_failed,
+        )
+        success_assertions_failed = (
+            contract_validation.success_predicates_failed
+            + contract_validation.forbidden_predicates_failed
+        )
+        forbidden_predicate_count = contract_validation.forbidden_predicate_count
+        forbidden_predicates_failed = contract_validation.forbidden_predicates_failed
+        policy_invariant_count = contract_validation.policy_invariant_count
+        policy_invariants_failed = contract_validation.policy_invariants_failed
+        contract_name = contract_validation.contract_name
+    else:
+        failed_success_assertions = sum(
+            1
+            for issue in workflow_result.dynamic_validation.issues
+            if issue.code == "success_assertion.failed"
+        )
+        static_ok = workflow_result.static_validation.ok
+        dynamic_ok = workflow_result.dynamic_validation.ok
+        issue_count = len(workflow_result.dynamic_validation.issues)
+        success_assertion_count = len(workflow.spec.success_assertions)
+        success_assertions_passed = max(
+            0, success_assertion_count - failed_success_assertions
+        )
+        success_assertions_failed = failed_success_assertions
+        forbidden_predicate_count = 0
+        forbidden_predicates_failed = 0
+        policy_invariant_count = 0
+        policy_invariants_failed = 0
+        contract_name = None
     return {
         "workflow_name": workflow_result.workflow_name,
+        "contract_name": contract_name,
         "workflow_variant": workflow_variant,
         "validation_mode": "workflow",
         "ok": workflow_result.ok,
-        "static_ok": workflow_result.static_validation.ok,
-        "dynamic_ok": workflow_result.dynamic_validation.ok,
-        "issue_count": len(workflow_result.dynamic_validation.issues),
+        "static_ok": static_ok,
+        "dynamic_ok": dynamic_ok,
+        "issue_count": issue_count,
         "step_count": len(workflow.steps),
         "success_assertion_count": success_assertion_count,
-        "success_assertions_passed": max(
-            0, success_assertion_count - failed_success_assertions
-        ),
-        "success_assertions_failed": failed_success_assertions,
+        "success_assertions_passed": success_assertions_passed,
+        "success_assertions_failed": success_assertions_failed,
+        "forbidden_predicate_count": forbidden_predicate_count,
+        "forbidden_predicates_failed": forbidden_predicates_failed,
+        "policy_invariant_count": policy_invariant_count,
+        "policy_invariants_failed": policy_invariants_failed,
     }
 
 
@@ -593,6 +641,7 @@ def _workflow_validation_from_outcome(
 ) -> Dict[str, Any]:
     return {
         "workflow_name": validation.workflow_name,
+        "contract_name": validation.contract_name,
         "workflow_variant": workflow_variant,
         "validation_mode": str(validation.metadata.get("validation_mode", "state")),
         "ok": validation.ok,
@@ -603,6 +652,11 @@ def _workflow_validation_from_outcome(
         "success_assertion_count": validation.success_assertion_count,
         "success_assertions_passed": validation.success_assertions_passed,
         "success_assertions_failed": validation.success_assertions_failed,
+        "forbidden_predicate_count": validation.forbidden_predicate_count,
+        "forbidden_predicates_failed": validation.forbidden_predicates_failed,
+        "policy_invariant_count": validation.policy_invariant_count,
+        "policy_invariants_failed": validation.policy_invariants_failed,
+        "observation_boundary": validation.metadata.get("observation_boundary"),
     }
 
 

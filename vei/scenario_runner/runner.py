@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
+from vei.contract.api import build_contract_from_workflow, evaluate_contract
 from vei.router.core import Router
 from vei.scenario_engine.compiler import CompiledWorkflow
 from vei.world.session import WorldSession
@@ -15,7 +16,6 @@ from .models import (
     WorkflowOutcomeValidation,
 )
 from .validator import (
-    evaluate_assertion_specs,
     evaluate_assertions,
     static_validate_workflow,
 )
@@ -155,22 +155,29 @@ def run_compiled_workflow(
     final_pending = router.pending()
     final_snapshot = world.snapshot("workflow.final")
     final_state = final_snapshot.data
-    if workflow.spec.success_assertions:
-        last_result = step_results[-1].result if step_results else {}
-        for failure in evaluate_assertion_specs(
-            assertions=workflow.spec.success_assertions,
-            result=last_result,
-            observation=final_observation,
-            pending=final_pending,
-            state=final_state.model_dump(mode="json"),
-            time_ms=router.bus.clock_ms,
-        ):
-            dynamic_issues.append(
-                ValidationIssue(
-                    code="success_assertion.failed",
-                    message=failure,
-                )
+    contract_validation = _evaluate_workflow_contract(
+        workflow=workflow,
+        oracle_state=final_state.model_dump(mode="json"),
+        visible_observation=final_observation,
+        result=step_results[-1].result if step_results else {},
+        pending=final_pending,
+        time_ms=router.bus.clock_ms,
+        available_tools=available_tools,
+        validation_mode="workflow",
+    )
+    for issue in contract_validation.dynamic_validation.issues:
+        dynamic_issues.append(
+            ValidationIssue(
+                code=issue.code.replace("predicate", "assertion"),
+                message=issue.message,
+                metadata={
+                    **issue.metadata,
+                    "predicate_name": issue.predicate_name,
+                    "source": issue.source,
+                    "contract_name": contract_validation.contract_name,
+                },
             )
+        )
 
     dynamic_report = ValidationReport(
         ok=not any(issue.severity == "error" for issue in dynamic_issues),
@@ -189,6 +196,7 @@ def run_compiled_workflow(
         initial_snapshot_label=initial_snapshot.label,
         final_snapshot_label=final_snapshot.label,
         final_state=final_state.model_dump(mode="json"),
+        contract_validation=contract_validation,
         metadata={
             "connector_mode": connector_mode,
             "state_head": router.state_store.head,
@@ -196,6 +204,7 @@ def run_compiled_workflow(
             "connector_last_receipt": router.connector_runtime.last_receipt(),
             "initial_snapshot_id": initial_snapshot.snapshot_id,
             "final_snapshot_id": final_snapshot.snapshot_id,
+            "contract_name": contract_validation.contract_name,
         },
     )
 
@@ -203,61 +212,99 @@ def run_compiled_workflow(
 def validate_compiled_workflow_outcome(
     workflow: CompiledWorkflow,
     *,
-    state: dict,
+    oracle_state: dict,
     time_ms: int = 0,
     available_tools: List[str] | None = None,
     result: object | None = None,
-    observation: dict | None = None,
+    visible_observation: dict | None = None,
     pending: dict[str, int] | None = None,
 ) -> WorkflowOutcomeValidation:
-    static_report = static_validate_workflow(workflow, available_tools=available_tools)
-    if not static_report.ok:
-        return WorkflowOutcomeValidation(
-            ok=False,
-            workflow_name=workflow.spec.name,
-            static_validation=static_report,
-            dynamic_validation=ValidationReport(ok=False, issues=[]),
-            step_count=len(workflow.steps),
-            success_assertion_count=len(workflow.spec.success_assertions),
-            success_assertions_passed=0,
-            success_assertions_failed=len(workflow.spec.success_assertions),
-            metadata={
-                "validation_mode": "state",
-                "time_ms": time_ms,
-            },
-        )
-
-    failures = evaluate_assertion_specs(
-        assertions=workflow.spec.success_assertions,
+    contract_validation = _evaluate_workflow_contract(
+        workflow=workflow,
+        oracle_state=oracle_state,
+        visible_observation=visible_observation or {},
         result=result or {},
-        observation=observation or {},
-        pending=pending or _pending_summary_from_state(state),
-        state=state,
+        pending=pending or _pending_summary_from_state(oracle_state),
         time_ms=time_ms,
+        available_tools=available_tools,
+        validation_mode="state",
     )
-    dynamic_issues = [
-        ValidationIssue(code="success_assertion.failed", message=failure)
-        for failure in failures
-    ]
-    dynamic_report = ValidationReport(
-        ok=not any(issue.severity == "error" for issue in dynamic_issues),
-        issues=dynamic_issues,
-    )
-    assertion_count = len(workflow.spec.success_assertions)
-    failed_count = len(failures)
     return WorkflowOutcomeValidation(
-        ok=static_report.ok and dynamic_report.ok,
+        ok=contract_validation.ok,
         workflow_name=workflow.spec.name,
-        static_validation=static_report,
-        dynamic_validation=dynamic_report,
+        contract_name=contract_validation.contract_name,
+        static_validation=_to_validation_report(contract_validation.static_validation),
+        dynamic_validation=_to_validation_report(
+            contract_validation.dynamic_validation
+        ),
         step_count=len(workflow.steps),
-        success_assertion_count=assertion_count,
-        success_assertions_passed=max(0, assertion_count - failed_count),
-        success_assertions_failed=failed_count,
+        success_assertion_count=(
+            contract_validation.success_predicate_count
+            + contract_validation.forbidden_predicate_count
+        ),
+        success_assertions_passed=(
+            contract_validation.success_predicates_passed
+            + max(
+                0,
+                contract_validation.forbidden_predicate_count
+                - contract_validation.forbidden_predicates_failed,
+            )
+        ),
+        success_assertions_failed=(
+            contract_validation.success_predicates_failed
+            + contract_validation.forbidden_predicates_failed
+        ),
+        forbidden_predicate_count=contract_validation.forbidden_predicate_count,
+        forbidden_predicates_failed=contract_validation.forbidden_predicates_failed,
+        policy_invariant_count=contract_validation.policy_invariant_count,
+        policy_invariants_failed=contract_validation.policy_invariants_failed,
         metadata={
-            "validation_mode": "state",
+            **contract_validation.metadata,
             "time_ms": time_ms,
         },
+    )
+
+
+def _evaluate_workflow_contract(
+    *,
+    workflow: CompiledWorkflow,
+    oracle_state: dict,
+    visible_observation: dict[str, object],
+    result: object,
+    pending: dict[str, int],
+    time_ms: int,
+    available_tools: List[str] | None,
+    validation_mode: str,
+):
+    contract = build_contract_from_workflow(workflow)
+    return evaluate_contract(
+        contract,
+        oracle_state=oracle_state,
+        visible_observation=visible_observation,
+        result=result,
+        pending=pending,
+        time_ms=time_ms,
+        available_tools=available_tools,
+        validation_mode=validation_mode,
+    )
+
+
+def _to_validation_report(report) -> ValidationReport:
+    return ValidationReport(
+        ok=report.ok,
+        issues=[
+            ValidationIssue(
+                code=issue.code.replace("predicate", "assertion"),
+                message=issue.message,
+                severity=issue.severity,
+                metadata={
+                    **issue.metadata,
+                    "predicate_name": issue.predicate_name,
+                    "source": issue.source,
+                },
+            )
+            for issue in report.issues
+        ],
     )
 
 

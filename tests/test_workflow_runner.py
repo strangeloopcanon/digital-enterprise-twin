@@ -74,6 +74,8 @@ def test_compile_and_run_workflow_success() -> None:
     assert result.static_validation.ok
     assert result.dynamic_validation.ok
     assert result.ok
+    assert result.contract_validation is not None
+    assert result.contract_validation.ok
     assert result.branch == "main"
     assert result.initial_snapshot_id is not None
     assert result.final_snapshot_id is not None
@@ -105,7 +107,7 @@ def test_run_workflow_enforces_success_assertions() -> None:
 
     assert not result.ok
     assert any(
-        issue.code == "success_assertion.failed"
+        issue.code == "forbidden_assertion.violated"
         for issue in result.dynamic_validation.issues
     )
 
@@ -316,7 +318,7 @@ def test_validate_workflow_outcome_reuses_success_assertions() -> None:
 
     validation = validate_workflow_outcome(
         compiled,
-        state=result.final_state,
+        oracle_state=result.final_state,
         time_ms=int(result.metadata.get("time_ms", 0)),
         available_tools=["google_admin.restrict_drive_share"],
     )
@@ -351,11 +353,12 @@ def test_validate_workflow_outcome_reports_failed_success_assertions() -> None:
     )
     validation = validate_workflow_outcome(
         compiled,
-        state=session.current_state().model_dump(mode="json"),
+        oracle_state=session.current_state().model_dump(mode="json"),
         time_ms=0,
     )
 
     assert not validation.ok
+    assert validation.contract_name == "workflow-outcome-validation-fail.contract"
     assert validation.success_assertion_count == 1
     assert validation.success_assertions_passed == 0
     assert validation.success_assertions_failed == 1

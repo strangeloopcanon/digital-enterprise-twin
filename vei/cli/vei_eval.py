@@ -183,6 +183,8 @@ def _run_benchmark_demo(spec: BenchmarkDemoSpec) -> BenchmarkDemoResult:
         report_json_path=report_json_path,
         baseline_artifacts_dir=baseline_artifacts_dir,
         comparison_artifacts_dir=comparison_artifacts_dir,
+        baseline_contract_path=baseline_artifacts_dir / "contract.json",
+        comparison_contract_path=comparison_artifacts_dir / "contract.json",
         baseline_branch=baseline_branch,
         comparison_branch=comparison_branch,
         summary=batch.summary,
@@ -215,6 +217,7 @@ def _run_benchmark_suite(spec: BenchmarkSuiteSpec) -> BenchmarkSuiteResult:
     scenario_names: dict[str, str] = {}
     workflow_variants: dict[str, str | None] = {}
     case_artifacts_dirs: dict[str, Path] = {}
+    contract_paths: dict[str, Path] = {}
     specs: list[BenchmarkCaseSpec] = []
     for manifest in selected_manifests:
         workflow_name = manifest.workflow_name
@@ -232,6 +235,7 @@ def _run_benchmark_suite(spec: BenchmarkSuiteSpec) -> BenchmarkSuiteResult:
         scenario_names[manifest.name] = scenario_name
         workflow_variants[manifest.name] = workflow_variant
         case_artifacts_dirs[manifest.name] = artifacts_dir
+        contract_paths[manifest.name] = artifacts_dir / "contract.json"
         specs.append(
             BenchmarkCaseSpec(
                 runner="workflow",
@@ -265,6 +269,7 @@ def _run_benchmark_suite(spec: BenchmarkSuiteSpec) -> BenchmarkSuiteResult:
         report_csv_path=report_csv_path,
         report_json_path=report_json_path,
         case_artifacts_dirs=case_artifacts_dirs,
+        contract_paths=contract_paths,
         summary=batch.summary,
     )
     (suite_dir / "suite_result.json").write_text(

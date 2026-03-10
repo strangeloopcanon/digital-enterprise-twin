@@ -196,7 +196,7 @@ vei-eval demo \
   --run-id security_demo
 ```
 
-That command runs the deterministic family workflow baseline plus a comparison runner, writes `leaderboard.md` / `leaderboard.csv` / `leaderboard.json`, and stores inspectable world state under `_vei_out/demo/security_demo/state` for follow-up `vei-world` inspection.
+That command runs the deterministic family workflow baseline plus a comparison runner, writes `leaderboard.md` / `leaderboard.csv` / `leaderboard.json`, stores inspectable world state under `_vei_out/demo/security_demo/state` for follow-up `vei-world` inspection, and records explicit `contract.json` artifacts for both the baseline and comparison paths. Contract evaluation now separates oracle state from agent-visible observation so hidden state can be graded without making the demo omniscient.
 
 Canonical multi-family workflow suite:
 
@@ -206,7 +206,7 @@ vei-eval suite \
   --run-id nightly_suite
 ```
 
-That command runs each family's primary workflow variant and writes stable `leaderboard.*` artifacts plus `suite_result.json`, which makes it a good fit for CI or nightly publishing.
+That command runs each family's primary workflow variant and writes stable `leaderboard.*` artifacts plus `suite_result.json`, which makes it a good fit for CI or nightly publishing. Each family case also writes a `contract.json` artifact so the suite has an explicit contract layer, not just score files.
 
 Frontier batch for one model:
 
@@ -223,6 +223,7 @@ Artifacts from batch evaluation include:
 - `aggregate_results.json`
 - per-scenario `benchmark_result.json`
 - `benchmark_summary.json`
+- benchmark-family runs also write `contract.json`
 - demo runs also write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `demo_result.json`
 - suite runs also write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `suite_result.json`
 - family-level dimension scores such as evidence preservation, blast radius, least privilege, oversharing avoidance, deadline compliance, comms correctness, and safe rollback
