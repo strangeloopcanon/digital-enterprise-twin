@@ -63,10 +63,12 @@ def run_frontier_eval(
         raise typer.BadParameter("llm runner requires --model")
     if normalized_runner == "bc" and bc_model is None:
         raise typer.BadParameter("bc runner requires --bc-model")
+    if scenario and scenario_set:
+        raise typer.BadParameter("specify either --scenario or --scenario-set")
 
     scenario_names = resolve_scenarios(
         scenario_names=[scenario] if scenario else [],
-        scenario_set=scenario_set or "all_frontier",
+        scenario_set=None if scenario else (scenario_set or "all_frontier"),
     )
 
     run_id = f"{(model or normalized_runner).replace('/', '_')}_{int(time.time())}"
@@ -88,7 +90,6 @@ def run_frontier_eval(
         )
         for scenario_name in scenario_names
     ]
-    batch = run_benchmark_batch(specs, run_id=run_id, output_dir=run_dir)
 
     typer.echo(f"Starting frontier evaluation: {len(specs)} scenarios")
     typer.echo(f"Runner: {normalized_runner}")
@@ -96,6 +97,8 @@ def run_frontier_eval(
         typer.echo(f"Model: {model}")
     typer.echo(f"Artifacts: {run_dir}")
     typer.echo("")
+
+    batch = run_benchmark_batch(specs, run_id=run_id, output_dir=run_dir)
 
     for result in batch.results:
         score = result.score
