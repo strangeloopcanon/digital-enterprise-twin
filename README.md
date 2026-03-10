@@ -187,6 +187,27 @@ vei-eval benchmark \
   --run-id security_family
 ```
 
+Canonical family demo flow:
+
+```bash
+vei-eval demo \
+  --family security_containment \
+  --artifacts-root _vei_out/demo \
+  --run-id security_demo
+```
+
+That command runs the deterministic family workflow baseline plus a comparison runner, writes `leaderboard.md` / `leaderboard.csv` / `leaderboard.json`, and stores inspectable world state under `_vei_out/demo/security_demo/state` for follow-up `vei-world` inspection.
+
+Canonical multi-family workflow suite:
+
+```bash
+vei-eval suite \
+  --artifacts-root _vei_out/suite \
+  --run-id nightly_suite
+```
+
+That command runs each family's primary workflow variant and writes stable `leaderboard.*` artifacts plus `suite_result.json`, which makes it a good fit for CI or nightly publishing.
+
 Frontier batch for one model:
 
 ```bash
@@ -202,6 +223,8 @@ Artifacts from batch evaluation include:
 - `aggregate_results.json`
 - per-scenario `benchmark_result.json`
 - `benchmark_summary.json`
+- demo runs also write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `demo_result.json`
+- suite runs also write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `suite_result.json`
 - family-level dimension scores such as evidence preservation, blast radius, least privilege, oversharing avoidance, deadline compliance, comms correctness, and safe rollback
 
 Render a report from any benchmark or frontier batch:

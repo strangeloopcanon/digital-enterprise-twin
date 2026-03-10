@@ -224,6 +224,15 @@ def generate_csv_report(results: List[Dict], output_path: Path) -> None:
             "baseline_workflow_variant": baseline.get("workflow_variant"),
             "baseline_workflow_valid": baseline.get("workflow_valid"),
             "baseline_workflow_issue_count": baseline.get("workflow_issue_count"),
+            "baseline_workflow_success_assertion_count": baseline.get(
+                "workflow_success_assertion_count"
+            ),
+            "baseline_workflow_success_assertions_passed": baseline.get(
+                "workflow_success_assertions_passed"
+            ),
+            "baseline_workflow_success_assertions_failed": baseline.get(
+                "workflow_success_assertions_failed"
+            ),
             "baseline_success": baseline.get("success"),
             "baseline_composite_score": baseline.get("composite_score"),
             "baseline_steps_taken": baseline.get("steps_taken"),
@@ -231,6 +240,15 @@ def generate_csv_report(results: List[Dict], output_path: Path) -> None:
             "workflow_valid_delta": baseline_delta.get("workflow_valid_delta"),
             "workflow_issue_count_delta": baseline_delta.get(
                 "workflow_issue_count_delta"
+            ),
+            "workflow_success_assertion_count_delta": baseline_delta.get(
+                "workflow_success_assertion_count_delta"
+            ),
+            "workflow_success_assertions_passed_delta": baseline_delta.get(
+                "workflow_success_assertions_passed_delta"
+            ),
+            "workflow_success_assertions_failed_delta": baseline_delta.get(
+                "workflow_success_assertions_failed_delta"
             ),
             "success_delta": baseline_delta.get("success_delta"),
             "composite_score_delta": baseline_delta.get("composite_score_delta"),
@@ -386,10 +404,10 @@ def generate_markdown_leaderboard(results: List[Dict]) -> str:
         lines.append(f"### {scenario}")
         lines.append("")
         lines.append(
-            "| Model | Success | Score | Δ Score | Steps | Δ Steps | Baseline | Dimensions |"
+            "| Model | Success | Score | Δ Score | Steps | Δ Steps | Assertions | Δ Pass | Baseline | Dimensions |"
         )
         lines.append(
-            "|-------|---------|-------|---------|-------|---------|----------|------------|"
+            "|-------|---------|-------|---------|-------|---------|------------|--------|----------|------------|"
         )
 
         for r in sorted(
@@ -403,6 +421,7 @@ def generate_markdown_leaderboard(results: List[Dict]) -> str:
             steps = score.get("steps_taken", 0)
             baseline = r.get("baseline", {})
             baseline_delta = r.get("baseline_delta", {})
+            workflow_validation = score.get("workflow_validation", {})
             baseline_label = (
                 f"{baseline.get('workflow_name')}:{baseline.get('workflow_variant')}"
                 if baseline.get("available") and baseline.get("workflow_variant")
@@ -417,11 +436,19 @@ def generate_markdown_leaderboard(results: List[Dict]) -> str:
             dims = score.get("dimensions", {})
             top_dims = sorted(dims.items(), key=lambda x: x[1], reverse=True)[:3]
             dims_str = ", ".join([f"{k[:3]}:{v:.2f}" for k, v in top_dims])
+            assertions_str = (
+                f"{workflow_validation.get('success_assertions_passed', 0)}/"
+                f"{workflow_validation.get('success_assertion_count', 0)}"
+                if workflow_validation
+                else "n/a"
+            )
 
             lines.append(
                 f"| {r['model']} | {success_icon} | {composite:.3f} | "
                 f"{_format_signed_float(baseline_delta.get('composite_score_delta'))} | "
                 f"{steps} | {_format_signed_int(baseline_delta.get('steps_taken_delta'))} | "
+                f"{assertions_str} | "
+                f"{_format_signed_int(baseline_delta.get('workflow_success_assertions_passed_delta'))} | "
                 f"{baseline_label} | {dims_str} |"
             )
 
@@ -770,6 +797,15 @@ def _build_baseline_summary(baseline: Dict[str, Any] | None) -> Dict[str, Any]:
             "ok", diagnostics.get("workflow_valid")
         ),
         "workflow_issue_count": int(workflow_validation.get("issue_count", 0)),
+        "workflow_success_assertion_count": int(
+            workflow_validation.get("success_assertion_count", 0)
+        ),
+        "workflow_success_assertions_passed": int(
+            workflow_validation.get("success_assertions_passed", 0)
+        ),
+        "workflow_success_assertions_failed": int(
+            workflow_validation.get("success_assertions_failed", 0)
+        ),
         "composite_score": float(score.get("composite_score", 0.0)),
         "steps_taken": int(score.get("steps_taken", 0)),
         "time_ms": int(score.get("time_elapsed_ms", 0)),
@@ -791,6 +827,9 @@ def _build_baseline_delta(
     baseline_workflow = baseline_score.get("workflow_validation", {})
     workflow_valid_delta = None
     workflow_issue_count_delta = None
+    workflow_success_assertion_count_delta = None
+    workflow_success_assertions_passed_delta = None
+    workflow_success_assertions_failed_delta = None
     if result_workflow:
         workflow_valid_delta = int(bool(result_workflow.get("ok", False))) - int(
             bool(baseline_workflow.get("ok", False))
@@ -798,10 +837,22 @@ def _build_baseline_delta(
         workflow_issue_count_delta = int(result_workflow.get("issue_count", 0)) - int(
             baseline_workflow.get("issue_count", 0)
         )
+        workflow_success_assertion_count_delta = int(
+            result_workflow.get("success_assertion_count", 0)
+        ) - int(baseline_workflow.get("success_assertion_count", 0))
+        workflow_success_assertions_passed_delta = int(
+            result_workflow.get("success_assertions_passed", 0)
+        ) - int(baseline_workflow.get("success_assertions_passed", 0))
+        workflow_success_assertions_failed_delta = int(
+            result_workflow.get("success_assertions_failed", 0)
+        ) - int(baseline_workflow.get("success_assertions_failed", 0))
     return {
         "available": True,
         "workflow_valid_delta": workflow_valid_delta,
         "workflow_issue_count_delta": workflow_issue_count_delta,
+        "workflow_success_assertion_count_delta": workflow_success_assertion_count_delta,
+        "workflow_success_assertions_passed_delta": workflow_success_assertions_passed_delta,
+        "workflow_success_assertions_failed_delta": workflow_success_assertions_failed_delta,
         "success_delta": int(bool(result_score.get("success", False)))
         - int(bool(baseline_score.get("success", False))),
         "composite_score_delta": float(result_score.get("composite_score", 0.0))

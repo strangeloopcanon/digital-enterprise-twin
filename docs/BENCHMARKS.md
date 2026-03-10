@@ -56,6 +56,27 @@ The `workflow` runner executes the typed family playbook and its reusable assert
 
 For benchmark-family scenarios, scripted, BC, and LLM runners now also emit `workflow_validation` artifacts derived from the same family workflow spec, so freeform runs can be compared against the deterministic contract instead of only against raw score output.
 
+Run the supported benchmark-family demo flow:
+
+```bash
+vei-eval demo \
+  --family security_containment \
+  --artifacts-root _vei_out/demo \
+  --run-id security_demo
+```
+
+That command runs the family's canonical workflow baseline plus one comparison runner, writes `leaderboard.md` / `leaderboard.csv` / `leaderboard.json`, stores inspectable world state under `state/`, and emits `demo_result.json` with ready-to-run `vei-world` inspection commands.
+
+Run the canonical multi-family workflow suite for CI or nightly jobs:
+
+```bash
+vei-eval suite \
+  --artifacts-root _vei_out/suite \
+  --run-id nightly_suite
+```
+
+That command runs each family's primary workflow variant, then writes the same stable `leaderboard.*` artifacts plus `suite_result.json` for automation-friendly publishing.
+
 ## 2. Frontier Suites
 
 `vei-eval-frontier` remains the curated long-horizon suite for harder reasoning and safety-heavy tasks. It is implemented on the shared benchmark core, not as a separate reporting stack.
@@ -104,5 +125,7 @@ Current benchmark runs write:
 - `aggregate_results.json`
 - `benchmark_summary.json`
 - per-scenario `benchmark_result.json`
+- demo runs additionally write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `demo_result.json`
+- suite runs additionally write `leaderboard.md`, `leaderboard.csv`, `leaderboard.json`, and `suite_result.json`
 
 Historical eval outputs should stay under `_vei_out/`, not in Git.

@@ -129,3 +129,64 @@ class BenchmarkBatchResult(BaseModel):
     run_id: str
     results: List[BenchmarkCaseResult] = Field(default_factory=list)
     summary: BenchmarkBatchSummary = Field(default_factory=BenchmarkBatchSummary)
+
+
+class BenchmarkDemoSpec(BaseModel):
+    family_name: str
+    compare_runner: Literal["scripted", "bc", "llm"] = "scripted"
+    workflow_variant: Optional[str] = None
+    seed: int = 42042
+    artifacts_root: Path
+    run_id: str
+    score_mode: Literal["email", "full"] = "full"
+    max_steps: int = 40
+    compare_model: Optional[str] = None
+    compare_provider: Optional[str] = None
+    compare_bc_model_path: Optional[Path] = None
+    compare_task: Optional[str] = None
+
+
+class BenchmarkDemoResult(BaseModel):
+    run_id: str
+    family_name: str
+    scenario_name: str
+    baseline_workflow_name: str
+    baseline_workflow_variant: Optional[str] = None
+    compare_runner: Literal["scripted", "bc", "llm"]
+    compare_model: Optional[str] = None
+    demo_dir: Path
+    state_dir: Path
+    aggregate_results_path: Path
+    benchmark_summary_path: Path
+    report_markdown_path: Path
+    report_csv_path: Path
+    report_json_path: Path
+    baseline_artifacts_dir: Path
+    comparison_artifacts_dir: Path
+    baseline_branch: Optional[str] = None
+    comparison_branch: Optional[str] = None
+    summary: BenchmarkBatchSummary
+    inspection_commands: List[str] = Field(default_factory=list)
+
+
+class BenchmarkSuiteSpec(BaseModel):
+    family_names: List[str] = Field(default_factory=list)
+    seed: int = 42042
+    artifacts_root: Path
+    run_id: str
+    score_mode: Literal["email", "full"] = "full"
+
+
+class BenchmarkSuiteResult(BaseModel):
+    run_id: str
+    family_names: List[str] = Field(default_factory=list)
+    scenario_names: Dict[str, str] = Field(default_factory=dict)
+    workflow_variants: Dict[str, Optional[str]] = Field(default_factory=dict)
+    suite_dir: Path
+    aggregate_results_path: Path
+    benchmark_summary_path: Path
+    report_markdown_path: Path
+    report_csv_path: Path
+    report_json_path: Path
+    case_artifacts_dirs: Dict[str, Path] = Field(default_factory=dict)
+    summary: BenchmarkBatchSummary

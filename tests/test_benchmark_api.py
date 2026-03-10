@@ -582,15 +582,28 @@ def test_report_attaches_workflow_baseline_deltas(tmp_path: Path) -> None:
     assert baseline_row["baseline"]["workflow_variant"] == "customer_notify"
     assert baseline_row["baseline"]["workflow_valid"] is True
     assert baseline_row["baseline"]["workflow_issue_count"] == 0
+    assert baseline_row["baseline"]["workflow_success_assertion_count"] == 5
+    assert baseline_row["baseline"]["workflow_success_assertions_passed"] == 5
+    assert baseline_row["baseline"]["workflow_success_assertions_failed"] == 0
     assert baseline_row["baseline_delta"]["composite_score_delta"] == pytest.approx(0.0)
     assert baseline_row["baseline_delta"]["workflow_valid_delta"] == 0
     assert baseline_row["baseline_delta"]["workflow_issue_count_delta"] == 0
+    assert baseline_row["baseline_delta"]["workflow_success_assertion_count_delta"] == 0
+    assert (
+        baseline_row["baseline_delta"]["workflow_success_assertions_passed_delta"] == 0
+    )
+    assert (
+        baseline_row["baseline_delta"]["workflow_success_assertions_failed_delta"] == 0
+    )
     assert baseline_row["baseline_delta"]["steps_taken_delta"] == 0
     assert baseline_row["baseline_delta"]["time_ms_delta"] == 0
 
     assert variant_row["baseline"]["workflow_variant"] == "customer_notify"
     assert variant_row["baseline_delta"]["workflow_valid_delta"] == 0
     assert variant_row["baseline_delta"]["workflow_issue_count_delta"] == 0
+    assert (
+        variant_row["baseline_delta"]["workflow_success_assertions_passed_delta"] == 0
+    )
     assert variant_row["baseline_delta"]["composite_score_delta"] == pytest.approx(
         variant_row["score"]["composite_score"]
         - baseline_row["score"]["composite_score"]
@@ -602,6 +615,10 @@ def test_report_attaches_workflow_baseline_deltas(tmp_path: Path) -> None:
     assert scripted_row["baseline"]["workflow_variant"] == "customer_notify"
     assert scripted_row["baseline_delta"]["workflow_valid_delta"] == -1
     assert scripted_row["baseline_delta"]["workflow_issue_count_delta"] is not None
+    assert (
+        scripted_row["baseline_delta"]["workflow_success_assertions_passed_delta"]
+        is not None
+    )
     assert scripted_row["baseline_delta"]["composite_score_delta"] == pytest.approx(
         scripted_row["score"]["composite_score"]
         - baseline_row["score"]["composite_score"]
@@ -631,10 +648,13 @@ def test_csv_report_includes_workflow_baseline_delta_columns(tmp_path: Path) -> 
     assert rows
     assert "delta_evidence_preservation" in rows[0]
     assert "workflow_issue_count_delta" in rows[0]
+    assert "workflow_success_assertions_passed_delta" in rows[0]
     assert variant_row["baseline_available"] == "True"
     assert variant_row["baseline_workflow_variant"] == "customer_notify"
     assert variant_row["baseline_workflow_valid"] == "True"
+    assert variant_row["baseline_workflow_success_assertions_passed"] == "5"
     assert variant_row["workflow_issue_count_delta"] == "0"
+    assert variant_row["workflow_success_assertions_passed_delta"] == "0"
     assert float(variant_row["composite_score_delta"]) == pytest.approx(
         variant_result["baseline_delta"]["composite_score_delta"]
     )
@@ -648,6 +668,6 @@ def test_markdown_report_includes_workflow_baseline_section(tmp_path: Path) -> N
     assert "## Workflow Baselines" in markdown
     assert "security_containment (customer_notify)" in markdown
     assert (
-        "| Model | Success | Score | Δ Score | Steps | Δ Steps | Baseline | Dimensions |"
+        "| Model | Success | Score | Δ Score | Steps | Δ Steps | Assertions | Δ Pass | Baseline | Dimensions |"
         in markdown
     )
