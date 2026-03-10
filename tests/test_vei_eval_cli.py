@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import typer.testing
+
+from vei.benchmark.api import list_benchmark_family_manifest
+from vei.cli.vei_eval import app as eval_app
 from vei.cli.vei_eval import scripted, bc as eval_bc
 from vei.cli.vei_train import bc as train_bc
 from vei.data.rollout import rollout_procurement
@@ -35,3 +39,68 @@ def test_vei_eval_bc(tmp_path: Path) -> None:
     )
     score_path = artifacts / "score.json"
     assert score_path.exists()
+
+
+def test_vei_eval_demo_cli_creates_report_and_state_artifacts(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        eval_app,
+        [
+            "demo",
+            "--family",
+            "security_containment",
+            "--artifacts-root",
+            str(tmp_path),
+            "--run-id",
+            "security_demo",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    demo_dir = tmp_path / "security_demo"
+    assert (demo_dir / "aggregate_results.json").exists()
+    assert (demo_dir / "benchmark_summary.json").exists()
+    assert (demo_dir / "leaderboard.md").exists()
+    assert (demo_dir / "leaderboard.csv").exists()
+    assert (demo_dir / "leaderboard.json").exists()
+    demo_result = json.loads(
+        (demo_dir / "demo_result.json").read_text(encoding="utf-8")
+    )
+    assert demo_result["family_name"] == "security_containment"
+    assert demo_result["compare_runner"] == "scripted"
+    assert demo_result["baseline_workflow_variant"] == "customer_notify"
+    assert demo_result["summary"]["total_runs"] == 2
+    assert demo_result["baseline_branch"]
+    assert demo_result["comparison_branch"]
+    assert demo_result["inspection_commands"]
+    assert (demo_dir / "state").exists()
+
+
+def test_vei_eval_suite_cli_creates_canonical_suite_artifacts(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        eval_app,
+        [
+            "suite",
+            "--artifacts-root",
+            str(tmp_path),
+            "--run-id",
+            "canonical_suite",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    suite_dir = tmp_path / "canonical_suite"
+    assert (suite_dir / "aggregate_results.json").exists()
+    assert (suite_dir / "benchmark_summary.json").exists()
+    assert (suite_dir / "leaderboard.md").exists()
+    assert (suite_dir / "leaderboard.csv").exists()
+    assert (suite_dir / "leaderboard.json").exists()
+    suite_result = json.loads(
+        (suite_dir / "suite_result.json").read_text(encoding="utf-8")
+    )
+    expected_families = {item.name for item in list_benchmark_family_manifest()}
+    assert set(suite_result["family_names"]) == expected_families
+    assert suite_result["summary"]["total_runs"] == len(expected_families)
+    assert set(suite_result["scenario_names"]) == expected_families
+    assert set(suite_result["case_artifacts_dirs"]) == expected_families
