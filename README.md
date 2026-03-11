@@ -73,8 +73,11 @@ VEI_ARTIFACTS_DIR=./_vei_out
 make setup
 make check
 make test
+make llm-live
 vei-smoke --transport stdio --timeout-s 30
 ```
+
+`make llm-live` auto-loads `.env` when present and writes `summary.json` next to the other live-run artifacts under `_vei_out/llm_live/latest`.
 
 ### Run a live episode
 

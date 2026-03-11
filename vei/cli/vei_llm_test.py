@@ -660,7 +660,12 @@ async def run_episode(
 
         # stdio-only transport
         py = os.environ.get("PYTHON") or sys.executable or "python3"
-        env = {**os.environ, "VEI_DISABLE_AUTOSTART": "1"}
+        env = {
+            **os.environ,
+            "VEI_DISABLE_AUTOSTART": "1",
+            "FASTMCP_LOG_LEVEL": os.environ.get("FASTMCP_LOG_LEVEL", "ERROR"),
+            "FASTMCP_DEBUG": os.environ.get("FASTMCP_DEBUG", "0"),
+        }
         if dataset_path:
             env["VEI_DATASET"] = dataset_path
         if artifacts_dir:
@@ -1339,6 +1344,7 @@ def run(
     transcript_json_path: Path | None = None
     score_json_path: Path | None = None
     metrics_json_path: Path | None = None
+    summary_json_path: Path | None = None
     if artifacts:
         artifacts_dir = artifacts
         artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -1346,6 +1352,7 @@ def run(
         transcript_json_path = artifacts_dir / "transcript.json"
         score_json_path = artifacts_dir / "score.json"
         metrics_json_path = artifacts_dir / "llm_metrics.json"
+        summary_json_path = artifacts_dir / "summary.json"
 
     transcript: list[dict] = []
     run_error: str | None = None
@@ -1401,27 +1408,6 @@ def run(
                 if require_success:
                     run_error = run_error or f"Score computation failed: {str(exc)}"
 
-    if run_error:
-        typer.echo(run_error, err=True)
-        if print_transcript:
-            typer.echo(json.dumps(transcript, indent=2))
-        raise typer.Exit(code=1)
-
-    if require_success:
-        if score_obj is None:
-            typer.echo(
-                "--require-success was set but no score could be computed from artifacts.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-        if not bool(score_obj.get("success")):
-            typer.echo(
-                "Run completed but score.success=false under --require-success.",
-                err=True,
-            )
-            typer.echo(json.dumps(score_obj, indent=2), err=True)
-            raise typer.Exit(code=1)
-
     summary = {
         "steps": sum(1 for item in transcript if "action" in item),
         "elapsed_ms": elapsed_ms,
@@ -1439,6 +1425,36 @@ def run(
                 "llm_latency_p95_ms": metrics_payload.get("latency_p95_ms", 0),
             }
         )
+    if summary_json_path:
+        summary_json_path.write_text(
+            json.dumps({"summary": summary}, indent=2),
+            encoding="utf-8",
+        )
+
+    if run_error:
+        typer.echo(run_error, err=True)
+        typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
+        if print_transcript:
+            typer.echo(json.dumps(transcript, indent=2))
+        raise typer.Exit(code=1)
+
+    if require_success:
+        if score_obj is None:
+            typer.echo(
+                "--require-success was set but no score could be computed from artifacts.",
+                err=True,
+            )
+            typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
+            raise typer.Exit(code=1)
+        if not bool(score_obj.get("success")):
+            typer.echo(
+                "Run completed but score.success=false under --require-success.",
+                err=True,
+            )
+            typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
+            typer.echo(json.dumps(score_obj, indent=2), err=True)
+            raise typer.Exit(code=1)
+
     typer.echo(json.dumps({"summary": summary}, indent=2), err=True)
     if print_transcript:
         typer.echo(json.dumps(transcript, indent=2))

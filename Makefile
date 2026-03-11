@@ -42,7 +42,10 @@ test: $(SETUP_STAMP)
 	. $(VENV)/bin/activate && python -m pytest
 
 llm-live: $(SETUP_STAMP)
-	@if [ -n "$$VEI_LLM_LIVE_BYPASS" ]; then \
+	@if [ -f .env ]; then \
+		set -a; . ./.env; set +a; \
+	fi; \
+	if [ -n "$$VEI_LLM_LIVE_BYPASS" ]; then \
 		echo "VEI_LLM_LIVE_BYPASS=1 set; skipping llm-live checks."; \
 	elif [ -z "$$OPENAI_API_KEY" ]; then \
 		echo "OPENAI_API_KEY not set; cannot run llm-live target. Set the key or export VEI_LLM_LIVE_BYPASS=1 to skip in CI."; \
