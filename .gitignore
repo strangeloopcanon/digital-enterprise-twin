@@ -84,3 +84,7 @@ node_modules/
 .beads/
 /.codex/
 ~$*
+
+# Dolt / beads local database state
+.dolt/
+*.db
