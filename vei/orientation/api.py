@@ -41,6 +41,7 @@ def build_world_orientation(state: WorldState) -> WorldOrientation:
     scenario_name = (
         _optional_str(state.scenario.get("name"))
         or runtime_scenario_name
+        or _optional_str(metadata.get("scenario_name"))
         or scenario_template_name
         or "unknown"
     )

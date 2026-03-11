@@ -48,7 +48,9 @@ The router is a transport and tool-dispatch adapter. Mutable enterprise state be
 - `vei.world.api`
   - `create_world_session`
   - `observe`
+  - `orientation`
   - `call_tool`
+  - `capability_graphs`
   - `snapshot`
   - `restore`
   - `branch`
@@ -81,6 +83,7 @@ The router is a transport and tool-dispatch adapter. Mutable enterprise state be
 
 - `python -m vei.router`
   - stdio MCP transport
+  - agent-facing discoverability tools now include `vei.orientation` and `vei.capability_graphs`
 - `python -m vei.router.sse`
   - SSE MCP transport
 - `vei-world`

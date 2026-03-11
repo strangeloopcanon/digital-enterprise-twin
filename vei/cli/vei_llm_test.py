@@ -59,6 +59,8 @@ PREFERRED_ANTHROPIC_TOOLS: List[str] = [
 
 BASELINE_VISIBLE_TOOLS: List[str] = [
     "vei.observe",
+    "vei.orientation",
+    "vei.capability_graphs",
     "vei.tick",
     "vei.act_and_observe",
     "vei.tools.search",
@@ -732,6 +734,8 @@ async def run_episode(
                     "browser.click": {"node_id": "from observation.action_menu"},
                     "browser.open": {"url": "https://vweb.local/..."},
                     "vei.tick": {"dt_ms": 20000},
+                    "vei.orientation": {},
+                    "vei.capability_graphs": {"domain": "identity_graph"},
                     "vei.tools.search": {"query": "keywords", "top_k": tool_top_k or 8},
                     "slack.send_message": {
                         "channel": "#procurement",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import os
 import random
@@ -2031,7 +2032,11 @@ _CATALOG.update(
 def get_scenario(name: str) -> Scenario:
     key = name.strip().lower()
     if key in _CATALOG:
-        return _CATALOG[key]
+        scenario = deepcopy(_CATALOG[key])
+        metadata = dict(scenario.metadata or {})
+        metadata.setdefault("scenario_name", key)
+        scenario.metadata = metadata
+        return scenario
     raise KeyError(f"Unknown scenario: {name}")
 
 

@@ -5,6 +5,7 @@ from mcp.server.fastmcp import server as fserver
 from pydantic import BaseModel, Field
 
 from vei.blueprint.plugins import list_runtime_facade_plugins
+from vei.world.session import WorldSession
 
 from .core import Router, MCPError
 from .tool_registry import ToolSpec
@@ -77,6 +78,10 @@ class ObserveArgs(BaseModel):
     focus: str | None = None
 
 
+class CapabilityGraphsArgs(BaseModel):
+    domain: str | None = None
+
+
 class ResetArgs(BaseModel):
     seed: int | None = None
 
@@ -146,6 +151,13 @@ def create_mcp_server(
     # Utility to access current router
     def R() -> Router:
         return holder.router
+
+    def W() -> WorldSession:
+        session = getattr(holder.router, "world_session", None)
+        if session is None:
+            session = WorldSession.attach_router(holder.router)
+            holder.router.world_session = session
+        return session
 
     def _safe_call(tool: str, args: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -1109,6 +1121,36 @@ def create_mcp_server(
     def vei_observe(focus: str = None) -> dict[str, Any]:
         return R().observe(focus_hint=focus).model_dump()
 
+    @srv.tool(
+        name="vei.orientation",
+        description="Get an agent-facing summary of visible surfaces, policy hints, key objects, and next questions",
+    )
+    def vei_orientation() -> dict[str, Any]:
+        return W().orientation().model_dump(mode="json")
+
+    @srv.tool(
+        name="vei.capability_graphs",
+        description="Inspect runtime capability graphs for shared identity, doc, work, comm, and revenue state",
+    )
+    def vei_capability_graphs(domain: str = None) -> dict[str, Any]:
+        graphs = W().capability_graphs().model_dump(mode="json")
+        if domain is None:
+            return graphs
+        normalized = domain.strip().lower()
+        if normalized not in graphs.get("available_domains", []):
+            return {
+                "error": {
+                    "code": "unknown_domain",
+                    "message": f"Unknown capability graph domain: {domain}",
+                }
+            }
+        return {
+            "branch": graphs["branch"],
+            "clock_ms": graphs["clock_ms"],
+            "domain": normalized,
+            "graph": graphs.get(normalized),
+        }
+
     @srv.tool(name="vei.ping", description="Health check and current logical time")
     def vei_ping() -> dict[str, Any]:
         return {"ok": True, "time_ms": R().bus.clock_ms}
@@ -1192,6 +1234,13 @@ def create_mcp_server(
         description="Usage help: how to interact via MCP and example actions",
     )
     def vei_help() -> dict[str, Any]:
-        return R().help_payload()
+        payload = R().help_payload()
+        payload["examples"].extend(
+            [
+                {"tool": "vei.orientation", "args": {}},
+                {"tool": "vei.capability_graphs", "args": {"domain": "identity_graph"}},
+            ]
+        )
+        return payload
 
     return srv
