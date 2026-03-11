@@ -184,6 +184,8 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
 
 `vei-world graphs` now renders runtime capability graphs from stored snapshots, which is the cleanest way to inspect identity, doc, work, comm, and revenue state without dropping down into app-shaped component dumps. `vei-world orient` and `vei-blueprint orient` add the agent-facing layer on top: visible surfaces, active policy hints, key objects, and suggested next questions.
 
+Inside live MCP sessions, agents can now call the same discoverability surfaces directly with `vei.orientation` and `vei.capability_graphs`.
+
 ## Benchmarking
 
 Baseline run:
