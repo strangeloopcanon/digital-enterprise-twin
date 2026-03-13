@@ -98,8 +98,18 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
         ),
         workflow_name="real_estate_management",
         primary_workflow_variant="tenant_opening_conflict",
-        workflow_variants=["tenant_opening_conflict"],
-        scenario_names=["tenant_opening_conflict"],
+        workflow_variants=[
+            "tenant_opening_conflict",
+            "vendor_no_show",
+            "lease_revision_late",
+            "double_booked_unit",
+        ],
+        scenario_names=[
+            "tenant_opening_conflict",
+            "vendor_no_show",
+            "lease_revision_late",
+            "double_booked_unit",
+        ],
         primary_dimensions=[
             "tenant_readiness",
             "operational_consistency",
@@ -116,8 +126,18 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
         ),
         workflow_name="digital_marketing_agency",
         primary_workflow_variant="campaign_launch_guardrail",
-        workflow_variants=["campaign_launch_guardrail"],
-        scenario_names=["campaign_launch_guardrail"],
+        workflow_variants=[
+            "campaign_launch_guardrail",
+            "creative_not_approved",
+            "budget_runaway",
+            "client_reporting_mismatch",
+        ],
+        scenario_names=[
+            "campaign_launch_guardrail",
+            "creative_not_approved",
+            "budget_runaway",
+            "client_reporting_mismatch",
+        ],
         primary_dimensions=[
             "launch_safety",
             "budget_hygiene",
@@ -134,8 +154,18 @@ _FAMILY_CATALOG: Dict[str, BenchmarkFamilyManifest] = {
         ),
         workflow_name="storage_solutions",
         primary_workflow_variant="capacity_quote_commitment",
-        workflow_variants=["capacity_quote_commitment"],
-        scenario_names=["capacity_quote_commitment"],
+        workflow_variants=[
+            "capacity_quote_commitment",
+            "vendor_dispatch_gap",
+            "fragmented_capacity",
+            "overcommit_quote_risk",
+        ],
+        scenario_names=[
+            "capacity_quote_commitment",
+            "vendor_dispatch_gap",
+            "fragmented_capacity",
+            "overcommit_quote_risk",
+        ],
         primary_dimensions=[
             "capacity_feasibility",
             "quote_accuracy",

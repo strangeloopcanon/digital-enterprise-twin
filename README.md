@@ -18,6 +18,7 @@ Plainly: VEI can simulate an enterprise environment where an agent has to discov
   - Documents, workbooks, tickets, incidents, alerts, flags, identity records, deals, comments, and audit-like receipts
 - Vertical worlds
   - Real estate management, digital marketing agency, and storage-solutions company packs with domain objects, deadlines, branch paths, and business-semantic contracts
+  - Each world pack now supports multiple scenario variants and contract variants on top of the same stable base company
 - Long-horizon work
   - Multi-step tasks that cross systems, have hidden state, require follow-through, and can fail midway
 - Policies and outcomes
@@ -116,6 +117,20 @@ vei inspect events --root _vei_out/workspaces/acquired_cutover
 vei inspect graphs --root _vei_out/workspaces/acquired_cutover --domain identity_graph
 ```
 
+The vertical demos now support the same company world under multiple futures and objective functions:
+
+```bash
+vei project init --root _vei_out/workspaces/harbor_point --vertical real_estate_management
+vei scenario variants --root _vei_out/workspaces/harbor_point
+vei scenario activate --root _vei_out/workspaces/harbor_point --variant vendor_no_show
+vei contract variants --root _vei_out/workspaces/harbor_point
+vei contract activate --root _vei_out/workspaces/harbor_point --variant safety_over_speed
+vei run start --root _vei_out/workspaces/harbor_point --runner workflow
+vei ui serve --root _vei_out/workspaces/harbor_point
+```
+
+That is the cleanest proof of the kernel thesis: the base company world stays fixed while VEI swaps the problem setup and success criteria on top of the same runtime, event spine, contract engine, and playback UI.
+
 ### Grounded import flow
 
 VEI can now ingest realistic offline enterprise export packs and turn them into a runnable workspace. The import path is:
@@ -194,7 +209,7 @@ The import UI now shows:
 - Runtime capability-graph layer that lets world sessions and snapshots expose shared domain graphs such as identity, docs, work, comms, and revenue
 - Graph-native planning and mutation layer that lets agents ask for suggested next actions and apply graph actions without dropping down to raw app tools first
 - Graph-native workflow execution, so benchmark/playbook steps can compile to `vei.graph_action` instead of only raw app-shaped tool calls
-- Vertical world packs for real estate management, digital marketing agencies, and storage-solutions companies with one flagship scenario each for VC-grade demos
+- Vertical world packs for real estate management, digital marketing agencies, and storage-solutions companies with built-in scenario variants, contract variants, and curated “same world, many futures” demo paths
 - Agent-orientation layer that lets sessions and snapshots expose agent-facing summaries of visible surfaces, active policies, key objects, and suggested next questions
 - Enterprise twins for Slack, Mail, Browser, Docs, Spreadsheet, Tickets, DB, ERP/CRM, Okta-style identity, ServiceDesk, Google Admin, SIEM, Datadog, PagerDuty, feature flags, HRIS, and Jira-style issue flows
 - Scenario compilation, dataset rollout, BC training, benchmark execution, and release packaging
@@ -202,6 +217,7 @@ The import UI now shows:
 - Curated complex-example showcase bundles for security incidents, acquired-user cutovers, and revenue-critical mixed-stack mitigations
 - Local playback UI for completed and in-flight workspace runs, including timeline, orientation, capability graphs, snapshots, diffs, and contract outcome panels
 - Canonical append-only run event stream that drives playback, `vei inspect events`, receipts, contract status, and snapshot markers across workflow, scripted, BC, and LLM runs
+- Variant-aware workspace activation so previews, run manifests, showcase bundles, and the UI all explain which scenario overlay and contract overlay are active on top of the base world
 
 ## Architecture
 

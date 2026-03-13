@@ -12,7 +12,12 @@ from vei.verticals.packs import (
     get_vertical_pack_manifest,
     list_vertical_pack_manifests,
 )
-from vei.workspace.api import create_workspace_from_template, preview_workspace_scenario
+from vei.workspace.api import (
+    activate_workspace_contract_variant,
+    activate_workspace_scenario_variant,
+    create_workspace_from_template,
+    preview_workspace_scenario,
+)
 
 
 VerticalCompareRunner = Literal["scripted", "bc", "llm"]
@@ -21,6 +26,8 @@ VerticalCompareRunner = Literal["scripted", "bc", "llm"]
 class VerticalDemoSpec(BaseModel):
     vertical_name: str
     workspace_root: Path
+    scenario_variant: str | None = None
+    contract_variant: str | None = None
     compare_runner: VerticalCompareRunner = "scripted"
     overwrite: bool = True
     seed: int = 42042
@@ -35,6 +42,8 @@ class VerticalDemoResult(BaseModel):
     manifest: VerticalPackManifest
     workspace_root: Path
     scenario_name: str
+    scenario_variant: str | None = None
+    contract_variant: str | None = None
     workflow_run_id: str
     comparison_run_id: str
     compare_runner: VerticalCompareRunner
@@ -87,6 +96,54 @@ class VerticalShowcaseResult(BaseModel):
     platform_uses: list[str] = Field(default_factory=list)
 
 
+class VerticalVariantMatrixCombination(BaseModel):
+    name: str
+    title: str
+    scenario_variant: str
+    contract_variant: str
+    rationale: str
+
+
+class VerticalVariantMatrixSpec(BaseModel):
+    vertical_names: list[str] = Field(default_factory=list)
+    root: Path
+    compare_runner: VerticalCompareRunner = "scripted"
+    overwrite: bool = True
+    seed: int = 42042
+    max_steps: int = 18
+    compare_model: str | None = None
+    compare_provider: str | None = None
+    compare_bc_model_path: Path | None = None
+    compare_task: str | None = None
+    run_id: str = "variant_matrix"
+
+
+class VerticalVariantMatrixRun(BaseModel):
+    vertical_name: str
+    company_name: str
+    workspace_root: Path
+    combination: VerticalVariantMatrixCombination
+    workflow_run_id: str
+    comparison_run_id: str
+    workflow_contract_ok: bool | None = None
+    comparison_contract_ok: bool | None = None
+    workflow_event_count: int = 0
+    comparison_event_count: int = 0
+    kernel_thesis: str = ""
+    ui_command: str
+
+
+class VerticalVariantMatrixResult(BaseModel):
+    run_id: str
+    root: Path
+    compare_runner: VerticalCompareRunner
+    overview_path: Path
+    result_path: Path
+    runs: list[VerticalVariantMatrixRun] = Field(default_factory=list)
+    kernel_thesis: str = ""
+    platform_uses: list[str] = Field(default_factory=list)
+
+
 def prepare_vertical_demo(spec: VerticalDemoSpec) -> VerticalDemoResult:
     if spec.compare_runner == "llm" and not spec.compare_model:
         raise ValueError("llm comparison requires compare_model")
@@ -99,6 +156,14 @@ def prepare_vertical_demo(spec: VerticalDemoSpec) -> VerticalDemoResult:
         source_ref=manifest.name,
         overwrite=spec.overwrite,
     )
+    if spec.scenario_variant:
+        activate_workspace_scenario_variant(
+            spec.workspace_root,
+            spec.scenario_variant,
+            bootstrap_contract=True,
+        )
+    if spec.contract_variant:
+        activate_workspace_contract_variant(spec.workspace_root, spec.contract_variant)
     workflow_manifest = launch_workspace_run(
         spec.workspace_root,
         runner="workflow",
@@ -130,6 +195,8 @@ def prepare_vertical_demo(spec: VerticalDemoSpec) -> VerticalDemoResult:
         manifest=manifest,
         workspace_root=workspace_root,
         scenario_name=str(preview["scenario"]["name"]),
+        scenario_variant=preview.get("active_scenario_variant"),
+        contract_variant=preview.get("active_contract_variant"),
         workflow_run_id=workflow_manifest.run_id,
         comparison_run_id=comparison_manifest.run_id,
         compare_runner=spec.compare_runner,
@@ -222,6 +289,102 @@ def run_vertical_showcase(spec: VerticalShowcaseSpec) -> VerticalShowcaseResult:
     return result
 
 
+def run_vertical_variant_matrix(
+    spec: VerticalVariantMatrixSpec,
+) -> VerticalVariantMatrixResult:
+    showcase_root = spec.root.expanduser().resolve() / spec.run_id
+    showcase_root.mkdir(parents=True, exist_ok=True)
+    selected = (
+        [get_vertical_pack_manifest(name) for name in spec.vertical_names]
+        if spec.vertical_names
+        else list_vertical_pack_manifests()
+    )
+    runs: list[VerticalVariantMatrixRun] = []
+    for manifest in selected:
+        for combo in _curated_variant_matrix(manifest.name):
+            workspace_root = showcase_root / manifest.name / combo.name
+            create_workspace_from_template(
+                root=workspace_root,
+                source_kind="vertical",
+                source_ref=manifest.name,
+                overwrite=spec.overwrite,
+            )
+            activate_workspace_scenario_variant(
+                workspace_root,
+                combo.scenario_variant,
+                bootstrap_contract=True,
+            )
+            activate_workspace_contract_variant(workspace_root, combo.contract_variant)
+            workflow_manifest = launch_workspace_run(
+                workspace_root,
+                runner="workflow",
+                run_id=f"{combo.name}_workflow",
+                seed=spec.seed,
+                max_steps=spec.max_steps,
+            )
+            comparison_manifest = launch_workspace_run(
+                workspace_root,
+                runner=spec.compare_runner,
+                run_id=f"{combo.name}_{spec.compare_runner}",
+                seed=spec.seed,
+                model=spec.compare_model,
+                provider=spec.compare_provider,
+                bc_model_path=spec.compare_bc_model_path,
+                task=spec.compare_task,
+                max_steps=spec.max_steps,
+            )
+            workflow_summary = _summarize_run_spine(
+                workspace_root / "runs" / workflow_manifest.run_id
+            )
+            comparison_summary = _summarize_run_spine(
+                workspace_root / "runs" / comparison_manifest.run_id
+            )
+            runs.append(
+                VerticalVariantMatrixRun(
+                    vertical_name=manifest.name,
+                    company_name=manifest.company_name,
+                    workspace_root=workspace_root,
+                    combination=combo,
+                    workflow_run_id=workflow_manifest.run_id,
+                    comparison_run_id=comparison_manifest.run_id,
+                    workflow_contract_ok=(
+                        workflow_manifest.contract.ok
+                        if workflow_manifest.contract
+                        else None
+                    ),
+                    comparison_contract_ok=(
+                        comparison_manifest.contract.ok
+                        if comparison_manifest.contract
+                        else None
+                    ),
+                    workflow_event_count=int(workflow_summary["event_count"]),
+                    comparison_event_count=int(comparison_summary["event_count"]),
+                    kernel_thesis=_kernel_thesis_statement(),
+                    ui_command=(
+                        "python -m vei.cli.vei ui serve "
+                        f"--root {workspace_root} --host 127.0.0.1 --port 3011"
+                    ),
+                )
+            )
+    result = VerticalVariantMatrixResult(
+        run_id=spec.run_id,
+        root=showcase_root,
+        compare_runner=spec.compare_runner,
+        overview_path=showcase_root / "vertical_variant_matrix_overview.md",
+        result_path=showcase_root / "vertical_variant_matrix_result.json",
+        runs=runs,
+        kernel_thesis=_kernel_thesis_statement(),
+        platform_uses=_platform_uses(),
+    )
+    result.overview_path.write_text(
+        render_vertical_variant_matrix_overview(result), encoding="utf-8"
+    )
+    result.result_path.write_text(
+        json.dumps(result.model_dump(mode="json"), indent=2), encoding="utf-8"
+    )
+    return result
+
+
 def render_vertical_demo_overview(result: VerticalDemoResult) -> str:
     lines = [
         f"# {result.manifest.title}",
@@ -230,6 +393,8 @@ def render_vertical_demo_overview(result: VerticalDemoResult) -> str:
         "",
         f"- Company: `{result.manifest.company_name}`",
         f"- Scenario: `{result.scenario_name}`",
+        f"- Scenario variant: `{result.scenario_variant or 'default'}`",
+        f"- Contract variant: `{result.contract_variant or 'default'}`",
         f"- Workflow baseline: `{result.workflow_run_id}`",
         f"- Comparison ({result.compare_runner}): `{result.comparison_run_id}`",
         f"- Contract path: `{result.contract_path}`",
@@ -320,6 +485,36 @@ def render_vertical_showcase_overview(result: VerticalShowcaseResult) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_vertical_variant_matrix_overview(
+    result: VerticalVariantMatrixResult,
+) -> str:
+    lines = [
+        "# VEI Variant Matrix Showcase",
+        "",
+        result.kernel_thesis,
+        "",
+        "Same world pack, different problem overlays, different contract overlays, same runtime kernel.",
+        "",
+    ]
+    for run in result.runs:
+        lines.extend(
+            [
+                f"## {run.company_name} · {run.combination.title}",
+                "",
+                f"- Scenario variant: `{run.combination.scenario_variant}`",
+                f"- Contract variant: `{run.combination.contract_variant}`",
+                f"- Workflow baseline contract: `{run.workflow_contract_ok}`",
+                f"- Comparison contract: `{run.comparison_contract_ok}`",
+                f"- Baseline events: `{run.workflow_event_count}`",
+                f"- Comparison events: `{run.comparison_event_count}`",
+                f"- Rationale: {run.combination.rationale}",
+                f"- UI: `{run.ui_command}`",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def resolve_vertical_names(names: Iterable[str] | None = None) -> list[str]:
     cleaned = [name.strip().lower() for name in (names or []) if name.strip()]
     if cleaned:
@@ -357,6 +552,85 @@ def _platform_uses() -> list[str]:
         "Continuous eval system: the workflow baseline and freer comparison runs already share the same scenario, contract, and event spine.",
         "AI agent management platform: live playback, resolved tools, provenance, and branch diffs make agent behavior inspectable and governable.",
     ]
+
+
+def _curated_variant_matrix(
+    vertical_name: str,
+) -> list[VerticalVariantMatrixCombination]:
+    curated: dict[str, list[VerticalVariantMatrixCombination]] = {
+        "real_estate_management": [
+            VerticalVariantMatrixCombination(
+                name="opening_readiness",
+                title="Opening Readiness",
+                scenario_variant="tenant_opening_conflict",
+                contract_variant="opening_readiness",
+                rationale="Solve the flagship Harbor Point opening conflict cleanly.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="vendor_safety",
+                title="Vendor Shock, Safety First",
+                scenario_variant="vendor_no_show",
+                contract_variant="safety_over_speed",
+                rationale="Same property, different future: a vendor drop-out pushes the objective toward safety over schedule.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="tenant_disruption",
+                title="Reservation Conflict, Tenant First",
+                scenario_variant="double_booked_unit",
+                contract_variant="minimize_tenant_disruption",
+                rationale="Keep the same world but optimize for tenant continuity and trust.",
+            ),
+        ],
+        "digital_marketing_agency": [
+            VerticalVariantMatrixCombination(
+                name="launch_safely",
+                title="Launch Safely",
+                scenario_variant="campaign_launch_guardrail",
+                contract_variant="launch_safely",
+                rationale="Flagship agency path: approval, pacing, and reporting all become safe together.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="protect_budget",
+                title="Protect Budget",
+                scenario_variant="budget_runaway",
+                contract_variant="protect_budget",
+                rationale="Same campaign world, but finance becomes the dominant objective.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="client_comms",
+                title="Client Comms First",
+                scenario_variant="client_reporting_mismatch",
+                contract_variant="client_comms_first",
+                rationale="Prioritize truthfulness and artifact integrity when reporting drifts.",
+            ),
+        ],
+        "storage_solutions": [
+            VerticalVariantMatrixCombination(
+                name="no_overcommit",
+                title="No Overcommit",
+                scenario_variant="capacity_quote_commitment",
+                contract_variant="no_overcommit",
+                rationale="Flagship storage path: keep the commitment feasible before it reaches the customer.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="revenue_bias",
+                title="Maximize Feasible Revenue",
+                scenario_variant="fragmented_capacity",
+                contract_variant="maximize_feasible_revenue",
+                rationale="Preserve as much value as possible while still restoring feasibility.",
+            ),
+            VerticalVariantMatrixCombination(
+                name="ops_consistency",
+                title="Ops Consistency",
+                scenario_variant="vendor_dispatch_gap",
+                contract_variant="ops_consistency",
+                rationale="The company stays the same; the objective changes to downstream execution discipline.",
+            ),
+        ],
+    }
+    if vertical_name not in curated:
+        raise KeyError(f"unknown vertical pack: {vertical_name}")
+    return curated[vertical_name]
 
 
 def _summarize_run_spine(run_root: Path) -> dict[str, object]:
@@ -405,9 +679,14 @@ __all__ = [
     "VerticalDemoSpec",
     "VerticalShowcaseResult",
     "VerticalShowcaseSpec",
+    "VerticalVariantMatrixCombination",
+    "VerticalVariantMatrixResult",
+    "VerticalVariantMatrixSpec",
     "prepare_vertical_demo",
     "render_vertical_demo_overview",
     "render_vertical_showcase_overview",
+    "render_vertical_variant_matrix_overview",
     "resolve_vertical_names",
     "run_vertical_showcase",
+    "run_vertical_variant_matrix",
 ]

@@ -531,6 +531,39 @@ _VARIANT_CATALOG: Dict[str, Dict[str, _VariantDefinition]] = {
             scenario_name="tenant_opening_conflict",
             parameters=RealEstateManagementWorkflowParams(),
         ),
+        "vendor_no_show": _VariantDefinition(
+            name="vendor_no_show",
+            title="Vendor No-Show",
+            description="Recover opening readiness after a blocking prep vendor no-shows late in the cycle.",
+            scenario_name="vendor_no_show",
+            parameters=RealEstateManagementWorkflowParams(
+                vendor_id="VEND-HPM-ELEC",
+                vendor_note="Backup facilities vendor assigned after late HVAC no-show.",
+                ticket_note="Backup vendor assigned, opening blockers re-sequenced, and tenant opening still viable.",
+                slack_summary="Backup vendor locked in; Harbor Point still has a viable opening path.",
+            ),
+        ),
+        "lease_revision_late": _VariantDefinition(
+            name="lease_revision_late",
+            title="Lease Revision Late",
+            description="Compress the readiness flow after late legal redlines change the opening timeline.",
+            scenario_name="lease_revision_late",
+            parameters=RealEstateManagementWorkflowParams(
+                deadline_max_ms=120000,
+                doc_update_note="Late lease revision executed, vendor prep confirmed, and opening artifact refreshed under compressed time.",
+                slack_summary="Late legal revision cleared just in time; Harbor Point opening path remains intact.",
+            ),
+        ),
+        "double_booked_unit": _VariantDefinition(
+            name="double_booked_unit",
+            title="Double-Booked Unit",
+            description="Resolve a reservation conflict on the tenant unit before the opening fails downstream.",
+            scenario_name="double_booked_unit",
+            parameters=RealEstateManagementWorkflowParams(
+                ticket_note="Reservation conflict cleared, unit reassigned correctly, and opening blockers resolved.",
+                slack_summary="Unit conflict resolved and Harbor Point opening is aligned again.",
+            ),
+        ),
     },
     "digital_marketing_agency": {
         "campaign_launch_guardrail": _VariantDefinition(
@@ -541,6 +574,37 @@ _VARIANT_CATALOG: Dict[str, Dict[str, _VariantDefinition]] = {
             ),
             scenario_name="campaign_launch_guardrail",
             parameters=DigitalMarketingAgencyWorkflowParams(),
+        ),
+        "creative_not_approved": _VariantDefinition(
+            name="creative_not_approved",
+            title="Creative Not Approved",
+            description="Recover a launch after client creative approval regresses back into rework.",
+            scenario_name="creative_not_approved",
+            parameters=DigitalMarketingAgencyWorkflowParams(
+                ticket_note="Creative sign-off recovered before launch and client artifacts updated accordingly.",
+                slack_summary="Creative approval cleared; launch can proceed with approved assets only.",
+            ),
+        ),
+        "budget_runaway": _VariantDefinition(
+            name="budget_runaway",
+            title="Budget Runaway",
+            description="Pull pacing back under control after the launch starts burning budget too quickly.",
+            scenario_name="budget_runaway",
+            parameters=DigitalMarketingAgencyWorkflowParams(
+                pacing_pct=70.0,
+                report_note="Emergency pacing correction recorded after runaway spend review.",
+                crm_note="Client budget protected after pacing rollback and refreshed launch reporting.",
+            ),
+        ),
+        "client_reporting_mismatch": _VariantDefinition(
+            name="client_reporting_mismatch",
+            title="Client Reporting Mismatch",
+            description="Reconcile client-facing launch artifacts when the report and brief drift apart.",
+            scenario_name="client_reporting_mismatch",
+            parameters=DigitalMarketingAgencyWorkflowParams(
+                doc_update_note="Launch brief reconciled with the refreshed client report and approval state.",
+                slack_summary="Client-facing artifacts now agree on pacing, approval, and launch readiness.",
+            ),
         ),
     },
     "storage_solutions": {
@@ -553,6 +617,39 @@ _VARIANT_CATALOG: Dict[str, Dict[str, _VariantDefinition]] = {
             scenario_name="capacity_quote_commitment",
             parameters=StorageSolutionsWorkflowParams(),
         ),
+        "vendor_dispatch_gap": _VariantDefinition(
+            name="vendor_dispatch_gap",
+            title="Vendor Dispatch Gap",
+            description="Repair a feasible quote after downstream dispatch coverage breaks.",
+            scenario_name="vendor_dispatch_gap",
+            parameters=StorageSolutionsWorkflowParams(
+                vendor_id="VEND-ATS-TRUCK",
+                ticket_note="Dispatch vendor gap closed after feasible allocation and revised commitment.",
+                slack_summary="Vendor dispatch back on track; Zenith commitment is now feasible to send.",
+            ),
+        ),
+        "fragmented_capacity": _VariantDefinition(
+            name="fragmented_capacity",
+            title="Fragmented Capacity",
+            description="Find a smaller feasible inventory block after overflow capacity fragments unexpectedly.",
+            scenario_name="fragmented_capacity",
+            parameters=StorageSolutionsWorkflowParams(
+                pool_id="POOL-CHI-A",
+                site_id="SITE-CHI-1",
+                units=20,
+                doc_update_note="Fragmented inventory resolved by shifting the commitment to the feasible Chicago block and updating rollout artifacts.",
+            ),
+        ),
+        "overcommit_quote_risk": _VariantDefinition(
+            name="overcommit_quote_risk",
+            title="Overcommit Quote Risk",
+            description="Unwind an already-overcommitted quote before the customer hears the wrong number.",
+            scenario_name="overcommit_quote_risk",
+            parameters=StorageSolutionsWorkflowParams(
+                units=60,
+                crm_note="Unsafe overcommit removed after feasible storage plan and revised quote were confirmed.",
+            ),
+        ),
     },
 }
 
@@ -561,8 +658,17 @@ _SCENARIO_TO_WORKFLOW = {
     "acquired_sales_onboarding": "enterprise_onboarding_migration",
     "checkout_spike_mitigation": "revenue_incident_mitigation",
     "tenant_opening_conflict": "real_estate_management",
+    "vendor_no_show": "real_estate_management",
+    "lease_revision_late": "real_estate_management",
+    "double_booked_unit": "real_estate_management",
     "campaign_launch_guardrail": "digital_marketing_agency",
+    "creative_not_approved": "digital_marketing_agency",
+    "budget_runaway": "digital_marketing_agency",
+    "client_reporting_mismatch": "digital_marketing_agency",
     "capacity_quote_commitment": "storage_solutions",
+    "vendor_dispatch_gap": "storage_solutions",
+    "fragmented_capacity": "storage_solutions",
+    "overcommit_quote_risk": "storage_solutions",
 }
 
 
@@ -2018,17 +2124,17 @@ def _build_real_estate_management_spec(
                 {
                     "kind": "state_contains",
                     "field": f"components.docs.docs.{params.doc_id}.body",
-                    "contains": "lease amendment executed",
+                    "contains": params.doc_update_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.tickets.metadata.{params.ticket_id}.comments",
-                    "contains": "Opening blockers cleared",
+                    "contains": params.ticket_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.slack.channels.{params.slack_channel}.messages",
-                    "contains": "opening is back on track",
+                    "contains": params.slack_summary,
                 },
                 {"kind": "time_max_ms", "max_value": params.deadline_max_ms},
             ],
@@ -2183,22 +2289,22 @@ def _build_digital_marketing_agency_spec(
                 {
                     "kind": "state_contains",
                     "field": f"components.docs.docs.{params.doc_id}.body",
-                    "contains": "Creative approval complete",
+                    "contains": params.doc_update_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.tickets.metadata.{params.ticket_id}.comments",
-                    "contains": "Launch guardrails cleared",
+                    "contains": params.ticket_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": "components.crm.activities",
-                    "contains": "launch risk reduced",
+                    "contains": params.crm_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.slack.channels.{params.slack_channel}.messages",
-                    "contains": "safe to proceed",
+                    "contains": params.slack_summary,
                 },
                 {"kind": "time_max_ms", "max_value": params.deadline_max_ms},
             ],
@@ -2359,22 +2465,22 @@ def _build_storage_solutions_spec(
                 {
                     "kind": "state_contains",
                     "field": f"components.docs.docs.{params.doc_id}.body",
-                    "contains": "Capacity reserved",
+                    "contains": params.doc_update_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.tickets.metadata.{params.ticket_id}.comments",
-                    "contains": "quote is feasible",
+                    "contains": params.ticket_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": "components.crm.activities",
-                    "contains": "Quote risk reduced",
+                    "contains": params.crm_note,
                 },
                 {
                     "kind": "state_contains",
                     "field": f"components.slack.channels.{params.slack_channel}.messages",
-                    "contains": "safe to send",
+                    "contains": params.slack_summary,
                 },
                 {"kind": "time_max_ms", "max_value": params.deadline_max_ms},
             ],

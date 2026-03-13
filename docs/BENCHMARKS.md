@@ -111,6 +111,28 @@ That bundle is also the cleanest proof that VEI is a kernel product, not a colle
 
 That is the architectural reason the product can later serve as an RL environment, a continuous evaluation stack, and an agent-management surface without changing the underlying world model.
 
+Run the variant-lab matrix on top of the same vertical worlds:
+
+```bash
+vei showcase variant-matrix \
+  --root _vei_out/vertical_showcase \
+  --run-id vc_variant_matrix
+```
+
+That command does not rebuild the company worlds. Instead, it reuses the same three vertical workspaces and runs curated combinations of:
+
+- scenario variants
+- contract variants
+- workflow baseline
+- freer comparison runner
+
+The result is the clearest “same world, many futures” demo path in the repo:
+
+- same company world
+- different hidden faults and branch labels
+- different business objectives
+- same world kernel, event spine, snapshot model, and playback UI
+
 The flagship mixed-stack demo is the revenue/ops primary variant:
 
 ```bash

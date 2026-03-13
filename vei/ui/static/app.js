@@ -443,6 +443,18 @@ function renderScenarioBriefing() {
   const whatIfBranches = Array.isArray(builderEnvironment.what_if_branches)
     ? builderEnvironment.what_if_branches
     : [];
+  const scenarioVariants = Array.isArray(preview.available_scenario_variants)
+    ? preview.available_scenario_variants
+    : [];
+  const contractVariants = Array.isArray(preview.available_contract_variants)
+    ? preview.available_contract_variants
+    : [];
+  const activeScenarioVariant = scenarioVariants.find(
+    (item) => item.name === preview.active_scenario_variant
+  );
+  const activeContractVariant = contractVariants.find(
+    (item) => item.name === preview.active_contract_variant
+  );
   const verticalName = builderEnvironment.vertical || metadata.vertical || "";
   const facadeLabels = (compiled.facades || [])
     .map((item) => {
@@ -459,6 +471,8 @@ function renderScenarioBriefing() {
   const contractSummary = [
     metricTile("Scenario", scenario.title || scenario.name || "Scenario", scenario.scenario_name || ""),
     metricTile("Workflow", compiled.workflow_name || contract.workflow_name || "n/a", compiled.workflow_variant || "default"),
+    metricTile("Scenario variant", activeScenarioVariant?.title || preview.active_scenario_variant || "default", activeScenarioVariant?.name || ""),
+    metricTile("Contract variant", activeContractVariant?.title || preview.active_contract_variant || "default", activeContractVariant?.name || ""),
     metricTile("Facades", String((compiled.facades || []).length), facadeLabels),
     metricTile("Focus", scenario.inspection_focus || "summary", (scenario.tags || []).join(", ")),
   ].join("");
@@ -504,6 +518,27 @@ function renderScenarioBriefing() {
         </div>
         <p class="metric-detail">Deterministic state + contracts make this trainable; shared baselines make it continuously evaluable; live playback and provenance make it operable.</p>
       </div>
+      ${
+        activeScenarioVariant
+          ? `<div class="stack-card">
+              <h3>Active scenario variant</h3>
+              <p class="metric-detail">${escapeHtml(activeScenarioVariant.rationale || activeScenarioVariant.description || "")}</p>
+              <div class="chip-row">
+                ${chip(activeScenarioVariant.name)}
+                ${(activeScenarioVariant.branch_labels || []).map((item) => chip(item)).join("")}
+              </div>
+            </div>`
+          : ""
+      }
+      ${
+        activeContractVariant
+          ? `<div class="stack-card">
+              <h3>Active contract variant</h3>
+              <p class="metric-detail">${escapeHtml(activeContractVariant.objective_summary || activeContractVariant.description || "")}</p>
+              <div class="chip-row">${chip(activeContractVariant.name)}</div>
+            </div>`
+          : ""
+      }
     </div>
     ${
       whatIfBranches.length
@@ -513,7 +548,65 @@ function renderScenarioBriefing() {
           </div>`
         : ""
     }
+    ${
+      scenarioVariants.length || contractVariants.length
+        ? `<div class="briefing-grid">
+            <div class="stack-card">
+              <h3>Scenario variants</h3>
+              <div class="stack">
+                ${scenarioVariants
+                  .map(
+                    (item) => `
+                      <div class="run-item">
+                        <div class="chip-row">
+                          ${chip(item.name)}
+                          ${item.active ? chip("active", "ok") : ""}
+                        </div>
+                        <strong>${escapeHtml(item.title)}</strong>
+                        <p class="metric-detail">${escapeHtml(item.rationale || item.description || "")}</p>
+                        <p class="metric-detail">${escapeHtml((item.change_summary || []).join(" · "))}</p>
+                        <button type="button" class="ghost-button activate-scenario-variant" data-variant-name="${escapeHtml(item.name)}">Activate scenario</button>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+            <div class="stack-card">
+              <h3>Contract variants</h3>
+              <div class="stack">
+                ${contractVariants
+                  .map(
+                    (item) => `
+                      <div class="run-item">
+                        <div class="chip-row">
+                          ${chip(item.name)}
+                          ${item.active ? chip("active", "ok") : ""}
+                        </div>
+                        <strong>${escapeHtml(item.title)}</strong>
+                        <p class="metric-detail">${escapeHtml(item.objective_summary || item.description || "")}</p>
+                        <button type="button" class="ghost-button activate-contract-variant" data-variant-name="${escapeHtml(item.name)}">Activate contract</button>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+            </div>
+          </div>`
+        : ""
+    }
   `;
+
+  document.querySelectorAll(".activate-scenario-variant").forEach((node) => {
+    node.addEventListener("click", () => {
+      void activateScenarioVariant(node.dataset.variantName);
+    });
+  });
+  document.querySelectorAll(".activate-contract-variant").forEach((node) => {
+    node.addEventListener("click", () => {
+      void activateContractVariant(node.dataset.variantName);
+    });
+  });
 
   renderJson("scenario-panel", preview);
 }
@@ -996,6 +1089,34 @@ async function loadScenario(name) {
   state.scenarioPreview = preview;
   state.scenarioContract = contract;
   renderScenarioBriefing();
+}
+
+async function activateScenarioVariant(name) {
+  if (!name) {
+    return;
+  }
+  await getJson("/api/scenarios/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variant: name, bootstrap_contract: true }),
+  });
+  await loadWorkspace();
+  await loadRuns();
+}
+
+async function activateContractVariant(name) {
+  if (!name) {
+    return;
+  }
+  await getJson("/api/contract-variants/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ variant: name }),
+  });
+  const activeName = state.workspace?.manifest?.active_scenario || state.scenarios?.[0]?.name;
+  if (activeName) {
+    await loadScenario(activeName);
+  }
 }
 
 async function loadRuns() {

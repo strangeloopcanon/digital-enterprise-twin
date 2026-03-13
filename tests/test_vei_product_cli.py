@@ -511,3 +511,86 @@ def test_product_cli_vertical_showcase_builds_demo_bundle(tmp_path: Path) -> Non
     assert "VEI Vertical World Pack Showcase" in overview
     assert "One kernel, three companies" in overview
     assert "RL environment" in overview
+
+
+def test_product_cli_vertical_variant_commands_and_matrix(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    root = tmp_path / "harbor-point"
+
+    init_result = runner.invoke(
+        app,
+        [
+            "project",
+            "init",
+            "--root",
+            str(root),
+            "--vertical",
+            "real_estate_management",
+        ],
+    )
+    assert init_result.exit_code == 0, init_result.output
+
+    variants_result = runner.invoke(
+        app,
+        ["scenario", "variants", "--root", str(root)],
+    )
+    assert variants_result.exit_code == 0, variants_result.output
+    assert len(json.loads(variants_result.output)) == 4
+
+    activate_result = runner.invoke(
+        app,
+        [
+            "scenario",
+            "activate",
+            "--root",
+            str(root),
+            "--variant",
+            "vendor_no_show",
+            "--bootstrap-contract",
+        ],
+    )
+    assert activate_result.exit_code == 0, activate_result.output
+    assert json.loads(activate_result.output)["workflow_variant"] == "vendor_no_show"
+
+    contract_variants = runner.invoke(
+        app,
+        ["contract", "variants", "--root", str(root)],
+    )
+    assert contract_variants.exit_code == 0, contract_variants.output
+    assert len(json.loads(contract_variants.output)) == 3
+
+    contract_activate = runner.invoke(
+        app,
+        [
+            "contract",
+            "activate",
+            "--root",
+            str(root),
+            "--variant",
+            "safety_over_speed",
+        ],
+    )
+    assert contract_activate.exit_code == 0, contract_activate.output
+    assert (
+        json.loads(contract_activate.output)["metadata"]["vertical_contract_variant"]
+        == "safety_over_speed"
+    )
+
+    matrix_root = tmp_path / "variant-matrix"
+    matrix_result = runner.invoke(
+        app,
+        [
+            "showcase",
+            "variant-matrix",
+            "--root",
+            str(matrix_root),
+            "--run-id",
+            "vc_matrix",
+        ],
+    )
+    assert matrix_result.exit_code == 0, matrix_result.output
+    payload = json.loads(matrix_result.output)
+    assert len(payload["runs"]) == 9
+    assert "same runtime kernel" in (
+        matrix_root / "vc_matrix" / "vertical_variant_matrix_overview.md"
+    ).read_text(encoding="utf-8")
