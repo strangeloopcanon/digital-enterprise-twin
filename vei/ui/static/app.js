@@ -191,6 +191,7 @@ function renderImportSummary() {
   const identityFlow = state.identityFlow;
   const normalization = state.importNormalization;
   const review = state.importReview;
+  const reconciliation = normalization?.identity_reconciliation || review?.normalization_report?.identity_reconciliation;
   const panel = document.getElementById("imports-summary");
   const generatedPanel = document.getElementById("generated-scenarios");
   const reviewPanel = document.getElementById("import-review-grid");
@@ -224,6 +225,13 @@ function renderImportSummary() {
       `${summary.origin_counts?.imported || 0}/${summary.origin_counts?.derived || 0}/${summary.origin_counts?.simulated || 0}`,
       "imported / derived / simulated"
     ),
+    reconciliation
+      ? metricTile(
+          "Reconciliation",
+          `${compactNumber(reconciliation.resolved_count || 0)}/${compactNumber(reconciliation.subject_count || 0)}`,
+          `${compactNumber(reconciliation.ambiguous_count || 0)} ambiguous · ${compactNumber(reconciliation.unmatched_count || 0)} unmatched`
+        )
+      : "",
   ].join("");
 
   generatedPanel.innerHTML = state.generatedImportScenarios
@@ -317,6 +325,19 @@ function renderImportSummary() {
       </div>
     `
   );
+  const reconciliationCards = (reconciliation?.links || []).slice(0, 6).map(
+    (item) => `
+      <div class="stack-card">
+        <h3>${escapeHtml(item.principal_label)}</h3>
+        <div class="chip-row">
+          ${chip(item.principal_type)}
+          ${chip(item.status || "resolved", statusClass(item.status === "resolved" ? "ok" : item.status === "external" ? "warning" : "error"))}
+        </div>
+        <p class="metric-detail">${escapeHtml(item.reason || "No reconciliation reason recorded.")}</p>
+        <p class="metric-detail">${escapeHtml((item.matched_refs || item.candidate_refs || []).join(", ") || "No candidate refs")}</p>
+      </div>
+    `
+  );
   const flowCards = identityFlow && identityFlow.active_scenario
     ? [
         `
@@ -343,6 +364,7 @@ function renderImportSummary() {
     ...connectorCards,
     ...syncCards,
     ...sourceCards,
+    ...reconciliationCards,
     ...issueCards,
   ].join("");
 

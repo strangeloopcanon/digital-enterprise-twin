@@ -126,7 +126,7 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
 - `vei.imports`
   - canonical raw import package format for offline CSV/JSON enterprise exports
   - connector-backed source snapshots that still persist as normal import packages
-  - mapping profiles, override specs, validation/review reports, provenance, redaction reports, and scenario generation over normalized identity environments
+  - mapping profiles, override specs, validation/review reports, provenance, redaction reports, identity reconciliation, and scenario generation over normalized identity environments
 - `vei.contract`
   - contract builders and evaluators
 - `vei.workspace`
@@ -197,6 +197,7 @@ VEI keeps the current router twins, but the public ontology now groups them as f
 - Prefer `ImportPackage -> GroundingBundle -> BlueprintAsset -> CompiledBlueprint -> WorldSession` when working from real or sanitized enterprise exports.
 - Prefer live connector snapshots to land as persisted `ImportPackage` sources rather than creating a second ingestion path.
 - Prefer reviewable file-based intake: raw sources -> validation/review -> optional mapping overrides -> normalized bundle -> generated scenarios -> activated workspace scenario.
+- Prefer reconciled identity subjects over any single source export when imported Okta, HRIS, ticket, or share principals disagree.
 - Prefer the run event stream as the runtime source of truth for playback, receipts, contract progress, and snapshot markers.
 - Prefer contract rules to carry provenance that says which rules were imported, derived, or simulated and which tenant objects they apply to.
 - Prefer `WorldSession -> capability_graphs() -> graph_plan() -> graph_action()` as the main agent-facing planning/mutation ladder inside a live world.

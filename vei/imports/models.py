@@ -12,6 +12,7 @@ ImportFileType = Literal["csv", "json"]
 ImportOrigin = Literal["imported", "derived", "simulated"]
 IssueSeverity = Literal["info", "warning", "error"]
 ImportSourceKind = Literal["file", "connector_snapshot"]
+IdentityResolutionStatus = Literal["resolved", "ambiguous", "unmatched", "external"]
 
 
 class ImportSourceManifest(BaseModel):
@@ -112,6 +113,26 @@ class ProvenanceRecord(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class IdentityResolutionLink(BaseModel):
+    principal_ref: str
+    principal_label: str
+    principal_type: str
+    status: IdentityResolutionStatus
+    matched_refs: List[str] = Field(default_factory=list)
+    candidate_refs: List[str] = Field(default_factory=list)
+    reason: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class IdentityReconciliationSummary(BaseModel):
+    subject_count: int = 0
+    resolved_count: int = 0
+    ambiguous_count: int = 0
+    unmatched_count: int = 0
+    external_count: int = 0
+    links: List[IdentityResolutionLink] = Field(default_factory=list)
+
+
 class NormalizationReport(BaseModel):
     ok: bool
     package_name: str
@@ -122,6 +143,7 @@ class NormalizationReport(BaseModel):
     normalized_counts: Dict[str, int] = Field(default_factory=dict)
     source_summaries: List[ImportSourceSummary] = Field(default_factory=list)
     issues: List[MappingIssue] = Field(default_factory=list)
+    identity_reconciliation: Optional[IdentityReconciliationSummary] = None
 
 
 class GeneratedScenarioCandidate(BaseModel):
@@ -160,6 +182,9 @@ class ImportReview(BaseModel):
 
 __all__ = [
     "GeneratedScenarioCandidate",
+    "IdentityReconciliationSummary",
+    "IdentityResolutionLink",
+    "IdentityResolutionStatus",
     "ImportReview",
     "ImportFileType",
     "ImportOrigin",

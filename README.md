@@ -170,6 +170,7 @@ The import UI now shows:
 - package/source summary
 - connected source registry and sync history
 - mapping diagnostics
+- identity reconciliation across imported users, employees, managers, and share principals
 - suggested override locations and applied source overrides
 - generated scenario candidates
 - imported vs derived vs simulated counts
@@ -186,6 +187,7 @@ The import UI now shows:
 - Blueprint compiler with explicit facade plugins and authored `GroundingBundle -> BlueprintAsset -> CompiledBlueprint` flow
 - Environment-builder path that can compile typed capability graphs, policies, and workflow seeds into a runnable world session
 - Grounded import pipeline that can validate file-based identity exports, normalize them into a `GroundingBundle`, generate scenario candidates, bootstrap contracts, and preserve provenance/redaction artifacts inside a workspace
+- Multi-source identity reconciliation that explains how Okta-style users, HRIS employees, manager references, and share/request principals were resolved, left unmatched, or marked external
 - Connector-backed import pipeline that can sync a live read-only Okta snapshot into the same canonical `ImportPackage -> GroundingBundle -> Workspace` ladder used by file exports
 - Runtime capability-graph layer that lets world sessions and snapshots expose shared domain graphs such as identity, docs, work, comms, and revenue
 - Graph-native planning and mutation layer that lets agents ask for suggested next actions and apply graph actions without dropping down to raw app tools first

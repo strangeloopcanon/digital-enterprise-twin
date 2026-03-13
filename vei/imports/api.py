@@ -50,6 +50,7 @@ from .models import (
     RedactionReport,
 )
 from .profiles import get_mapping_profile
+from .reconciliation import reconcile_identity_sources
 from .scenarios import (
     build_generated_scenario_provenance,
     generate_identity_scenario_candidates,
@@ -605,6 +606,18 @@ def normalize_identity_import_package(path: str | Path) -> ImportPackageArtifact
     )
     provenance.extend(derived_support_records)
     issues.extend(_cross_validate_identity(users, apps, employees, requests, policies))
+    reconciliation_summary, reconciliation_issues, reconciliation_provenance = (
+        reconcile_identity_sources(
+            users=users,
+            employees=employees,
+            shares=shares,
+            tickets=tickets,
+            requests=requests,
+            organization_domain=package.organization_domain,
+        )
+    )
+    issues.extend(reconciliation_issues)
+    provenance.extend(reconciliation_provenance)
     primary = _select_primary_context(
         users, employees, shares, tickets, requests, deals, policies, audit_events
     )
@@ -661,6 +674,7 @@ def normalize_identity_import_package(path: str | Path) -> ImportPackageArtifact
             "crm_deals": len(deals),
             "generated_scenarios": len(generated),
         },
+        identity_reconciliation=reconciliation_summary,
     )
     return ImportPackageArtifacts(
         package=package,
@@ -1502,6 +1516,7 @@ def _build_report(
     source_summaries: list[ImportSourceSummary],
     *,
     normalized_counts: dict[str, int],
+    identity_reconciliation=None,
 ) -> NormalizationReport:
     error_count = sum(1 for item in issues if item.severity == "error")
     warning_count = sum(1 for item in issues if item.severity == "warning")
@@ -1516,6 +1531,7 @@ def _build_report(
         normalized_counts=normalized_counts,
         source_summaries=source_summaries,
         issues=issues,
+        identity_reconciliation=identity_reconciliation,
     )
 
 

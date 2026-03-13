@@ -161,10 +161,19 @@ def test_ui_api_serves_import_diagnostics_and_provenance(tmp_path: Path) -> None
     normalization_response = client.get("/api/imports/normalization")
     assert normalization_response.status_code == 200
     assert normalization_response.json()["normalized_counts"]["identity_users"] == 2
+    assert (
+        normalization_response.json()["identity_reconciliation"]["resolved_count"] >= 2
+    )
 
     review_response = client.get("/api/imports/review")
     assert review_response.status_code == 200
     assert review_response.json()["package"]["name"] == "macrocompute_identity_export"
+    assert (
+        review_response.json()["normalization_report"]["identity_reconciliation"][
+            "subject_count"
+        ]
+        >= 1
+    )
 
     scenarios_response = client.get("/api/imports/scenarios")
     assert scenarios_response.status_code == 200

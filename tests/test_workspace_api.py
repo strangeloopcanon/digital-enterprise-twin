@@ -154,6 +154,7 @@ def test_import_workspace_review_includes_copied_overrides(tmp_path: Path) -> No
         == "imports/overrides/okta_users.json"
     )
     assert any(item.source_id == "okta_users" for item in review.source_overrides)
+    assert review.normalization_report.identity_reconciliation is not None
 
 
 def test_activate_workspace_scenario_updates_active_scenario_and_contract(

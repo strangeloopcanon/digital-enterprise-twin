@@ -38,11 +38,17 @@ def test_import_package_fixture_normalizes_into_identity_bundle() -> None:
         len(artifacts.normalized_bundle.capability_graphs.identity_graph.policies) == 1
     )
     assert len(artifacts.generated_scenarios) >= 6
+    assert artifacts.normalization_report.identity_reconciliation is not None
+    assert artifacts.normalization_report.identity_reconciliation.resolved_count >= 2
+    assert artifacts.normalization_report.identity_reconciliation.unmatched_count >= 1
     assert any(
         item.object_ref == "identity_user:USR-ACQ-1" for item in artifacts.provenance
     )
     assert any(
         item.object_ref == "document:CUTOVER-EMP-2201" for item in artifacts.provenance
+    )
+    assert any(
+        item.object_ref.startswith("identity_subject:") for item in artifacts.provenance
     )
 
 
@@ -142,6 +148,8 @@ def test_import_review_surfaces_override_paths_and_generated_scenarios() -> None
     assert review.suggested_override_paths["okta_users"] == "overrides/okta_users.json"
     assert len(review.generated_scenarios) >= 6
     assert review.source_overrides == []
+    assert review.normalization_report.identity_reconciliation is not None
+    assert review.normalization_report.identity_reconciliation.links
 
 
 def test_mapping_override_can_recover_renamed_required_field(tmp_path: Path) -> None:
@@ -184,4 +192,25 @@ def test_mapping_override_can_recover_renamed_required_field(tmp_path: Path) -> 
     assert any(
         item.code == "field.alias_applied" and item.field == "email"
         for item in after.normalization_report.issues
+    )
+
+
+def test_reconciliation_surfaces_ambiguous_identity_matches(tmp_path: Path) -> None:
+    package_path = _copy_fixture_package(tmp_path)
+    users_path = package_path / "raw" / "okta_users.csv"
+    payload = users_path.read_text(encoding="utf-8").strip()
+    payload += (
+        "\nUSR-ACQ-9,jordan.sellers@oldco.example.com,jordan.sellers.alt,"
+        "Jordan,Alt,PROVISIONED,Sales,Account Executive,maya.rex@example.com,"
+        "Sales,GRP-acquired-sales,APP-slack,0\n"
+    )
+    users_path.write_text(payload, encoding="utf-8")
+
+    artifacts = normalize_identity_import_package(package_path)
+
+    assert artifacts.normalization_report.identity_reconciliation is not None
+    assert artifacts.normalization_report.identity_reconciliation.ambiguous_count >= 1
+    assert any(
+        item.code == "identity.reconciliation.ambiguous"
+        for item in artifacts.normalization_report.issues
     )

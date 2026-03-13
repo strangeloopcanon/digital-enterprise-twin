@@ -14,9 +14,12 @@ from vei.imports.connectors import (
     load_okta_connector_config,
     sync_okta_import_package,
 )
+from vei.imports.reconciliation import reconcile_identity_sources
 from vei.imports.scenarios import generate_identity_scenario_candidates
 from vei.imports.models import (
     GeneratedScenarioCandidate,
+    IdentityReconciliationSummary,
+    IdentityResolutionLink,
     ImportPackage,
     ImportPackageArtifacts,
     ImportReview,
@@ -32,6 +35,8 @@ from vei.imports.models import (
 
 __all__ = [
     "GeneratedScenarioCandidate",
+    "IdentityReconciliationSummary",
+    "IdentityResolutionLink",
     "ImportPackage",
     "ImportPackageArtifacts",
     "ImportReview",
@@ -53,6 +58,7 @@ __all__ = [
     "load_import_package",
     "normalize_identity_import_package",
     "review_import_package",
+    "reconcile_identity_sources",
     "scaffold_mapping_override",
     "sync_okta_import_package",
     "validate_import_package",
