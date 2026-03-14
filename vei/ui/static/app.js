@@ -65,6 +65,14 @@ async function getJson(path, options = {}) {
   return await response.json();
 }
 
+async function fetchStoryArtifacts() {
+  const [story, exportsPreview] = await Promise.all([
+    getJson("/api/story").catch(() => null),
+    getJson("/api/exports-preview").catch(() => []),
+  ]);
+  return { story, exportsPreview };
+}
+
 function renderJson(id, payload) {
   document.getElementById(id).textContent = JSON.stringify(payload, null, 2);
 }
@@ -228,12 +236,9 @@ function renderStudioShell() {
 }
 
 async function refreshStoryArtifacts() {
-  const [story, exportsPreview] = await Promise.all([
-    getJson("/api/story").catch(() => null),
-    getJson("/api/exports-preview").catch(() => []),
-  ]);
-  state.story = story;
-  state.exportsPreview = exportsPreview;
+  const payload = await fetchStoryArtifacts();
+  state.story = payload.story;
+  state.exportsPreview = payload.exportsPreview;
   renderStudioShell();
   renderWorldsPanel();
   renderExportsPanel();
@@ -1256,10 +1261,9 @@ function togglePlayback() {
 }
 
 async function loadWorkspace() {
-  const [workspace, story, exportsPreview, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
+  const [workspace, storyArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
     getJson("/api/workspace"),
-    getJson("/api/story").catch(() => null),
-    getJson("/api/exports-preview").catch(() => []),
+    fetchStoryArtifacts(),
     getJson("/api/scenarios"),
     getJson("/api/imports/summary").catch(() => ({})),
     getJson("/api/identity/flow").catch(() => ({})),
@@ -1270,8 +1274,8 @@ async function loadWorkspace() {
     getJson("/api/imports/provenance").catch(() => []),
   ]);
   state.workspace = workspace;
-  state.story = story;
-  state.exportsPreview = exportsPreview;
+  state.story = storyArtifacts.story;
+  state.exportsPreview = storyArtifacts.exportsPreview;
   state.scenarios = scenarios;
   state.importSummary = importSummary;
   state.identityFlow = identityFlow;

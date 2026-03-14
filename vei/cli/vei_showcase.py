@@ -25,6 +25,32 @@ app = typer.Typer(
 )
 
 
+def _resolve_compare_runner(
+    compare_runner: str,
+    *,
+    compare_model: str | None,
+    compare_bc_model: Path | None,
+) -> str:
+    normalized_runner = compare_runner.strip().lower()
+    if normalized_runner not in {"scripted", "bc", "llm"}:
+        raise typer.BadParameter("compare-runner must be one of scripted|bc|llm")
+    if normalized_runner == "llm" and not compare_model:
+        raise typer.BadParameter("llm showcase requires --compare-model")
+    if normalized_runner == "bc" and compare_bc_model is None:
+        raise typer.BadParameter("bc showcase requires --compare-bc-model")
+    return normalized_runner
+
+
+def _resolve_showcase_verticals(vertical: list[str]) -> list[str]:
+    selected_verticals = resolve_vertical_names(vertical)
+    for name in selected_verticals:
+        try:
+            get_vertical_pack_manifest(name)
+        except KeyError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+    return selected_verticals
+
+
 @app.command("verticals")
 def verticals_command(
     root: Path = typer.Option(
@@ -59,20 +85,12 @@ def verticals_command(
         help="BC policy file when compare-runner=bc",
     ),
 ) -> None:
-    normalized_runner = compare_runner.strip().lower()
-    if normalized_runner not in {"scripted", "bc", "llm"}:
-        raise typer.BadParameter("compare-runner must be one of scripted|bc|llm")
-    if normalized_runner == "llm" and not compare_model:
-        raise typer.BadParameter("llm showcase requires --compare-model")
-    if normalized_runner == "bc" and compare_bc_model is None:
-        raise typer.BadParameter("bc showcase requires --compare-bc-model")
-
-    selected_verticals = resolve_vertical_names(vertical)
-    for name in selected_verticals:
-        try:
-            get_vertical_pack_manifest(name)
-        except KeyError as exc:
-            raise typer.BadParameter(str(exc)) from exc
+    normalized_runner = _resolve_compare_runner(
+        compare_runner,
+        compare_model=compare_model,
+        compare_bc_model=compare_bc_model,
+    )
+    selected_verticals = _resolve_showcase_verticals(vertical)
 
     result = run_vertical_showcase(
         VerticalShowcaseSpec(
@@ -128,20 +146,12 @@ def variant_matrix_command(
         help="BC policy file when compare-runner=bc",
     ),
 ) -> None:
-    normalized_runner = compare_runner.strip().lower()
-    if normalized_runner not in {"scripted", "bc", "llm"}:
-        raise typer.BadParameter("compare-runner must be one of scripted|bc|llm")
-    if normalized_runner == "llm" and not compare_model:
-        raise typer.BadParameter("llm showcase requires --compare-model")
-    if normalized_runner == "bc" and compare_bc_model is None:
-        raise typer.BadParameter("bc showcase requires --compare-bc-model")
-
-    selected_verticals = resolve_vertical_names(vertical)
-    for name in selected_verticals:
-        try:
-            get_vertical_pack_manifest(name)
-        except KeyError as exc:
-            raise typer.BadParameter(str(exc)) from exc
+    normalized_runner = _resolve_compare_runner(
+        compare_runner,
+        compare_model=compare_model,
+        compare_bc_model=compare_bc_model,
+    )
+    selected_verticals = _resolve_showcase_verticals(vertical)
 
     result = run_vertical_variant_matrix(
         VerticalVariantMatrixSpec(
@@ -203,20 +213,12 @@ def story_command(
         help="BC policy file when compare-runner=bc",
     ),
 ) -> None:
-    normalized_runner = compare_runner.strip().lower()
-    if normalized_runner not in {"scripted", "bc", "llm"}:
-        raise typer.BadParameter("compare-runner must be one of scripted|bc|llm")
-    if normalized_runner == "llm" and not compare_model:
-        raise typer.BadParameter("llm showcase requires --compare-model")
-    if normalized_runner == "bc" and compare_bc_model is None:
-        raise typer.BadParameter("bc showcase requires --compare-bc-model")
-
-    selected_verticals = resolve_vertical_names(vertical)
-    for name in selected_verticals:
-        try:
-            get_vertical_pack_manifest(name)
-        except KeyError as exc:
-            raise typer.BadParameter(str(exc)) from exc
+    normalized_runner = _resolve_compare_runner(
+        compare_runner,
+        compare_model=compare_model,
+        compare_bc_model=compare_bc_model,
+    )
+    selected_verticals = _resolve_showcase_verticals(vertical)
 
     try:
         result = run_vertical_story_showcase(
