@@ -620,13 +620,32 @@ function renderMissionPlay() {
     return;
   }
   const score = missionState.scorecard || {};
+  const budgetTotal = (score.move_count || 0) + (score.action_budget_remaining || 0);
+  const budgetPct = budgetTotal > 0 ? Math.round(((score.action_budget_remaining || 0) / budgetTotal) * 100) : 100;
+  const scorePct = Math.min(100, Math.max(0, score.overall_score || 0));
+  const pressureClass = score.deadline_pressure === "critical" ? "pressure-critical" : score.deadline_pressure === "compressed" ? "pressure-compressed" : "";
+  const riskClass = score.business_risk === "high" ? "pressure-critical" : score.business_risk === "moderate" ? "pressure-compressed" : "";
   scorecard.innerHTML = `
     <div class="score-strip">
-      ${scorePill("Score", String(score.overall_score || 0))}
+      <div class="score-pill">
+        <span class="metric-label">Score</span>
+        <strong>${scorePct}</strong>
+        <div class="score-bar"><div class="score-bar-fill ${scorePct >= 70 ? "bar-ok" : scorePct >= 40 ? "bar-warn" : "bar-danger"}" style="width:${scorePct}%"></div></div>
+      </div>
       ${scorePill("Mission", score.mission_success === null ? "pending" : score.mission_success ? "pass" : "in play")}
-      ${scorePill("Budget left", String(score.action_budget_remaining || 0))}
-      ${scorePill("Risk", score.business_risk || "moderate")}
-      ${scorePill("Deadline", score.deadline_pressure || "stable")}
+      <div class="score-pill ${pressureClass}">
+        <span class="metric-label">Budget left</span>
+        <strong>${score.action_budget_remaining || 0}</strong>
+        <div class="score-bar"><div class="score-bar-fill ${budgetPct >= 50 ? "bar-ok" : budgetPct >= 25 ? "bar-warn" : "bar-danger"}" style="width:${budgetPct}%"></div></div>
+      </div>
+      <div class="score-pill ${riskClass}">
+        <span class="metric-label">Risk</span>
+        <strong>${escapeHtml(score.business_risk || "moderate")}</strong>
+      </div>
+      <div class="score-pill ${pressureClass}">
+        <span class="metric-label">Deadline</span>
+        <strong>${escapeHtml(score.deadline_pressure || "stable")}</strong>
+      </div>
       ${scorePill("Policy", score.policy_correctness || "sound")}
     </div>
     <div class="briefing-grid">
@@ -677,7 +696,49 @@ function renderMissionPlay() {
     missionState.status === "completed"
       ? "Mission finished. Branch it, inspect results, or switch to a new mission."
       : "Play a move, branch, or finish the mission. The automated baseline and comparison runs are already recorded for contrast.";
+  renderMoveLog();
   renderJson("mission-state-panel", missionState);
+}
+
+function renderMoveLog() {
+  const panel = document.getElementById("move-log-panel");
+  if (!panel) {
+    return;
+  }
+  const missionState = state.missionState;
+  const executed = missionState?.executed_moves || [];
+  if (!executed.length) {
+    panel.innerHTML = `<p class="metric-detail">No moves played yet. Each move you take will appear here with the tool that fired, the objects it touched, and what the world looked like afterward.</p>`;
+    return;
+  }
+  panel.innerHTML = executed
+    .map((move, index) => {
+      const intentParts = (move.graph_intent || "").split(".", 1);
+      const domain = intentParts[0] || "";
+      const refs = (move.object_refs || []).slice(0, 5);
+      const obs = move.payload?.observation || {};
+      const obsSummary = obs.summary || obs.scenario_brief || "";
+      const result = move.payload?.result || {};
+      const resultKeys = Object.keys(result).slice(0, 4);
+      return `
+        <div class="move-log-entry">
+          <div class="move-log-number">${index + 1}</div>
+          <div class="move-log-body">
+            <div class="chip-row">
+              ${move.resolved_tool ? chip(move.resolved_tool, "ok") : ""}
+              ${domain ? chip(formatDomainTitle(domain)) : ""}
+              ${move.time_ms ? chip(`t=${formatMs(move.time_ms)}`) : ""}
+            </div>
+            <h3>${escapeHtml(move.title)}</h3>
+            <p class="metric-detail">${escapeHtml(move.summary || "")}</p>
+            ${refs.length ? `<div class="chip-row">${refs.map((ref) => chip(ref)).join("")}</div>` : ""}
+            ${resultKeys.length ? `<div class="move-log-result"><strong>Result:</strong> ${resultKeys.map((key) => `${escapeHtml(key)}=${escapeHtml(String(result[key]).slice(0, 60))}`).join(" · ")}</div>` : ""}
+            ${obsSummary ? `<div class="move-log-observation">${escapeHtml(String(obsSummary).slice(0, 200))}</div>` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function renderFidelityPanel() {
@@ -696,13 +757,20 @@ function renderFidelityPanel() {
     renderJson("fidelity-raw-panel", {});
     return;
   }
-  panel.innerHTML = report.cases
+  panel.innerHTML = `
+    <div class="story-card accent-card story-span-2">
+      <p class="eyebrow">Report summary</p>
+      <h3>${escapeHtml(report.company_name || "Company")} · ${chip(report.status, statusClass(report.status))}</h3>
+      <p class="metric-detail">${escapeHtml(report.summary || "Boundary fidelity checks ran against the key work surfaces that missions depend on.")}</p>
+    </div>
+  ` + report.cases
     .map(
       (item) => `
         <div class="story-card">
           <p class="eyebrow">${escapeHtml(item.surface)}</p>
           <h3>${escapeHtml(item.title)}</h3>
           <p class="metric-detail">${escapeHtml(item.boundary_contract || "")}</p>
+          ${item.why_it_matters ? `<p class="metric-detail"><em>${escapeHtml(item.why_it_matters)}</em></p>` : ""}
           <div class="chip-row">
             ${chip(item.status, statusClass(item.status))}
             ${item.resolved_tool ? chip(item.resolved_tool) : ""}

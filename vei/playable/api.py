@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from vei.scenario_engine.models import WorkflowStepSpec
 
 from vei.benchmark.workflows import get_benchmark_family_workflow_spec
 from vei.blueprint.api import create_world_session_from_blueprint
@@ -1025,6 +1028,41 @@ def _build_move_states(
     return move_states
 
 
+def _workflow_consequence(step: "WorkflowStepSpec") -> str:
+    domain = formatDomainTitle(step.graph_domain) if step.graph_domain else None
+    action = (step.graph_action or "").replace("_", " ")
+    target = step.args.get("name") or step.args.get("channel") or step.args.get("id")
+    parts: list[str] = []
+    if domain and action:
+        parts.append(f"Fires {domain} \u2192 {action}")
+    elif step.tool:
+        parts.append(f"Calls {step.tool}")
+    if target:
+        parts.append(f"on \u201c{target}\u201d")
+    if not parts:
+        return f"Advances the mission through {step.step_id}."
+    return ". ".join([" ".join(parts), f"Advances the mission through {step.step_id}"])
+
+
+def formatDomainTitle(domain: str | None) -> str:
+    titles = {
+        "comm_graph": "Communications",
+        "doc_graph": "Documents",
+        "work_graph": "Workflows",
+        "identity_graph": "Identity",
+        "revenue_graph": "Revenue",
+        "data_graph": "Data",
+        "obs_graph": "Observability",
+        "ops_graph": "Operations",
+        "property_graph": "Property",
+        "campaign_graph": "Campaign",
+        "inventory_graph": "Inventory",
+    }
+    if not domain:
+        return ""
+    return titles.get(domain, domain.replace("_", " ").title())
+
+
 def _workflow_move_specs(
     workspace_root: Path,
     mission: PlayableMissionSpec,
@@ -1048,7 +1086,7 @@ def _workflow_move_specs(
                     action=step.graph_action,
                     args=dict(step.args),
                 ),
-                consequence_preview=f"If this works, it advances the mission through `{step.step_id}`.",
+                consequence_preview=_workflow_consequence(step),
                 step_index=index,
                 step_id=step.step_id,
             )

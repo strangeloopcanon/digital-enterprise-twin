@@ -762,6 +762,99 @@ body.developer-mode .developer-only {
   font-weight: 700;
 }
 
+.score-bar {
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: rgba(17, 34, 53, 0.08);
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 400ms ease;
+}
+
+.bar-ok {
+  background: var(--accent-teal);
+}
+
+.bar-warn {
+  background: var(--accent-gold);
+}
+
+.bar-danger {
+  background: var(--accent-coral);
+}
+
+.pressure-compressed {
+  border: 1px solid rgba(255, 180, 84, 0.35);
+  background: rgba(255, 180, 84, 0.08);
+}
+
+.pressure-critical {
+  border: 1px solid rgba(255, 109, 94, 0.35);
+  background: rgba(255, 109, 94, 0.08);
+}
+
+.move-log {
+  display: grid;
+  gap: 0;
+}
+
+.move-log-entry {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.move-log-entry:last-child {
+  border-bottom: none;
+}
+
+.move-log-number {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(23, 50, 74, 0.92), rgba(30, 108, 242, 0.88));
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.move-log-body h3 {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.move-log-result,
+.move-log-observation {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.move-log-result {
+  background: rgba(26, 168, 141, 0.06);
+  border: 1px solid rgba(26, 168, 141, 0.12);
+}
+
+.move-log-observation {
+  background: rgba(30, 108, 242, 0.05);
+  border: 1px solid rgba(30, 108, 242, 0.1);
+  font-style: italic;
+}
+
 @keyframes pulse {
   0%,
   100% {
