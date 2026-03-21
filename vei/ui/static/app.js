@@ -209,6 +209,23 @@ function formatDomainTitle(domain) {
   return GRAPH_TITLES[domain] || domain.replaceAll("_", " ");
 }
 
+function summarizeMoveValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.slice(0, 60);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value).slice(0, 60);
+  } catch (error) {
+    return String(value).slice(0, 60);
+  }
+}
+
 function uniqueStrings(values) {
   return [...new Set((values || []).filter((item) => typeof item === "string" && item))];
 }
@@ -226,7 +243,7 @@ function normalizeStudioView(view) {
 
 function setStudioView(view) {
   state.studioView = normalizeStudioView(view);
-  document.querySelectorAll("[data-studio-view]").forEach((node) => {
+  document.querySelectorAll("main [data-studio-view]").forEach((node) => {
     node.classList.toggle("hidden-panel", node.dataset.studioView !== state.studioView);
   });
   document.querySelectorAll(".studio-nav-button").forEach((node) => {
@@ -732,7 +749,7 @@ function renderMoveLog() {
             <h3>${escapeHtml(move.title)}</h3>
             <p class="metric-detail">${escapeHtml(move.summary || "")}</p>
             ${refs.length ? `<div class="chip-row">${refs.map((ref) => chip(ref)).join("")}</div>` : ""}
-            ${resultKeys.length ? `<div class="move-log-result"><strong>Result:</strong> ${resultKeys.map((key) => `${escapeHtml(key)}=${escapeHtml(String(result[key]).slice(0, 60))}`).join(" · ")}</div>` : ""}
+            ${resultKeys.length ? `<div class="move-log-result"><strong>Result:</strong> ${resultKeys.map((key) => `${escapeHtml(key)}=${escapeHtml(summarizeMoveValue(result[key]))}`).join(" · ")}</div>` : ""}
             ${obsSummary ? `<div class="move-log-observation">${escapeHtml(String(obsSummary).slice(0, 200))}</div>` : ""}
           </div>
         </div>

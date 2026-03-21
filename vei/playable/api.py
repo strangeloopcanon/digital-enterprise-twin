@@ -1029,22 +1029,22 @@ def _build_move_states(
 
 
 def _workflow_consequence(step: "WorkflowStepSpec") -> str:
-    domain = formatDomainTitle(step.graph_domain) if step.graph_domain else None
+    domain = _format_domain_title(step.graph_domain) if step.graph_domain else None
     action = (step.graph_action or "").replace("_", " ")
     target = step.args.get("name") or step.args.get("channel") or step.args.get("id")
     parts: list[str] = []
     if domain and action:
-        parts.append(f"Fires {domain} \u2192 {action}")
+        parts.append(f"Fires {domain} -> {action}")
     elif step.tool:
         parts.append(f"Calls {step.tool}")
     if target:
-        parts.append(f"on \u201c{target}\u201d")
+        parts.append(f"on '{target}'")
     if not parts:
         return f"Advances the mission through {step.step_id}."
     return ". ".join([" ".join(parts), f"Advances the mission through {step.step_id}"])
 
 
-def formatDomainTitle(domain: str | None) -> str:
+def _format_domain_title(domain: str | None) -> str:
     titles = {
         "comm_graph": "Communications",
         "doc_graph": "Documents",
