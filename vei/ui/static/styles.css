@@ -212,6 +212,7 @@ body {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .run-form button,
@@ -225,6 +226,11 @@ body {
 .ghost-button {
   cursor: pointer;
   background: rgba(255, 255, 255, 0.68);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .provenance-chip {

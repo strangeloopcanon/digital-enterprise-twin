@@ -163,6 +163,39 @@ The Studio UI then presents the run through the product primitives:
 - Outcome
 - Exports
 
+Run the mission-driven playable bundle:
+
+```bash
+vei showcase playable \
+  --root _vei_out/playable_showcase \
+  --run-id playable_release
+```
+
+This is the publishable local-product path rather than the narrative-only path. It ships:
+
+- the Harbor Point hero world with five playable missions
+- the Northstar Growth and Atlas Storage Systems supporting worlds
+- workflow baseline plus freer comparison run
+- a human-play mission branch on the same event spine
+- twin-fidelity checks for the important world surfaces
+- export previews for RL, continuous eval, and agent-ops follow-on products
+
+For the one-command hero-world path:
+
+```bash
+vei studio play \
+  --root _vei_out/playable/harbor_point \
+  --world real_estate_management \
+  --mission tenant_opening_conflict
+```
+
+Then inspect the credibility and downstream bundles directly:
+
+```bash
+vei inspect fidelity --root _vei_out/playable/harbor_point
+vei export mission-run --root _vei_out/playable/harbor_point --run-id human_play_... --format eval
+```
+
 The flagship mixed-stack demo is the revenue/ops primary variant:
 
 ```bash

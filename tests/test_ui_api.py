@@ -350,3 +350,59 @@ def test_ui_api_exposes_story_bundle_and_export_preview(tmp_path: Path) -> None:
         "continuous_eval_export",
         "agent_ops_export",
     ]
+
+
+def test_ui_api_exposes_playable_mission_mode(tmp_path: Path) -> None:
+    root = tmp_path / "playable-ui"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref="real_estate_management",
+    )
+    client = TestClient(ui_api.create_ui_app(root))
+
+    missions_response = client.get("/api/missions")
+    assert missions_response.status_code == 200
+    missions_payload = missions_response.json()
+    assert len(missions_payload) == 5
+    assert missions_payload[0]["vertical_name"] == "real_estate_management"
+
+    fidelity_response = client.get("/api/fidelity")
+    assert fidelity_response.status_code == 200
+    fidelity_payload = fidelity_response.json()
+    assert fidelity_payload["company_name"] == "Harbor Point Management"
+    assert len(fidelity_payload["cases"]) == 5
+
+    start_response = client.post(
+        "/api/missions/start",
+        json={"mission_name": "tenant_opening_conflict"},
+    )
+    assert start_response.status_code == 200
+    mission_state = start_response.json()
+    assert mission_state["run_id"].startswith("human_play")
+    assert mission_state["scorecard"]["move_count"] == 0
+    assert mission_state["available_moves"]
+
+    move_id = mission_state["available_moves"][0]["move_id"]
+    move_response = client.post(
+        f"/api/missions/{mission_state['run_id']}/moves/{move_id}"
+    )
+    assert move_response.status_code == 200
+    moved_state = move_response.json()
+    assert moved_state["turn_index"] >= 1
+    assert len(moved_state["executed_moves"]) == 1
+
+    exports_response = client.get(f"/api/missions/{mission_state['run_id']}/exports")
+    assert exports_response.status_code == 200
+    assert [item["name"] for item in exports_response.json()] == [
+        "rl",
+        "eval",
+        "agent_ops",
+    ]
+
+    branch_response = client.post(
+        f"/api/missions/{mission_state['run_id']}/branch", json={}
+    )
+    assert branch_response.status_code == 200
+    branch_payload = branch_response.json()
+    assert branch_payload["run_id"].startswith("human_branch")

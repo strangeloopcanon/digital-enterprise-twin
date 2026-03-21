@@ -6,6 +6,7 @@ from typing import Optional
 
 import typer
 
+from vei.fidelity import get_or_build_workspace_fidelity_report
 from vei.run.api import (
     build_run_timeline,
     diff_run_snapshots,
@@ -173,3 +174,26 @@ def inspect_provenance(
         for item in load_workspace_provenance(resolved_root, object_ref)
     ]
     _emit({"object_ref": object_ref, "provenance": records}, indent)
+
+
+@app.command("fidelity")
+def inspect_fidelity(
+    root: Path = typer.Option(Path("."), help="Workspace root directory"),
+    surface: Optional[str] = typer.Option(
+        None,
+        help="Optional surface filter such as slack, docs, tickets, identity, or property",
+    ),
+    indent: int = typer.Option(2, help="Pretty indent"),
+) -> None:
+    """Show boundary-fidelity validation for a playable workspace."""
+
+    resolved_root = root.expanduser().resolve()
+    report = get_or_build_workspace_fidelity_report(resolved_root).model_dump(
+        mode="json"
+    )
+    if surface:
+        normalized = surface.strip().lower()
+        report["cases"] = [
+            item for item in report["cases"] if item.get("surface") == normalized
+        ]
+    _emit(report, indent)

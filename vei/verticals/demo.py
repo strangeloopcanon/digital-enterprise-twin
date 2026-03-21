@@ -1691,7 +1691,8 @@ def _find_story_runs(root: str | Path):
         (item for item in manifests if item.runner == "workflow"), None
     )
     comparison_manifest = next(
-        (item for item in manifests if item.runner != "workflow"), None
+        (item for item in manifests if item.runner in {"scripted", "bc", "llm"}),
+        None,
     )
     return workflow_manifest, comparison_manifest
 

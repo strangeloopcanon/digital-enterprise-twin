@@ -11,6 +11,19 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from vei.fidelity import get_or_build_workspace_fidelity_report
+from vei.playable import (
+    activate_workspace_playable_mission,
+    apply_workspace_mission_move,
+    branch_workspace_mission_run,
+    build_mission_run_exports,
+    export_mission_run,
+    finish_workspace_mission_run,
+    list_workspace_playable_missions,
+    load_workspace_mission_state,
+    load_workspace_playable_bundle,
+    start_workspace_mission_run,
+)
 from vei.run.api import (
     build_run_timeline,
     diff_run_snapshots,
@@ -73,6 +86,22 @@ class ContractActivateRequest(BaseModel):
     variant: str
 
 
+class MissionActivateRequest(BaseModel):
+    mission_name: str
+    objective_variant: str | None = None
+
+
+class MissionStartRequest(BaseModel):
+    mission_name: str | None = None
+    objective_variant: str | None = None
+    run_id: str | None = None
+    seed: int = 42042
+
+
+class MissionBranchRequest(BaseModel):
+    branch_name: str | None = None
+
+
 def create_ui_app(workspace_root: str | Path) -> FastAPI:
     root = Path(workspace_root).expanduser().resolve()
     static_dir = Path(__file__).with_name("static")
@@ -112,6 +141,115 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     def api_presentation() -> JSONResponse:
         payload = load_workspace_presentation(root)
         return JSONResponse(payload.model_dump(mode="json") if payload else {})
+
+    @app.get("/api/playable")
+    def api_playable() -> JSONResponse:
+        payload = load_workspace_playable_bundle(root)
+        return JSONResponse(payload or {})
+
+    @app.get("/api/fidelity")
+    def api_fidelity() -> JSONResponse:
+        try:
+            payload = get_or_build_workspace_fidelity_report(root)
+        except ValueError:
+            return JSONResponse({})
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/missions")
+    def api_missions() -> JSONResponse:
+        return JSONResponse(
+            [
+                item.model_dump(mode="json")
+                for item in list_workspace_playable_missions(root)
+            ]
+        )
+
+    @app.post("/api/missions/activate")
+    def api_activate_mission(request: MissionActivateRequest) -> JSONResponse:
+        try:
+            payload = activate_workspace_playable_mission(
+                root,
+                request.mission_name,
+                objective_variant=request.objective_variant,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload)
+
+    @app.get("/api/missions/state")
+    def api_mission_state(run_id: str | None = None) -> JSONResponse:
+        payload = load_workspace_mission_state(root, run_id)
+        return JSONResponse(payload.model_dump(mode="json") if payload else {})
+
+    @app.post("/api/missions/start")
+    def api_start_mission(request: MissionStartRequest) -> JSONResponse:
+        try:
+            mission_name = request.mission_name
+            if mission_name is None:
+                missions = list_workspace_playable_missions(root)
+                if not missions:
+                    raise ValueError("playable missions require a vertical workspace")
+                mission_name = missions[0].mission_name
+            payload = start_workspace_mission_run(
+                root,
+                mission_name=mission_name,
+                objective_variant=request.objective_variant,
+                run_id=request.run_id,
+                seed=request.seed,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/moves/{move_id}")
+    def api_apply_mission_move(run_id: str, move_id: str) -> JSONResponse:
+        try:
+            payload = apply_workspace_mission_move(root, run_id=run_id, move_id=move_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/branch")
+    def api_branch_mission_run(
+        run_id: str,
+        request: MissionBranchRequest,
+    ) -> JSONResponse:
+        try:
+            payload = branch_workspace_mission_run(
+                root,
+                run_id=run_id,
+                branch_name=request.branch_name,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/finish")
+    def api_finish_mission_run(run_id: str) -> JSONResponse:
+        try:
+            payload = finish_workspace_mission_run(root, run_id=run_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/missions/{run_id}/exports")
+    def api_mission_exports(run_id: str) -> JSONResponse:
+        state = load_workspace_mission_state(root, run_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="mission run not found")
+        payload = [
+            item.model_dump(mode="json")
+            for item in build_mission_run_exports(root, state)
+        ]
+        return JSONResponse(payload)
+
+    @app.get("/api/missions/{run_id}/exports/{export_name}")
+    def api_mission_export(run_id: str, export_name: str) -> JSONResponse:
+        try:
+            payload = export_mission_run(root, run_id=run_id, export_format=export_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload)
 
     @app.get("/api/imports/summary")
     def api_import_summary() -> JSONResponse:

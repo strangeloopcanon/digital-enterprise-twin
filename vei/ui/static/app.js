@@ -29,6 +29,10 @@ const state = {
   workspace: null,
   story: null,
   presentation: null,
+  playableBundle: null,
+  missions: [],
+  missionState: null,
+  fidelityReport: null,
   exportsPreview: [],
   scenarios: [],
   scenarioPreview: null,
@@ -73,6 +77,16 @@ async function fetchStoryArtifacts() {
     getJson("/api/presentation").catch(() => null),
   ]);
   return { story, exportsPreview, presentation };
+}
+
+async function fetchPlayableArtifacts() {
+  const [playableBundle, missions, missionState, fidelityReport] = await Promise.all([
+    getJson("/api/playable").catch(() => null),
+    getJson("/api/missions").catch(() => []),
+    getJson("/api/missions/state").catch(() => null),
+    getJson("/api/fidelity").catch(() => null),
+  ]);
+  return { playableBundle, missions, missionState, fidelityReport };
 }
 
 function renderJson(id, payload) {
@@ -199,13 +213,24 @@ function uniqueStrings(values) {
   return [...new Set((values || []).filter((item) => typeof item === "string" && item))];
 }
 
+function normalizeStudioView(view) {
+  const normalized = String(view || "").toLowerCase();
+  if (normalized === "situations") {
+    return "missions";
+  }
+  if (normalized === "runs") {
+    return "play";
+  }
+  return normalized || "presentation";
+}
+
 function setStudioView(view) {
-  state.studioView = view;
+  state.studioView = normalizeStudioView(view);
   document.querySelectorAll("[data-studio-view]").forEach((node) => {
-    node.classList.toggle("hidden-panel", node.dataset.studioView !== view);
+    node.classList.toggle("hidden-panel", node.dataset.studioView !== state.studioView);
   });
   document.querySelectorAll(".studio-nav-button").forEach((node) => {
-    node.classList.toggle("active", node.dataset.studioView === view);
+    node.classList.toggle("active", node.dataset.studioView === state.studioView);
   });
 }
 
@@ -218,8 +243,9 @@ function toggleDeveloperMode() {
 }
 
 function jumpToStudioView(view) {
-  setStudioView(view);
-  const target = document.querySelector(`[data-studio-view="${view}"]`);
+  const normalized = normalizeStudioView(view);
+  setStudioView(normalized);
+  const target = document.querySelector(`[data-studio-view="${normalized}"]`);
   if (target) {
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -298,7 +324,7 @@ function renderPresentationPanel() {
           <div class="presentation-step-number">${escapeHtml(String(beat.step))}</div>
           <div class="presentation-step-body">
             <div class="chip-row">
-              ${chip(`view:${beat.studio_view}`)}
+              ${chip(`view:${normalizeStudioView(beat.studio_view)}`)}
               ${chip(beat.title)}
             </div>
             <h3>${escapeHtml(beat.title)}</h3>
@@ -306,7 +332,7 @@ function renderPresentationPanel() {
             <p class="metric-detail"><strong>Say:</strong> ${escapeHtml(beat.presenter_note || "")}</p>
             <p class="metric-detail"><strong>Proves:</strong> ${escapeHtml(beat.proof_point || "")}</p>
             <p class="metric-detail"><strong>Takeaway:</strong> ${escapeHtml(beat.audience_takeaway || "")}</p>
-            <button type="button" class="ghost-button presentation-jump" data-jump-view="${escapeHtml(beat.studio_view || "presentation")}">Jump to this beat</button>
+            <button type="button" class="ghost-button presentation-jump" data-jump-view="${escapeHtml(normalizeStudioView(beat.studio_view || "presentation"))}">Jump to this beat</button>
           </div>
         </div>
       `
@@ -359,6 +385,18 @@ async function refreshStoryArtifacts() {
   renderStudioShell();
   renderWorldsPanel();
   renderExportsPanel();
+}
+
+async function refreshPlayableArtifacts() {
+  const payload = await fetchPlayableArtifacts();
+  state.playableBundle = nonEmptyPayload(payload.playableBundle);
+  state.missions = Array.isArray(payload.missions) ? payload.missions : [];
+  state.missionState = nonEmptyPayload(payload.missionState);
+  state.fidelityReport = nonEmptyPayload(payload.fidelityReport);
+  renderMissionSelector();
+  renderMissionSummary();
+  renderMissionPlay();
+  renderFidelityPanel();
 }
 
 function renderWorkspaceMetrics() {
@@ -437,6 +475,252 @@ function renderWorldsPanel() {
       )
       .join("")}
   `;
+}
+
+function renderMissionSelector() {
+  const missionSelect = document.getElementById("mission-select");
+  const objectiveSelect = document.getElementById("objective-select");
+  const summary = document.getElementById("mission-launch-summary");
+  if (!missionSelect || !objectiveSelect || !summary) {
+    return;
+  }
+  const currentMission =
+    state.missionState?.mission ||
+    state.playableBundle?.mission ||
+    state.missions[0] ||
+    null;
+  const selectedMissionName = currentMission?.mission_name || "";
+  missionSelect.innerHTML = state.missions
+    .map(
+      (item) => `
+        <option value="${escapeHtml(item.mission_name)}" ${
+          item.mission_name === selectedMissionName ? "selected" : ""
+        }>${escapeHtml(item.title)}</option>
+      `
+    )
+    .join("");
+  const supportedObjectives = Array.isArray(currentMission?.supported_objectives)
+    ? currentMission.supported_objectives
+    : [];
+  const contractVariants = Array.isArray(state.scenarioPreview?.available_contract_variants)
+    ? state.scenarioPreview.available_contract_variants
+    : [];
+  const selectedObjective =
+    state.missionState?.objective_variant ||
+    currentMission?.default_objective ||
+    supportedObjectives[0] ||
+    "";
+  objectiveSelect.innerHTML = supportedObjectives
+    .map((name) => {
+      const detail = contractVariants.find((item) => item.name === name);
+      const label = detail?.title || name;
+      return `<option value="${escapeHtml(name)}" ${
+        name === selectedObjective ? "selected" : ""
+      }>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  summary.innerHTML = currentMission
+    ? `
+      <div class="detail-grid">
+        ${detailTile("World", state.workspace?.manifest?.title || state.playableBundle?.world_name || "workspace")}
+        ${detailTile("Mission", currentMission.title || currentMission.mission_name)}
+        ${detailTile("Objective", selectedObjective || "default")}
+        ${detailTile("Play status", state.missionState?.status || "ready")}
+      </div>
+    `
+    : `<p class="metric-detail">This workspace is not using a playable world pack yet.</p>`;
+}
+
+function renderMissionSummary() {
+  const briefing = document.getElementById("mission-briefing");
+  const catalog = document.getElementById("mission-catalog");
+  if (!briefing || !catalog) {
+    return;
+  }
+  const missionState = state.missionState;
+  const currentMission =
+    missionState?.mission ||
+    state.playableBundle?.mission ||
+    state.missions[0] ||
+    null;
+  if (!currentMission) {
+    briefing.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Mission</p>
+        <p class="metric-detail">Prepare a playable workspace to turn this company into a mission-driven world.</p>
+      </div>
+    `;
+    catalog.innerHTML = "";
+    return;
+  }
+  briefing.innerHTML = `
+    <div class="story-card accent-card story-span-2">
+      <p class="eyebrow">Current mission</p>
+      <h3>${escapeHtml(currentMission.title)}</h3>
+      <p class="metric-detail">${escapeHtml(currentMission.briefing || "")}</p>
+      <div class="chip-row">
+        ${chip(currentMission.hero ? "hero world" : "supporting world", currentMission.hero ? "ok" : "")}
+        ${chip(currentMission.primary_domain || "world")}
+        ${(currentMission.branch_labels || []).map((item) => chip(item)).join("")}
+      </div>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Why this matters</p>
+      <p class="metric-detail">${escapeHtml(currentMission.why_it_matters || "")}</p>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Failure impact</p>
+      <p class="metric-detail">${escapeHtml(currentMission.failure_impact || "")}</p>
+    </div>
+  `;
+  catalog.innerHTML = state.missions
+    .map(
+      (item) => `
+        <div class="run-item ${item.mission_name === currentMission.mission_name ? "active" : ""}">
+          <div class="chip-row">
+            ${chip(item.mission_name)}
+            ${item.hero ? chip("hero", "ok") : chip("included")}
+          </div>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p class="metric-detail">${escapeHtml(item.briefing || "")}</p>
+          <p class="metric-detail">${escapeHtml(item.why_it_matters || "")}</p>
+          <div class="chip-row">
+            ${(item.supported_objectives || []).map((objective) => chip(objective)).join("")}
+          </div>
+          <button type="button" class="ghost-button activate-mission-button" data-mission-name="${escapeHtml(item.mission_name)}">Activate mission</button>
+        </div>
+      `
+    )
+    .join("");
+  catalog.querySelectorAll(".activate-mission-button").forEach((node) => {
+    node.addEventListener("click", () => {
+      const objective = document.getElementById("objective-select")?.value || null;
+      void activateMission(node.dataset.missionName, objective);
+    });
+  });
+}
+
+function renderMissionPlay() {
+  const panel = document.getElementById("mission-moves-panel");
+  const scorecard = document.getElementById("mission-scorecard");
+  const status = document.getElementById("mission-form-status");
+  if (!panel || !scorecard || !status) {
+    return;
+  }
+  const missionState = state.missionState;
+  if (!missionState) {
+    scorecard.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Play</p>
+        <p class="metric-detail">Choose a mission and enter the world to start a human branch on the same kernel and event spine.</p>
+      </div>
+    `;
+    panel.innerHTML = "";
+    renderJson("mission-state-panel", {});
+    return;
+  }
+  const score = missionState.scorecard || {};
+  scorecard.innerHTML = `
+    <div class="score-strip">
+      ${scorePill("Score", String(score.overall_score || 0))}
+      ${scorePill("Mission", score.mission_success === null ? "pending" : score.mission_success ? "pass" : "in play")}
+      ${scorePill("Budget left", String(score.action_budget_remaining || 0))}
+      ${scorePill("Risk", score.business_risk || "moderate")}
+      ${scorePill("Deadline", score.deadline_pressure || "stable")}
+      ${scorePill("Policy", score.policy_correctness || "sound")}
+    </div>
+    <div class="briefing-grid">
+      <div class="story-card accent-card">
+        <p class="eyebrow">Mission health</p>
+        <h3>${escapeHtml(score.summary || "Mission active.")}</h3>
+        <div class="detail-grid">
+          ${detailTile("Moves used", String(score.move_count || 0))}
+          ${detailTile("Assertions", `${score.success_assertions_passed || 0}/${score.success_assertions_total || 0}`)}
+          ${detailTile("Issues", String(score.contract_issue_count || 0))}
+          ${detailTile("Run id", missionState.run_id)}
+        </div>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Branch labels</p>
+        <div class="chip-row">${(missionState.mission.branch_labels || []).map((item) => chip(item)).join("")}</div>
+      </div>
+    </div>
+  `;
+  panel.innerHTML = (missionState.available_moves || [])
+    .map(
+      (move) => `
+        <div class="run-item ${move.availability === "recommended" ? "active" : ""}">
+          <div class="chip-row">
+            ${chip(move.availability, statusClass(move.availability === "blocked" ? "error" : move.availability === "risky" ? "running" : "ok"))}
+            ${move.executed ? chip("used") : ""}
+          </div>
+          <h3>${escapeHtml(move.title)}</h3>
+          <p class="metric-detail">${escapeHtml(move.summary || "")}</p>
+          <p class="metric-detail">${escapeHtml(move.consequence_preview || "")}</p>
+          ${move.blocked_reason ? `<p class="metric-detail">${escapeHtml(move.blocked_reason)}</p>` : ""}
+          <button
+            type="button"
+            class="ghost-button play-move-button"
+            data-move-id="${escapeHtml(move.move_id)}"
+            ${move.availability === "blocked" ? "disabled" : ""}
+          >${move.availability === "risky" ? "Take risky move" : "Play move"}</button>
+        </div>
+      `
+    )
+    .join("");
+  panel.querySelectorAll(".play-move-button").forEach((node) => {
+    node.addEventListener("click", () => {
+      void applyMissionMove(node.dataset.moveId);
+    });
+  });
+  status.textContent =
+    missionState.status === "completed"
+      ? "Mission finished. Branch it, inspect results, or switch to a new mission."
+      : "Play a move, branch, or finish the mission. The automated baseline and comparison runs are already recorded for contrast.";
+  renderJson("mission-state-panel", missionState);
+}
+
+function renderFidelityPanel() {
+  const panel = document.getElementById("fidelity-panel");
+  if (!panel) {
+    return;
+  }
+  const report = state.fidelityReport;
+  if (!report || !Array.isArray(report.cases) || !report.cases.length) {
+    panel.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Twin fidelity</p>
+        <p class="metric-detail">Fidelity checks appear here for playable worlds once a report is available.</p>
+      </div>
+    `;
+    renderJson("fidelity-raw-panel", {});
+    return;
+  }
+  panel.innerHTML = report.cases
+    .map(
+      (item) => `
+        <div class="story-card">
+          <p class="eyebrow">${escapeHtml(item.surface)}</p>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p class="metric-detail">${escapeHtml(item.boundary_contract || "")}</p>
+          <div class="chip-row">
+            ${chip(item.status, statusClass(item.status))}
+            ${item.resolved_tool ? chip(item.resolved_tool) : ""}
+          </div>
+          <div class="stack">
+            ${(item.checks || [])
+              .map(
+                (check) => `
+                  <p class="metric-detail"><strong>${escapeHtml(check.name)}</strong>: ${escapeHtml(check.summary)}</p>
+                `
+              )
+              .join("")}
+          </div>
+        </div>
+      `
+    )
+    .join("");
+  renderJson("fidelity-raw-panel", report);
 }
 
 function renderImportSummary() {
@@ -1019,7 +1303,12 @@ function renderExportsPanel() {
   if (!panel) {
     return;
   }
-  const exportsPreview = Array.isArray(state.exportsPreview) ? state.exportsPreview : [];
+  const exportsPreview =
+    Array.isArray(state.missionState?.exports) && state.missionState.exports.length
+      ? state.missionState.exports
+      : Array.isArray(state.exportsPreview)
+        ? state.exportsPreview
+        : [];
   panel.innerHTML = exportsPreview.length
     ? exportsPreview
         .map(
@@ -1378,9 +1667,10 @@ function togglePlayback() {
 }
 
 async function loadWorkspace() {
-  const [workspace, storyArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
+  const [workspace, storyArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
     getJson("/api/workspace"),
     fetchStoryArtifacts(),
+    fetchPlayableArtifacts(),
     getJson("/api/scenarios"),
     getJson("/api/imports/summary").catch(() => ({})),
     getJson("/api/identity/flow").catch(() => ({})),
@@ -1397,6 +1687,12 @@ async function loadWorkspace() {
     nonEmptyPayload(storyArtifacts.presentation) ||
     nonEmptyPayload(storyArtifacts.story?.presentation) ||
     null;
+  state.playableBundle = nonEmptyPayload(playableArtifacts.playableBundle);
+  state.missions = Array.isArray(playableArtifacts.missions)
+    ? playableArtifacts.missions
+    : [];
+  state.missionState = nonEmptyPayload(playableArtifacts.missionState);
+  state.fidelityReport = nonEmptyPayload(playableArtifacts.fidelityReport);
   state.scenarios = scenarios;
   state.importSummary = importSummary;
   state.identityFlow = identityFlow;
@@ -1409,6 +1705,10 @@ async function loadWorkspace() {
   renderImportSummary();
   renderExportsPanel();
   renderScenarioSelector();
+  renderMissionSelector();
+  renderMissionSummary();
+  renderMissionPlay();
+  renderFidelityPanel();
   if (scenarios.length > 0) {
     const activeName = workspace?.manifest?.active_scenario || scenarios[0].name;
     document.getElementById("scenario-select").value = activeName;
@@ -1452,13 +1752,140 @@ async function activateContractVariant(name) {
   await loadRuns();
 }
 
+async function activateMission(name, objectiveVariant = null) {
+  if (!name) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = `Activating mission ${name}...`;
+  try {
+    await getJson("/api/missions/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mission_name: name,
+        objective_variant: objectiveVariant || undefined,
+      }),
+    });
+    await loadWorkspace();
+    status.textContent = `Mission ${name} is ready.`;
+    setStudioView("missions");
+  } catch (error) {
+    status.textContent = `Mission activation failed: ${error}`;
+  }
+}
+
+async function startMission() {
+  const missionSelect = document.getElementById("mission-select");
+  const objectiveSelect = document.getElementById("objective-select");
+  const status = document.getElementById("mission-form-status");
+  const missionName = missionSelect?.value;
+  const objectiveVariant = objectiveSelect?.value || null;
+  status.textContent = "Entering world...";
+  try {
+    const payload = await getJson("/api/missions/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mission_name: missionName || undefined,
+        objective_variant: objectiveVariant || undefined,
+      }),
+    });
+    state.missionState = payload;
+    await loadRuns();
+    if (payload.run_id) {
+      await selectRun(payload.run_id);
+    }
+    status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
+    setStudioView("play");
+  } catch (error) {
+    status.textContent = `Mission start failed: ${error}`;
+  }
+}
+
+async function applyMissionMove(moveId) {
+  if (!moveId || !state.missionState?.run_id) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = `Playing ${moveId}...`;
+  try {
+    const payload = await getJson(
+      `/api/missions/${state.missionState.run_id}/moves/${encodeURIComponent(moveId)}`,
+      {
+        method: "POST",
+      }
+    );
+    state.missionState = payload;
+    await loadRuns();
+    await selectRun(payload.run_id);
+    status.textContent = payload.status === "completed"
+      ? "Mission completed. Inspect the results or branch the run."
+      : `Move ${moveId} applied.`;
+  } catch (error) {
+    status.textContent = `Move failed: ${error}`;
+  }
+}
+
+async function branchMission() {
+  if (!state.missionState?.run_id) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = "Creating branch...";
+  try {
+    const payload = await getJson(`/api/missions/${state.missionState.run_id}/branch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    state.missionState = payload;
+    await loadRuns();
+    await selectRun(payload.run_id);
+    status.textContent = `Branch ${payload.branch_name} is live.`;
+    setStudioView("results");
+  } catch (error) {
+    status.textContent = `Branch failed: ${error}`;
+  }
+}
+
+async function finishMission() {
+  if (!state.missionState?.run_id) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = "Finishing mission...";
+  try {
+    const payload = await getJson(`/api/missions/${state.missionState.run_id}/finish`, {
+      method: "POST",
+    });
+    state.missionState = payload;
+    await loadRuns();
+    await selectRun(payload.run_id);
+    status.textContent = payload.scorecard?.mission_success
+      ? "Mission finished cleanly."
+      : "Mission finished with remaining risk.";
+    setStudioView("results");
+  } catch (error) {
+    status.textContent = `Finish failed: ${error}`;
+  }
+}
+
 async function loadRuns() {
   state.runs = await getJson("/api/runs");
   await refreshStoryArtifacts();
+  await refreshPlayableArtifacts();
   renderWorkspaceMetrics();
   renderRuns();
+  if (state.missionState?.run_id) {
+    state.activeRunId = state.missionState.run_id;
+  }
   if (!state.activeRunId && state.runs.length > 0) {
     await selectRun(state.runs[0].run_id);
+    return;
+  }
+  if (state.activeRunId) {
+    await selectRun(state.activeRunId);
   }
 }
 
@@ -1479,6 +1906,7 @@ async function refreshActiveRun(runId, { connectStream = false } = {}) {
   state.snapshots = snapshots;
   state.activeRunContract = contract;
   await refreshStoryArtifacts();
+  await refreshPlayableArtifacts();
   if (state.selectedEventIndex >= timeline.length) {
     state.selectedEventIndex = Math.max(0, timeline.length - 1);
   }
@@ -1568,6 +1996,25 @@ async function activateScenario(name) {
 
 function bindControls() {
   document.getElementById("run-form").addEventListener("submit", startRun);
+  document.getElementById("start-mission-button").addEventListener("click", () => {
+    void startMission();
+  });
+  document.getElementById("branch-mission-button").addEventListener("click", () => {
+    void branchMission();
+  });
+  document.getElementById("finish-mission-button").addEventListener("click", () => {
+    void finishMission();
+  });
+  document.getElementById("mission-select").addEventListener("change", (event) => {
+    const objective = document.getElementById("objective-select").value || null;
+    void activateMission(event.target.value, objective);
+  });
+  document.getElementById("objective-select").addEventListener("change", async (event) => {
+    const selected = event.target.value;
+    if (selected) {
+      await activateContractVariant(selected);
+    }
+  });
   document.querySelectorAll(".studio-nav-button").forEach((node) => {
     node.addEventListener("click", () => {
       setStudioView(node.dataset.studioView || "worlds");
