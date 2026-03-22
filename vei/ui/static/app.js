@@ -52,11 +52,15 @@ const state = {
   timeline: [],
   orientation: null,
   graphs: null,
+  surfaceState: null,
+  surfaceHighlights: { panels: [], refs: [] },
+  surfaceHighlightExpiresAt: 0,
+  surfaceHighlightTimer: null,
   snapshots: [],
   selectedEventIndex: 0,
   selectedSnapshotFrom: null,
   selectedSnapshotTo: null,
-  studioView: "presentation",
+  studioView: "play",
   developerMode: false,
   playbackTimer: null,
   eventSource: null,
@@ -128,13 +132,28 @@ function formatMs(value) {
 
 function statusClass(value) {
   const normalized = String(value || "").toLowerCase();
-  if (["ok", "true", "passed", "success"].includes(normalized)) {
+  if (["ok", "true", "passed", "success", "approved", "ready", "fresh"].includes(normalized)) {
     return "ok";
   }
-  if (["error", "failed", "false"].includes(normalized)) {
+  if (["error", "failed", "false", "critical", "blocked"].includes(normalized)) {
     return "error";
   }
-  if (["running", "queued"].includes(normalized)) {
+  if (
+    [
+      "running",
+      "queued",
+      "warning",
+      "attention",
+      "open",
+      "in_progress",
+      "review",
+      "pending",
+      "pending_approval",
+      "scheduled",
+      "draft",
+      "stale",
+    ].includes(normalized)
+  ) {
     return "running";
   }
   return "";
@@ -209,6 +228,28 @@ function formatDomainTitle(domain) {
   return GRAPH_TITLES[domain] || domain.replaceAll("_", " ");
 }
 
+function formatSurfaceTitle(surface) {
+  if (surface === "slack") {
+    return "Slack";
+  }
+  if (surface === "mail") {
+    return "Email";
+  }
+  if (surface === "tickets") {
+    return "Work Tracker";
+  }
+  if (surface === "docs") {
+    return "Docs";
+  }
+  if (surface === "approvals") {
+    return "Approvals";
+  }
+  if (surface === "vertical_heartbeat") {
+    return "Business Core";
+  }
+  return formatDomainTitle(surface);
+}
+
 function summarizeMoveValue(value) {
   if (value === null || value === undefined) {
     return "";
@@ -230,6 +271,40 @@ function uniqueStrings(values) {
   return [...new Set((values || []).filter((item) => typeof item === "string" && item))];
 }
 
+function clearSurfaceHighlightTimer() {
+  if (!state.surfaceHighlightTimer) {
+    return;
+  }
+  window.clearTimeout(state.surfaceHighlightTimer);
+  state.surfaceHighlightTimer = null;
+}
+
+function setSurfaceHighlights(highlights, { preserveExisting = false } = {}) {
+  const nextPanels = uniqueStrings(highlights?.panels || []);
+  const nextRefs = uniqueStrings(highlights?.refs || []);
+  const hasHighlights = nextPanels.length > 0 || nextRefs.length > 0;
+
+  if (!hasHighlights) {
+    if (preserveExisting && Date.now() < state.surfaceHighlightExpiresAt) {
+      return;
+    }
+    clearSurfaceHighlightTimer();
+    state.surfaceHighlights = { panels: [], refs: [] };
+    state.surfaceHighlightExpiresAt = 0;
+    return;
+  }
+
+  clearSurfaceHighlightTimer();
+  state.surfaceHighlights = { panels: nextPanels, refs: nextRefs };
+  state.surfaceHighlightExpiresAt = Date.now() + 2600;
+  state.surfaceHighlightTimer = window.setTimeout(() => {
+    state.surfaceHighlights = { panels: [], refs: [] };
+    state.surfaceHighlightExpiresAt = 0;
+    state.surfaceHighlightTimer = null;
+    renderLivingCompanyView();
+  }, 2600);
+}
+
 function normalizeStudioView(view) {
   const normalized = String(view || "").toLowerCase();
   if (normalized === "situations") {
@@ -238,7 +313,7 @@ function normalizeStudioView(view) {
   if (normalized === "runs") {
     return "play";
   }
-  return normalized || "presentation";
+  return normalized || "play";
 }
 
 function setStudioView(view) {
@@ -414,6 +489,7 @@ async function refreshPlayableArtifacts() {
   renderMissionSummary();
   renderMissionPlay();
   renderFidelityPanel();
+  renderLivingCompanyView();
 }
 
 function renderWorkspaceMetrics() {
@@ -617,6 +693,197 @@ function renderMissionSummary() {
   });
 }
 
+function renderLivingCompanyView() {
+  renderSurfaceWall();
+  renderLivingCompanyRail();
+}
+
+function renderSurfaceWall() {
+  const panel = document.getElementById("living-company-surface-wall");
+  if (!panel) {
+    return;
+  }
+  const surfaceState = state.surfaceState;
+  if (!surfaceState || !Array.isArray(surfaceState.panels) || !surfaceState.panels.length) {
+    const loadingRun = state.missionState?.run_id || state.activeRunId;
+    panel.innerHTML = `
+      <div class="surface-placeholder">
+        <p class="eyebrow">Living Company</p>
+        <h3>${loadingRun ? "Bringing the software wall into focus" : "Enter a world to see the software wall"}</h3>
+        <p class="metric-detail">${
+          loadingRun
+            ? "VEI is loading the latest run snapshot so the company tools can appear here."
+            : "Slack, email, tickets, docs, approvals, and the vertical business system will appear here once a run is active."
+        }</p>
+      </div>
+    `;
+    return;
+  }
+
+  const changedPanels = new Set(state.surfaceHighlights?.panels || []);
+  const changedRefs = new Set(state.surfaceHighlights?.refs || []);
+  panel.innerHTML = surfaceState.panels
+    .map((surfacePanel) => {
+      const changed = changedPanels.has(surfacePanel.surface);
+      return `
+        <article
+          class="surface-panel surface-panel-${escapeHtml(surfacePanel.kind)} ${changed ? "surface-changed" : ""}"
+          style="--panel-accent:${escapeHtml(surfacePanel.accent || "#1e6cf2")}"
+        >
+          <header class="surface-panel-header">
+            <div>
+              <p class="eyebrow">${escapeHtml(formatSurfaceTitle(surfacePanel.surface))}</p>
+              <h3>${escapeHtml(surfacePanel.title)}</h3>
+            </div>
+            <div class="surface-panel-meta">
+              ${surfacePanel.status ? chip(surfacePanel.status, statusClass(surfacePanel.status)) : ""}
+              ${changed ? `<span class="surface-updated-tag">updated</span>` : ""}
+            </div>
+          </header>
+          ${surfacePanel.headline ? `<p class="surface-headline">${escapeHtml(surfacePanel.headline)}</p>` : ""}
+          <div class="surface-items surface-items-${escapeHtml(surfacePanel.kind)}">
+            ${(surfacePanel.items || [])
+              .map((item) => renderSurfaceItem(surfacePanel, item, changedRefs))
+              .join("")}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderSurfaceItem(surfacePanel, item, changedRefs) {
+  const changed = item.highlight_ref && changedRefs.has(item.highlight_ref);
+  const badges = Array.isArray(item.badges) ? item.badges : [];
+  return `
+    <div class="surface-item ${changed ? "surface-item-changed" : ""}">
+      <div class="surface-item-topline">
+        <strong>${escapeHtml(item.title || item.item_id)}</strong>
+        ${item.status ? `<span class="surface-item-status ${statusClass(item.status)}">${escapeHtml(item.status)}</span>` : ""}
+      </div>
+      ${item.subtitle ? `<div class="surface-item-subtitle">${escapeHtml(item.subtitle)}</div>` : ""}
+      ${item.body ? `<p class="surface-item-body">${escapeHtml(item.body)}</p>` : ""}
+      ${badges.length ? `<div class="chip-row">${badges.map((badgeValue) => chip(badgeValue)).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderLivingCompanyRail() {
+  const panel = document.getElementById("living-company-rail");
+  if (!panel) {
+    return;
+  }
+  const missionState = state.missionState;
+  const mission = missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
+  const objective = missionState?.objective_variant
+    || document.getElementById("objective-select")?.value
+    || mission?.default_objective
+    || "default";
+  const recommendedMove = (missionState?.available_moves || []).find(
+    (move) => move.availability === "recommended" && !move.executed
+  ) || (missionState?.available_moves || []).find((move) => !move.executed) || null;
+  const latestToolEvent = [...(state.timeline || [])].reverse().find(
+    (event) => event.resolved_tool || event.graph_intent
+  );
+  const changedCount = (state.surfaceHighlights?.panels || []).length;
+  const surfaceState = state.surfaceState;
+
+  panel.innerHTML = `
+    <div class="story-card accent-card">
+      <p class="eyebrow">Current tension</p>
+      <h3>${escapeHtml(surfaceState?.company_name || state.story?.manifest?.company_name || state.workspace?.manifest?.title || "Company")}</h3>
+      <p class="metric-detail">${escapeHtml(surfaceState?.current_tension || mission?.briefing || "Choose a mission to bring the company into focus.")}</p>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Mission</p>
+      <div class="detail-grid">
+        ${detailTile("Situation", mission?.title || "Not selected")}
+        ${detailTile("Objective", objective)}
+        ${detailTile("Run", state.activeRun?.run_id || missionState?.run_id || "Not started")}
+        ${detailTile("Branch", state.activeRun?.branch || missionState?.branch_name || "base")}
+      </div>
+      ${mission?.failure_impact ? `<p class="metric-detail">${escapeHtml(mission.failure_impact)}</p>` : ""}
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Next move</p>
+      ${
+        recommendedMove
+          ? `
+            <h3>${escapeHtml(recommendedMove.title)}</h3>
+            <p class="metric-detail">${escapeHtml(recommendedMove.summary || "")}</p>
+            <p class="metric-detail">${escapeHtml(recommendedMove.consequence_preview || "")}</p>
+          `
+          : `<p class="metric-detail">Finish the mission, branch the run, or switch to another situation.</p>`
+      }
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Kernel proof</p>
+      <div class="detail-grid">
+        ${detailTile("Events", String((state.timeline || []).length))}
+        ${detailTile("Snapshots", String((state.snapshots || []).length))}
+        ${detailTile("Changed panels", String(changedCount))}
+        ${detailTile("Latest tool", latestToolEvent?.resolved_tool || latestToolEvent?.graph_intent || "waiting")}
+      </div>
+      <div class="chip-row">
+        ${uniqueStrings((surfaceState?.panels || []).map((item) => formatSurfaceTitle(item.surface)))
+          .slice(0, 6)
+          .map((item) => chip(item))
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function diffSurfaceState(before, after) {
+  if (!before || !after) {
+    return { panels: [], refs: [] };
+  }
+  const beforePanels = new Map((before.panels || []).map((panel) => [panel.surface, panel]));
+  const afterPanels = new Map((after.panels || []).map((panel) => [panel.surface, panel]));
+  const changedPanels = [];
+  const changedRefs = [];
+
+  for (const [surface, panel] of afterPanels.entries()) {
+    const previous = beforePanels.get(surface);
+    const currentSignature = JSON.stringify(normalizeSurfacePanel(panel));
+    const previousSignature = previous ? JSON.stringify(normalizeSurfacePanel(previous)) : "";
+    if (currentSignature === previousSignature) {
+      continue;
+    }
+    changedPanels.push(surface);
+    const previousItems = new Map(
+      ((previous && previous.items) || []).map((item) => [item.item_id, JSON.stringify(item)])
+    );
+    for (const item of panel.items || []) {
+      const signature = JSON.stringify(item);
+      if (previousItems.get(item.item_id) !== signature && item.highlight_ref) {
+        changedRefs.push(item.highlight_ref);
+      }
+    }
+  }
+
+  return {
+    panels: changedPanels,
+    refs: [...new Set(changedRefs)],
+  };
+}
+
+function normalizeSurfacePanel(panel) {
+  return {
+    surface: panel.surface,
+    headline: panel.headline,
+    status: panel.status,
+    items: (panel.items || []).map((item) => ({
+      item_id: item.item_id,
+      title: item.title,
+      subtitle: item.subtitle,
+      body: item.body,
+      status: item.status,
+      badges: item.badges,
+    })),
+  };
+}
+
 function renderMissionPlay() {
   const panel = document.getElementById("mission-moves-panel");
   const scorecard = document.getElementById("mission-scorecard");
@@ -715,6 +982,7 @@ function renderMissionPlay() {
       : "Play a move, branch, or finish the mission. The automated baseline and comparison runs are already recorded for contrast.";
   renderMoveLog();
   renderJson("mission-state-panel", missionState);
+  renderLivingCompanyView();
 }
 
 function renderMoveLog() {
@@ -1877,9 +2145,9 @@ async function startMission() {
       }),
     });
     state.missionState = payload;
-    await loadRuns();
+    await loadRuns({ selectActiveRun: false });
     if (payload.run_id) {
-      await selectRun(payload.run_id);
+      await selectRun(payload.run_id, { previousSurfaceState: null });
     }
     status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
     setStudioView("play");
@@ -1892,6 +2160,7 @@ async function applyMissionMove(moveId) {
   if (!moveId || !state.missionState?.run_id) {
     return;
   }
+  const previousSurfaceState = state.surfaceState;
   const status = document.getElementById("mission-form-status");
   status.textContent = `Playing ${moveId}...`;
   try {
@@ -1902,8 +2171,8 @@ async function applyMissionMove(moveId) {
       }
     );
     state.missionState = payload;
-    await loadRuns();
-    await selectRun(payload.run_id);
+    await loadRuns({ selectActiveRun: false });
+    await selectRun(payload.run_id, { previousSurfaceState });
     status.textContent = payload.status === "completed"
       ? "Mission completed. Inspect the results or branch the run."
       : `Move ${moveId} applied.`;
@@ -1925,8 +2194,8 @@ async function branchMission() {
       body: JSON.stringify({}),
     });
     state.missionState = payload;
-    await loadRuns();
-    await selectRun(payload.run_id);
+    await loadRuns({ selectActiveRun: false });
+    await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
     status.textContent = `Branch ${payload.branch_name} is live.`;
     setStudioView("results");
   } catch (error) {
@@ -1945,8 +2214,8 @@ async function finishMission() {
       method: "POST",
     });
     state.missionState = payload;
-    await loadRuns();
-    await selectRun(payload.run_id);
+    await loadRuns({ selectActiveRun: false });
+    await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
     status.textContent = payload.scorecard?.mission_success
       ? "Mission finished cleanly."
       : "Mission finished with remaining risk.";
@@ -1956,12 +2225,15 @@ async function finishMission() {
   }
 }
 
-async function loadRuns() {
+async function loadRuns({ selectActiveRun = true } = {}) {
   state.runs = await getJson("/api/runs");
   await refreshStoryArtifacts();
   await refreshPlayableArtifacts();
   renderWorkspaceMetrics();
   renderRuns();
+  if (!selectActiveRun) {
+    return;
+  }
   if (state.missionState?.run_id) {
     state.activeRunId = state.missionState.run_id;
   }
@@ -1974,20 +2246,28 @@ async function loadRuns() {
   }
 }
 
-async function refreshActiveRun(runId, { connectStream = false } = {}) {
-  const [run, timeline, orientation, graphs, snapshots, contract] = await Promise.all([
+async function refreshActiveRun(
+  runId,
+  { connectStream = false, previousSurfaceState = null, preserveSurfaceHighlights = false } = {}
+) {
+  const [run, timeline, orientation, graphs, snapshots, contract, surfaces] = await Promise.all([
     getJson(`/api/runs/${runId}`),
     getJson(`/api/runs/${runId}/timeline`),
     getJson(`/api/runs/${runId}/orientation`),
     getJson(`/api/runs/${runId}/graphs`),
     getJson(`/api/runs/${runId}/snapshots`),
     getJson(`/api/runs/${runId}/contract`),
+    getJson(`/api/runs/${runId}/surfaces`).catch(() => null),
   ]);
 
   state.activeRun = run;
   state.timeline = timeline;
   state.orientation = orientation;
   state.graphs = graphs;
+  state.surfaceState = surfaces;
+  setSurfaceHighlights(diffSurfaceState(previousSurfaceState, surfaces), {
+    preserveExisting: preserveSurfaceHighlights,
+  });
   state.snapshots = snapshots;
   state.activeRunContract = contract;
   await refreshStoryArtifacts();
@@ -1998,6 +2278,7 @@ async function refreshActiveRun(runId, { connectStream = false } = {}) {
 
   renderRunHeader();
   renderRunSummary();
+  renderLivingCompanyView();
   renderPlaybackStage();
   renderEventDetail();
   renderOrientation();
@@ -2016,7 +2297,7 @@ function connectRunStream(runId) {
   }
   state.eventSource = new EventSource(`/api/runs/${runId}/stream`);
   state.eventSource.onmessage = () => {
-    void refreshActiveRun(runId);
+    void refreshActiveRun(runId, { preserveSurfaceHighlights: true });
   };
   state.eventSource.onerror = () => {
     if (state.eventSource) {
@@ -2026,10 +2307,10 @@ function connectRunStream(runId) {
   };
 }
 
-async function selectRun(runId) {
+async function selectRun(runId, options = {}) {
   state.activeRunId = runId;
   renderRuns();
-  await refreshActiveRun(runId, { connectStream: true });
+  await refreshActiveRun(runId, { connectStream: true, ...options });
 }
 
 async function startRun(event) {

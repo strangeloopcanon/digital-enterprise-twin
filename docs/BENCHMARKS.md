@@ -175,6 +175,7 @@ This is the publishable local-product path rather than the narrative-only path. 
 
 - the Harbor Point hero world with five playable missions
 - the Northstar Growth and Atlas Storage Systems supporting worlds
+- a default Living Company View with dense Slack, email, tickets, docs, approvals, and vertical-business panels
 - workflow baseline plus freer comparison run
 - a human-play mission branch on the same event spine
 - twin-fidelity checks for the important world surfaces

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from vei.fidelity import load_workspace_fidelity_report
+from vei.run.api import get_run_surface_state
 from vei.playable import (
     activate_workspace_playable_mission,
     apply_workspace_mission_move,
@@ -122,6 +123,40 @@ def test_apply_move_advances_state(tmp_path: Path) -> None:
     assert updated.turn_index >= 1
     assert len(updated.executed_moves) == 1
     assert updated.scorecard.move_count == 1
+
+
+def test_playable_mission_move_updates_living_company_surfaces(tmp_path: Path) -> None:
+    root = _make_workspace(tmp_path)
+    state = start_workspace_mission_run(
+        root,
+        mission_name="tenant_opening_conflict",
+    )
+    before = get_run_surface_state(root, state.run_id)
+
+    updated = apply_workspace_mission_move(
+        root,
+        run_id=state.run_id,
+        move_id=state.available_moves[0].move_id,
+    )
+    after = get_run_surface_state(root, updated.run_id)
+
+    before_panels = {
+        panel.surface: panel.model_dump(mode="json") for panel in before.panels
+    }
+    after_panels = {
+        panel.surface: panel.model_dump(mode="json") for panel in after.panels
+    }
+    changed = [
+        surface
+        for surface, payload in before_panels.items()
+        if payload != after_panels[surface]
+    ]
+
+    assert changed
+    assert any(
+        surface in {"approvals", "docs", "slack", "vertical_heartbeat"}
+        for surface in changed
+    )
 
 
 def test_branch_creates_new_run(tmp_path: Path) -> None:

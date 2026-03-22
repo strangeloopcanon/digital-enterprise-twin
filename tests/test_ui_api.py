@@ -105,6 +105,41 @@ def test_ui_api_start_run_returns_generated_run_id(tmp_path: Path, monkeypatch) 
     assert run_response.json()["status"] == "ok"
 
 
+def test_ui_api_serves_living_company_surfaces_for_vertical_runs(
+    tmp_path: Path,
+) -> None:
+    for vertical_name in (
+        "real_estate_management",
+        "digital_marketing_agency",
+        "storage_solutions",
+    ):
+        root = tmp_path / vertical_name
+        create_workspace_from_template(
+            root=root,
+            source_kind="vertical",
+            source_ref=vertical_name,
+        )
+        manifest = launch_workspace_run(root, runner="workflow")
+        client = TestClient(ui_api.create_ui_app(root))
+
+        response = client.get(f"/api/runs/{manifest.run_id}/surfaces")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["company_name"]
+        assert payload["current_tension"]
+        panel_map = {panel["surface"]: panel for panel in payload["panels"]}
+        assert set(panel_map) == {
+            "slack",
+            "mail",
+            "tickets",
+            "docs",
+            "approvals",
+            "vertical_heartbeat",
+        }
+        assert panel_map["mail"]["items"]
+
+
 def test_ui_api_rejects_invalid_runner_before_worker_starts(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     create_workspace_from_template(

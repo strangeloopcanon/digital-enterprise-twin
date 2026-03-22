@@ -60,6 +60,7 @@ VEI now has a product-shaped layer above the kernel:
 - `vei.ui`
   - local FastAPI + SSE playback/debug app over workspace and run APIs
   - control-room style playback surface for launch, timeline, contract, graph, and snapshot inspection
+  - Living Company View that turns the latest run snapshot into a normalized software wall for chat, mail, work tracking, documents, approvals, and the vertical heartbeat
 - `vei.playable`
   - mission catalog, move model, scorecards, branch helpers, export previews, and playable release bundles
 - `vei.fidelity`

@@ -165,6 +165,8 @@ vei studio play \
 
 That command prepares the world, activates the mission and objective, records the baseline/comparison context, generates a twin-fidelity report, and serves Studio in Mission Mode. If you only want the bundle on disk, add `--no-serve`.
 
+The default Studio front door is now the **Living Company View**. Instead of opening on a debug dashboard, it opens on a compact software wall with Slack, email, tickets, docs, approvals, and the vertical business system side by side. The seeded worlds are intentionally denser now, so each company feels like a real operating business before you even play a move, and visible tool panels update when moves land.
+
 To build the wider local playable release:
 
 ```bash

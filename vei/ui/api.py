@@ -30,6 +30,7 @@ from vei.run.api import (
     generate_run_id,
     get_run_capability_graphs,
     get_run_orientation,
+    get_run_surface_state,
     get_workspace_run_dir,
     get_workspace_run_manifest_path,
     launch_workspace_run,
@@ -437,6 +438,14 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     @app.get("/api/runs/{run_id}/graphs")
     def api_run_graphs(run_id: str) -> JSONResponse:
         return JSONResponse(get_run_capability_graphs(root, run_id))
+
+    @app.get("/api/runs/{run_id}/surfaces")
+    def api_run_surfaces(run_id: str) -> JSONResponse:
+        try:
+            payload = get_run_surface_state(root, run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
 
     @app.get("/api/runs/{run_id}/snapshots")
     def api_run_snapshots(run_id: str) -> JSONResponse:

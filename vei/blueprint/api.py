@@ -38,6 +38,7 @@ from .models import (
     BlueprintIdentityApplicationAsset,
     BlueprintIdentityGroupAsset,
     BlueprintIdentityUserAsset,
+    BlueprintMailThreadAsset,
     BlueprintRunDefaults,
     BlueprintScenarioSummary,
     BlueprintServiceRequestAsset,
@@ -371,6 +372,10 @@ def materialize_scenario_from_blueprint(asset: BlueprintAsset) -> Scenario:
             }
             for channel in environment.slack_channels
         }
+    if environment.mail_threads:
+        scenario.mail_threads = [
+            _build_mail_thread_seed(thread) for thread in environment.mail_threads
+        ]
     if environment.documents:
         scenario.documents = {
             document.doc_id: _build_document_seed(document)
@@ -574,6 +579,7 @@ def _build_environment_summary(
         hris_employee_count=len(environment.hris_employees),
         crm_deal_count=len(environment.crm_deals),
         slack_channel_count=len(environment.slack_channels),
+        mail_thread_count=len(environment.mail_threads),
         property_count=len(
             (asset.capability_graphs.property_graph.properties)
             if asset.capability_graphs and asset.capability_graphs.property_graph
@@ -637,12 +643,18 @@ def _build_graph_summaries(asset: BlueprintAsset) -> List[CapabilityGraphSummary
         summaries.append(
             CapabilityGraphSummary(
                 domain="comm_graph",
-                entity_count=len(graphs.comm_graph.slack_channels),
+                entity_count=len(graphs.comm_graph.slack_channels)
+                + len(graphs.comm_graph.mail_threads),
                 facet_counts={
                     "channels": len(graphs.comm_graph.slack_channels),
+                    "mail_threads": len(graphs.comm_graph.mail_threads),
                     "messages": sum(
                         len(channel.messages)
                         for channel in graphs.comm_graph.slack_channels
+                    )
+                    + sum(
+                        len(thread.messages)
+                        for thread in graphs.comm_graph.mail_threads
                     ),
                 },
             )
@@ -787,6 +799,7 @@ def _environment_from_capability_graphs(
         slack_channels=(
             list(comm_graph.slack_channels) if comm_graph is not None else []
         ),
+        mail_threads=(list(comm_graph.mail_threads) if comm_graph is not None else []),
         documents=list(doc_graph.documents) if doc_graph is not None else [],
         tickets=list(work_graph.tickets) if work_graph is not None else [],
         identity_users=list(identity_graph.users) if identity_graph is not None else [],
@@ -842,6 +855,25 @@ def _build_ticket_seed(ticket: BlueprintTicketAsset) -> Ticket:
         description=ticket.description,
         history=[{"status": ticket.status}],
     )
+
+
+def _build_mail_thread_seed(thread: BlueprintMailThreadAsset) -> Dict[str, Any]:
+    return {
+        "thread_id": thread.thread_id,
+        "title": thread.title,
+        "category": thread.category,
+        "messages": [
+            {
+                "from": message.from_address,
+                "to": message.to_address,
+                "subj": message.subject,
+                "body_text": message.body_text,
+                "unread": message.unread,
+                "time_ms": message.time_ms,
+            }
+            for message in thread.messages
+        ],
+    }
 
 
 def _build_identity_user_seed(user: BlueprintIdentityUserAsset) -> IdentityUserSeed:
