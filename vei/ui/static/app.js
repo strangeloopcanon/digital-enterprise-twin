@@ -69,7 +69,6 @@ const state = {
   eventSource: null,
   cascadeActive: false,
   cascadeAbort: null,
-  moveHistory: [],
 };
 
 async function getJson(path, options = {}) {
@@ -766,58 +765,6 @@ function playCascade(changedPanels, changedRefs) {
 }
 
 // ---------------------------------------------------------------------------
-// Move timeline: horizontal scrubber of move history
-// ---------------------------------------------------------------------------
-function recordMoveSnapshot(moveTitle) {
-  state.moveHistory.push({
-    title: moveTitle || `Move ${state.moveHistory.length + 1}`,
-    surfaceState: state.surfaceState ? JSON.parse(JSON.stringify(state.surfaceState)) : null,
-    missionState: state.missionState ? JSON.parse(JSON.stringify(state.missionState)) : null,
-    timestamp: Date.now(),
-  });
-}
-
-function renderMoveTimeline() {
-  const container = document.getElementById("move-timeline");
-  if (!container) return;
-  const history = state.moveHistory;
-  if (history.length < 2) {
-    container.innerHTML = "";
-    return;
-  }
-  container.innerHTML = `
-    <div class="move-timeline-bar">
-      <div class="move-timeline-track">
-        ${history.map((entry, i) => `
-          <button type="button" class="move-timeline-node ${i === history.length - 1 ? "active" : ""}" data-history-index="${i}" title="${escapeHtml(entry.title)}">
-            <span class="move-timeline-dot"></span>
-            <span class="move-timeline-label">${escapeHtml(entry.title)}</span>
-          </button>
-        `).join("")}
-      </div>
-    </div>
-  `;
-  container.querySelectorAll(".move-timeline-node").forEach((node) => {
-    node.addEventListener("click", () => {
-      const idx = Number(node.dataset.historyIndex);
-      restoreMoveSnapshot(idx);
-    });
-  });
-}
-
-function restoreMoveSnapshot(index) {
-  const entry = state.moveHistory[index];
-  if (!entry) return;
-  state.surfaceState = entry.surfaceState;
-  state.surfaceHighlights = { panels: [], refs: [] };
-  renderSurfaceWall();
-  renderLivingCompanyRail();
-  document.querySelectorAll(".move-timeline-node").forEach((node) => {
-    node.classList.toggle("active", Number(node.dataset.historyIndex) === index);
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Cinema mode: full-screen presentation layout
 // ---------------------------------------------------------------------------
 function toggleCinemaMode() {
@@ -825,7 +772,18 @@ function toggleCinemaMode() {
   document.body.classList.toggle("cinema-mode", state.cinemaMode);
   const btn = document.getElementById("cinema-toggle");
   if (btn) btn.textContent = state.cinemaMode ? "Exit Presentation" : "Present";
-  if (!state.cinemaMode) stopCinemaAutoAdvance();
+  if (!state.cinemaMode) {
+    stopCinemaAutoAdvance();
+  } else {
+    setStudioView("company");
+    const hasMoves = (state.missionState?.available_moves || []).some(
+      (m) => !m.executed && m.availability !== "blocked"
+    );
+    if (hasMoves) {
+      state.cinemaAutoAdvance = true;
+      window.setTimeout(cinemaAutoStep, 1200);
+    }
+  }
   renderCinemaNarrative();
 }
 
@@ -855,19 +813,21 @@ function renderCinemaNarrative() {
     narrativeLine = mission.briefing || mission.description || "Entering the world\u2026";
   }
 
+  const scorePct = Math.min(100, Math.max(0, score.overall_score || 0));
+  const remaining = score.action_budget_remaining ?? "?";
+
   container.innerHTML = `
     <div class="cinema-narrative-bar">
       <div class="cinema-narrative-text">${escapeHtml(narrativeLine)}</div>
       <div class="cinema-narrative-meta">
-        <span>${moveCount} move${moveCount === 1 ? "" : "s"}</span>
-        <span>${systemCount} systems</span>
-        ${score.overall_score !== undefined ? `<span>Score: ${score.overall_score}</span>` : ""}
+        <span class="cinema-stat">${moveCount} move${moveCount === 1 ? "" : "s"}</span>
+        <span class="cinema-stat">${systemCount} systems</span>
+        <span class="cinema-stat">Score ${scorePct}</span>
+        <span class="cinema-stat">Budget ${remaining}</span>
       </div>
-      <div class="cinema-controls">
-        <button type="button" id="cinema-auto-toggle" class="ghost-button cinema-auto-btn">
-          ${state.cinemaAutoAdvance ? "Pause" : "Auto-play"}
-        </button>
-      </div>
+      <button type="button" id="cinema-auto-toggle" class="ghost-button cinema-auto-btn">
+        ${state.cinemaAutoAdvance ? "Pause" : "Auto-play"}
+      </button>
     </div>
   `;
   const autoBtn = document.getElementById("cinema-auto-toggle");
@@ -912,7 +872,6 @@ function renderLivingCompanyView() {
   renderLivingCompanyContext();
   renderSurfaceWall();
   renderLivingCompanyRail();
-  renderMoveTimeline();
   updateContextHint();
   if (state.cinemaMode) renderCinemaNarrative();
 }
@@ -988,7 +947,17 @@ function renderSurfaceWall() {
   const changedPanels = new Set(state.surfaceHighlights?.panels || []);
   const changedRefs = new Set(state.surfaceHighlights?.refs || []);
   const isCascade = state.cascadeActive && changedPanels.size > 0;
-  panel.innerHTML = surfaceState.panels
+
+  const changedStrip = changedPanels.size > 0
+    ? `<div class="changed-systems-strip">
+        <span class="changed-systems-label">Changed:</span>
+        ${[...changedPanels].map((s) =>
+          `<span class="changed-system-chip">${escapeHtml(formatSurfaceTitle(s))}</span>`
+        ).join("")}
+      </div>`
+    : "";
+
+  panel.innerHTML = changedStrip + surfaceState.panels
     .map((surfacePanel) => {
       const changed = changedPanels.has(surfacePanel.surface);
       const pendingClass = isCascade && changed ? "cascade-pending" : "";
@@ -2422,8 +2391,6 @@ async function startMission() {
       await selectRun(payload.run_id, { previousSurfaceState: null });
     }
     state.missionState = payload;
-    state.moveHistory = [];
-    recordMoveSnapshot("World loaded");
     renderMissionPlay();
     status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
     setStudioView("company");
@@ -2462,7 +2429,6 @@ async function applyMissionMove(moveId) {
       renderSurfaceWall();
       await playCascade(diff.panels, diff.refs);
     }
-    recordMoveSnapshot(moveTitle);
     renderLivingCompanyView();
     renderMissionPlay();
 
