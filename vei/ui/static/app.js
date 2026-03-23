@@ -541,7 +541,7 @@ function renderWorldsPanel() {
     <div class="story-card accent-card story-span-2">
       <p class="eyebrow">Company</p>
       <h3>${escapeHtml(story?.manifest?.company_name || manifest.title || manifest.name || "Workspace")}</h3>
-      <p class="metric-detail">${escapeHtml(story?.company_briefing || manifest.description || "This workspace is one stable company environment on top of the VEI kernel.")}</p>
+      <p class="metric-detail">${escapeHtml(story?.company_briefing || manifest.description || "This workspace is one stable company environment with shared tools and business state.")}</p>
       <div class="chip-row">${keySurfaces.map((item) => chip(formatDomainTitle(item))).join("")}</div>
     </div>
     <div class="story-card">
@@ -1070,7 +1070,7 @@ function renderFidelityPanel() {
   if (!report || !Array.isArray(report.cases) || !report.cases.length) {
     panel.innerHTML = `
       <div class="story-card story-span-2">
-        <p class="eyebrow">Twin fidelity</p>
+        <p class="eyebrow">System checks</p>
         <p class="metric-detail">System health checks appear here once a fidelity report is available.</p>
       </div>
     `;
@@ -1081,7 +1081,7 @@ function renderFidelityPanel() {
     <div class="story-card accent-card story-span-2">
       <p class="eyebrow">Report summary</p>
       <h3>${escapeHtml(report.company_name || "Company")} · ${chip(report.status, statusClass(report.status))}</h3>
-      <p class="metric-detail">${escapeHtml(report.summary || "Boundary fidelity checks ran against the key work surfaces that missions depend on.")}</p>
+      <p class="metric-detail">${escapeHtml(report.summary || "System checks ran against the key tools this company depends on.")}</p>
     </div>
   ` + report.cases
     .map(
@@ -1406,7 +1406,7 @@ function renderScenarioBriefing() {
         ? `<div class="story-card story-span-2">
             <p class="eyebrow">What-if paths</p>
             <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-            <p class="metric-detail">These are branchable futures for the same company world, not separate handcrafted demos.</p>
+            <p class="metric-detail">These are alternate futures for the same company, not separate worlds.</p>
           </div>`
         : ""
     }
@@ -1608,7 +1608,7 @@ function renderRunSummary() {
       <div class="story-card accent-card">
         <p class="eyebrow">Outcome</p>
         <h3>${run.contract?.ok ? "Good branch" : run.contract?.ok === false ? "Broken branch" : "Outcome pending"}</h3>
-        <p class="metric-detail">This run uses the same kernel as every other world, but this particular path produced a different business outcome.</p>
+        <p class="metric-detail">This path came from the same company state, but it produced a different business outcome.</p>
         <div class="detail-grid">
           ${detailTile("Run events", compactNumber(state.timeline.length))}
           ${detailTile("Graph actions", compactNumber(graphEvents.length))}
@@ -1618,14 +1618,14 @@ function renderRunSummary() {
         <div class="chip-row">${graphDomains.map((item) => chip(formatDomainTitle(item))).join("")}</div>
       </div>
       <div class="story-card">
-        <p class="eyebrow">Reusable outputs</p>
-        <h3>Same run, many downstream uses</h3>
+        <p class="eyebrow">Recorded trail</p>
+        <h3>One path, full receipts</h3>
         <div class="chip-row">
-          ${chip("training data")}
-          ${chip("evaluation")}
-          ${chip("operations")}
+          ${chip("timeline")}
+          ${chip("comparisons")}
+          ${chip("receipts")}
         </div>
-        <p class="metric-detail">Every run records state, contracts, provenance, and tool resolution in one place, so the same artifacts can drive training, evaluation, and live operations.</p>
+        <p class="metric-detail">Every path records state, decisions, receipts, and tool activity in one place, so you can compare what happened and why.</p>
         <div class="chip-row">${resolvedTools.slice(0, 5).map((item) => chip(item)).join("")}</div>
       </div>
       ${
@@ -1634,7 +1634,7 @@ function renderRunSummary() {
               <p class="eyebrow">What-if paths</p>
               <h3>Branch labels</h3>
               <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-              <p class="metric-detail">These branch ideas are just alternate futures on top of the same kernel state and snapshot model.</p>
+              <p class="metric-detail">These branch ideas are alternate futures that begin from the same company state.</p>
             </div>`
           : ""
       }
@@ -1677,7 +1677,7 @@ function renderRunSummary() {
       : `
         <div class="story-card story-span-2">
           <p class="eyebrow">Branch story</p>
-          <p class="metric-detail">Launch a workflow baseline plus a comparison run to turn this company world into a branch/outcome narrative.</p>
+          <p class="metric-detail">Open a baseline path and a comparison path to see how the same company can end in different states.</p>
         </div>
       `;
   }

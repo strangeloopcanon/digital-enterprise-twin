@@ -753,7 +753,7 @@ def _marketing_asset() -> BlueprintAsset:
                 ),
                 _slack_message(
                     "1710100600.001100",
-                    "finance.bot",
+                    "alina.finance",
                     "Apex launch is 28% over planned pacing if the current multiplier holds.",
                 ),
             ],
@@ -1216,7 +1216,7 @@ def _storage_asset() -> BlueprintAsset:
             messages=[
                 _slack_message(
                     "1710200240.000500",
-                    "capacity.bot",
+                    "reese.capacity",
                     "Pool CHI-A is at 86% reservation. Overflow pool MKE-B remains mostly open.",
                 ),
                 _slack_message(
@@ -1237,7 +1237,7 @@ def _storage_asset() -> BlueprintAsset:
                 ),
                 _slack_message(
                     "1710200420.000800",
-                    "dispatch.bot",
+                    "leo.dispatch",
                     "Rapid Freight requested updated pallet counts and site split.",
                 ),
             ],
