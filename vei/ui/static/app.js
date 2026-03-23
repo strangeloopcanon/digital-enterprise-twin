@@ -62,8 +62,14 @@ const state = {
   selectedSnapshotTo: null,
   studioView: "company",
   developerMode: false,
+  cinemaMode: false,
+  cinemaAutoAdvance: false,
+  cinemaAutoTimer: null,
   playbackTimer: null,
   eventSource: null,
+  cascadeActive: false,
+  cascadeAbort: null,
+  moveHistory: [],
 };
 
 async function getJson(path, options = {}) {
@@ -696,11 +702,213 @@ function renderMissionSummary() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Cascade replay: stagger surface highlight reveals after a move
+// ---------------------------------------------------------------------------
+const CASCADE_STAGGER_MS = 180;
+const CASCADE_HOLD_MS = 1400;
+
+function abortCascade() {
+  if (state.cascadeAbort) {
+    state.cascadeAbort();
+    state.cascadeAbort = null;
+  }
+  state.cascadeActive = false;
+}
+
+function playCascade(changedPanels, changedRefs) {
+  abortCascade();
+  if (!changedPanels.length) return Promise.resolve();
+  state.cascadeActive = true;
+  const bar = document.getElementById("cascade-progress");
+  const label = document.getElementById("cascade-label");
+  if (bar) bar.style.width = "0%";
+  if (label) label.textContent = `Propagating across ${changedPanels.length} system${changedPanels.length === 1 ? "" : "s"}\u2026`;
+  const progressEl = document.getElementById("cascade-bar");
+  if (progressEl) progressEl.classList.add("cascade-bar-visible");
+
+  return new Promise((resolve) => {
+    let step = 0;
+    let cancelled = false;
+    state.cascadeAbort = () => { cancelled = true; resolve(); };
+
+    function revealNext() {
+      if (cancelled || step >= changedPanels.length) {
+        state.cascadeActive = false;
+        if (progressEl) progressEl.classList.remove("cascade-bar-visible");
+        if (label) label.textContent = "";
+        resolve();
+        return;
+      }
+      const surface = changedPanels[step];
+      const panelEl = document.querySelector(`.surface-panel[data-surface="${surface}"]`);
+      if (panelEl) {
+        panelEl.classList.remove("cascade-pending");
+        panelEl.classList.add("cascade-reveal");
+        const toast = panelEl.querySelector(".cascade-toast");
+        if (toast) toast.classList.add("cascade-toast-visible");
+      }
+      step++;
+      const pct = Math.round((step / changedPanels.length) * 100);
+      if (bar) bar.style.width = `${pct}%`;
+      if (label) label.textContent = `${step} of ${changedPanels.length} systems updated`;
+      window.setTimeout(revealNext, CASCADE_STAGGER_MS);
+    }
+
+    window.setTimeout(revealNext, 200);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Move timeline: horizontal scrubber of move history
+// ---------------------------------------------------------------------------
+function recordMoveSnapshot(moveTitle) {
+  state.moveHistory.push({
+    title: moveTitle || `Move ${state.moveHistory.length + 1}`,
+    surfaceState: state.surfaceState ? JSON.parse(JSON.stringify(state.surfaceState)) : null,
+    missionState: state.missionState ? JSON.parse(JSON.stringify(state.missionState)) : null,
+    timestamp: Date.now(),
+  });
+}
+
+function renderMoveTimeline() {
+  const container = document.getElementById("move-timeline");
+  if (!container) return;
+  const history = state.moveHistory;
+  if (history.length < 2) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="move-timeline-bar">
+      <div class="move-timeline-track">
+        ${history.map((entry, i) => `
+          <button type="button" class="move-timeline-node ${i === history.length - 1 ? "active" : ""}" data-history-index="${i}" title="${escapeHtml(entry.title)}">
+            <span class="move-timeline-dot"></span>
+            <span class="move-timeline-label">${escapeHtml(entry.title)}</span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
+  `;
+  container.querySelectorAll(".move-timeline-node").forEach((node) => {
+    node.addEventListener("click", () => {
+      const idx = Number(node.dataset.historyIndex);
+      restoreMoveSnapshot(idx);
+    });
+  });
+}
+
+function restoreMoveSnapshot(index) {
+  const entry = state.moveHistory[index];
+  if (!entry) return;
+  state.surfaceState = entry.surfaceState;
+  state.surfaceHighlights = { panels: [], refs: [] };
+  renderSurfaceWall();
+  renderLivingCompanyRail();
+  document.querySelectorAll(".move-timeline-node").forEach((node) => {
+    node.classList.toggle("active", Number(node.dataset.historyIndex) === index);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Cinema mode: full-screen presentation layout
+// ---------------------------------------------------------------------------
+function toggleCinemaMode() {
+  state.cinemaMode = !state.cinemaMode;
+  document.body.classList.toggle("cinema-mode", state.cinemaMode);
+  const btn = document.getElementById("cinema-toggle");
+  if (btn) btn.textContent = state.cinemaMode ? "Exit Presentation" : "Present";
+  if (!state.cinemaMode) stopCinemaAutoAdvance();
+  renderCinemaNarrative();
+}
+
+function renderCinemaNarrative() {
+  const container = document.getElementById("cinema-narrative");
+  if (!container) return;
+  if (!state.cinemaMode) { container.innerHTML = ""; return; }
+  const ms = state.missionState;
+  const mission = ms?.mission || state.playableBundle?.mission || null;
+  const moveCount = (ms?.executed_moves || []).length;
+  const lastMove = moveCount ? ms.executed_moves[moveCount - 1] : null;
+  const score = ms?.scorecard || {};
+  const systemCount = (state.surfaceState?.panels || []).length;
+
+  let narrativeLine = "";
+  if (ms?.status === "completed") {
+    narrativeLine = score.mission_success
+      ? "Mission resolved successfully."
+      : "Mission closed with remaining exposure.";
+  } else if (lastMove) {
+    const tool = lastMove.resolved_tool || "";
+    const refs = (lastMove.object_refs || []).slice(0, 3).join(", ");
+    narrativeLine = `Move ${moveCount}: ${lastMove.title}`;
+    if (tool) narrativeLine += ` \u2192 ${tool}`;
+    if (refs) narrativeLine += ` \u2192 ${refs}`;
+  } else if (mission) {
+    narrativeLine = mission.briefing || mission.description || "Entering the world\u2026";
+  }
+
+  container.innerHTML = `
+    <div class="cinema-narrative-bar">
+      <div class="cinema-narrative-text">${escapeHtml(narrativeLine)}</div>
+      <div class="cinema-narrative-meta">
+        <span>${moveCount} move${moveCount === 1 ? "" : "s"}</span>
+        <span>${systemCount} systems</span>
+        ${score.overall_score !== undefined ? `<span>Score: ${score.overall_score}</span>` : ""}
+      </div>
+      <div class="cinema-controls">
+        <button type="button" id="cinema-auto-toggle" class="ghost-button cinema-auto-btn">
+          ${state.cinemaAutoAdvance ? "Pause" : "Auto-play"}
+        </button>
+      </div>
+    </div>
+  `;
+  const autoBtn = document.getElementById("cinema-auto-toggle");
+  if (autoBtn) autoBtn.addEventListener("click", toggleCinemaAutoAdvance);
+}
+
+function toggleCinemaAutoAdvance() {
+  state.cinemaAutoAdvance = !state.cinemaAutoAdvance;
+  if (state.cinemaAutoAdvance) {
+    cinemaAutoStep();
+  } else {
+    stopCinemaAutoAdvance();
+  }
+  renderCinemaNarrative();
+}
+
+function stopCinemaAutoAdvance() {
+  state.cinemaAutoAdvance = false;
+  if (state.cinemaAutoTimer) {
+    window.clearTimeout(state.cinemaAutoTimer);
+    state.cinemaAutoTimer = null;
+  }
+}
+
+function cinemaAutoStep() {
+  if (!state.cinemaAutoAdvance || !state.missionState) return;
+  const nextMove = (state.missionState.available_moves || []).find(
+    (m) => !m.executed && m.availability !== "blocked"
+  );
+  if (!nextMove) {
+    stopCinemaAutoAdvance();
+    renderCinemaNarrative();
+    return;
+  }
+  void applyMissionMove(nextMove.move_id).then(() => {
+    if (!state.cinemaAutoAdvance) return;
+    state.cinemaAutoTimer = window.setTimeout(cinemaAutoStep, 2800);
+  });
+}
+
 function renderLivingCompanyView() {
   renderLivingCompanyContext();
   renderSurfaceWall();
   renderLivingCompanyRail();
+  renderMoveTimeline();
   updateContextHint();
+  if (state.cinemaMode) renderCinemaNarrative();
 }
 
 function renderLivingCompanyContext() {
@@ -773,14 +981,25 @@ function renderSurfaceWall() {
 
   const changedPanels = new Set(state.surfaceHighlights?.panels || []);
   const changedRefs = new Set(state.surfaceHighlights?.refs || []);
+  const isCascade = state.cascadeActive && changedPanels.size > 0;
   panel.innerHTML = surfaceState.panels
     .map((surfacePanel) => {
       const changed = changedPanels.has(surfacePanel.surface);
+      const pendingClass = isCascade && changed ? "cascade-pending" : "";
+      const changedClass = !isCascade && changed ? "surface-changed" : "";
+      const changedItemCount = changed
+        ? (surfacePanel.items || []).filter((it) => it.highlight_ref && changedRefs.has(it.highlight_ref)).length
+        : 0;
+      const toastText = changed && changedItemCount
+        ? `${changedItemCount} item${changedItemCount === 1 ? "" : "s"} changed`
+        : changed ? "Updated" : "";
       return `
         <article
-          class="surface-panel surface-panel-${escapeHtml(surfacePanel.kind)} ${changed ? "surface-changed" : ""}"
+          class="surface-panel surface-panel-${escapeHtml(surfacePanel.kind)} ${pendingClass} ${changedClass}"
+          data-surface="${escapeHtml(surfacePanel.surface)}"
           ${surfacePanel.accent ? `style="--panel-accent:${escapeHtml(surfacePanel.accent)}"` : ""}
         >
+          ${toastText ? `<div class="cascade-toast">${escapeHtml(toastText)}</div>` : ""}
           <header class="surface-panel-header">
             <div>
               <p class="eyebrow">${escapeHtml(formatSurfaceTitle(surfacePanel.surface))}</p>
@@ -2180,7 +2399,7 @@ async function startMission() {
   const status = document.getElementById("mission-form-status");
   const missionName = missionSelect?.value;
   const objectiveVariant = objectiveSelect?.value || null;
-  status.textContent = "Entering world...";
+  status.textContent = "Entering world\u2026";
   try {
     const payload = await getJson("/api/missions/start", {
       method: "POST",
@@ -2196,6 +2415,8 @@ async function startMission() {
     if (payload.run_id) {
       await selectRun(payload.run_id, { previousSurfaceState: null });
     }
+    state.moveHistory = [];
+    recordMoveSnapshot("World loaded");
     renderMissionPlay();
     status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
     setStudioView("company");
@@ -2210,7 +2431,9 @@ async function applyMissionMove(moveId) {
   }
   const previousSurfaceState = state.surfaceState;
   const status = document.getElementById("mission-form-status");
-  status.textContent = `Playing ${moveId}...`;
+  const moveSpec = (state.missionState.available_moves || []).find((m) => m.move_id === moveId);
+  const moveTitle = moveSpec?.title || moveId;
+  status.textContent = `Playing ${moveTitle}\u2026`;
   try {
     const payload = await getJson(
       `/api/missions/${state.missionState.run_id}/moves/${encodeURIComponent(moveId)}`,
@@ -2221,10 +2444,23 @@ async function applyMissionMove(moveId) {
     state.missionState = payload;
     await loadRuns({ selectActiveRun: false });
     state.missionState = payload;
-    await selectRun(payload.run_id, { previousSurfaceState });
+
+    const oldSurface = previousSurfaceState;
+    await refreshActiveRun(payload.run_id, { previousSurfaceState: oldSurface });
+
+    const diff = diffSurfaceState(oldSurface, state.surfaceState);
+    if (diff.panels.length > 0) {
+      state.cascadeActive = true;
+      renderSurfaceWall();
+      await playCascade(diff.panels, diff.refs);
+    }
+    recordMoveSnapshot(moveTitle);
+    renderLivingCompanyView();
+    renderMissionPlay();
+
     status.textContent = payload.status === "completed"
       ? "Mission completed. Inspect the results or branch the run."
-      : `Move ${moveId} applied.`;
+      : `${moveTitle} \u2014 ${diff.panels.length} system${diff.panels.length === 1 ? "" : "s"} affected.`;
   } catch (error) {
     status.textContent = `Move failed: ${error}`;
   }
@@ -2438,6 +2674,7 @@ function bindControls() {
     });
   });
   document.getElementById("developer-toggle").addEventListener("click", toggleDeveloperMode);
+  document.getElementById("cinema-toggle").addEventListener("click", toggleCinemaMode);
   document.getElementById("scenario-select").addEventListener("change", (event) => {
     void loadScenario(event.target.value);
   });
