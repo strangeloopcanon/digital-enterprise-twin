@@ -1190,31 +1190,31 @@ def render_vertical_story_overview(story: VerticalStoryBundle) -> str:
 
 def render_vertical_story_presentation_guide(story: VerticalStoryBundle) -> str:
     lines = [
-        f"# VEI Presentation Guide · {story.manifest.company_name}",
+        f"# VEI World Briefing Guide · {story.manifest.company_name}",
         "",
         story.presentation.opening_hook,
         "",
-        "## Demo Goal",
+        "## Why This World Exists",
         "",
         story.presentation.demo_goal,
         "",
-        "## Presenter Setup",
+        "## Open The World",
         "",
     ]
     lines.extend(f"- {item}" for item in story.presentation.presenter_setup)
-    lines.extend(["", "## Demo Primitives", ""])
+    lines.extend(["", "## World Primitives", ""])
     for primitive in story.presentation.primitives:
         lines.extend(
             [
                 f"### {primitive.title}",
                 "",
                 f"- Current value: `{primitive.current_value}`",
-                f"- What to say: {primitive.summary}",
+                f"- What it means: {primitive.summary}",
                 f"- Under the hood: {primitive.kernel_mapping}",
                 "",
             ]
         )
-    lines.extend(["## Presentation Flow", ""])
+    lines.extend(["## Walkthrough Flow", ""])
     for beat in story.presentation.beats:
         lines.extend(
             [
@@ -1222,7 +1222,7 @@ def render_vertical_story_presentation_guide(story: VerticalStoryBundle) -> str:
                 "",
                 f"- Studio view: `{beat.studio_view}`",
                 f"- Operator action: {beat.operator_action}",
-                f"- Talk track: {beat.presenter_note}",
+                f"- Read it as: {beat.presenter_note}",
                 f"- Proof point: {beat.proof_point}",
                 f"- Audience takeaway: {beat.audience_takeaway}",
                 "",
@@ -1242,7 +1242,7 @@ def render_vertical_story_showcase_overview(
         "",
         result.kernel_thesis,
         "",
-        "This is the demo path for telling the product story in business language:",
+        "This is the clearest path for opening one company world in business language:",
         "- Company",
         "- Situation",
         "- Objective",
@@ -1296,7 +1296,7 @@ def _extract_what_if_branches(preview: dict[str, object]) -> list[str]:
 
 def _kernel_thesis_statement() -> str:
     return (
-        "VEI is the shared world kernel underneath every demo: the company-specific "
+        "VEI is the shared world kernel underneath every company world we open: the company-specific "
         "part is just the capability graph and contract, while the runtime, event "
         "spine, branching, replay, and inspection surfaces stay the same."
     )
@@ -1514,20 +1514,20 @@ def _build_story_presentation(
     branch_labels: list[str],
 ) -> StoryPresentation:
     opening_hook = (
-        "VEI is one enterprise world kernel. This demo shows that the same runtime can "
+        "VEI is one enterprise world kernel. This world shows that the same runtime can "
         "instantiate different companies, vary the situation, vary the objective, and "
         "still produce inspectable runs, branches, and exportable artifacts."
     )
     demo_goal = (
-        f"Start from {manifest.company_name} as a stable company world, then show how "
+        f"Start from {manifest.company_name} as a stable company world, then watch how "
         f"`{scenario_variant.title}` changes the situation, how `{contract_variant.title}` "
         "changes the definition of success, and how the same kernel turns both runs into "
         "playback, branching, and future RL/eval/agent-ops outputs."
     )
     presenter_setup = [
-        "Open Studio on the Presentation view and read the opening hook before clicking anywhere else.",
-        "Frame the product as a world studio for enterprises, not a one-off workflow demo.",
-        "Tell the audience that Company, Situation, and Objective are the user-facing primitives built on the kernel.",
+        "Open Studio on the Briefing view, then move into Living Company before you touch anything else.",
+        "Frame the product as a world studio for enterprises, not a static workflow viewer.",
+        "Keep the language anchored in the company world: Company, Situation, and Objective are the stable user-facing primitives.",
         f"Use `{branch_labels[0] if branch_labels else 'baseline path'}` versus "
         f"`{branch_labels[1] if len(branch_labels) > 1 else 'agent path'}` to explain branching.",
     ]
@@ -1537,7 +1537,7 @@ def _build_story_presentation(
             title="Company",
             current_value=manifest.company_name,
             summary=(
-                "Start with one stable business world. The company stays fixed while the demo changes only the situation and the objective."
+                "Start with one stable business world. The company stays fixed while the situation and the objective move around it."
             ),
             kernel_mapping="Workspace + blueprint + capability graphs",
         ),
@@ -1592,12 +1592,12 @@ def _build_story_presentation(
             step=1,
             title="Open with the kernel thesis",
             studio_view="presentation",
-            operator_action="Stay on the Presentation view and point at the opening hook plus the primitives strip.",
+            operator_action="Start on Briefing, then move into Living Company once the software wall is visible.",
             presenter_note=(
                 "Say that VEI is one enterprise world kernel. We are about to show different companies, different situations, and different objectives on top of the same runtime."
             ),
-            proof_point="The demo begins with the engine, not with a single handcrafted scenario.",
-            audience_takeaway="This is a reusable platform layer, not a one-off demo.",
+            proof_point="The world opens with the engine, not with a single handcrafted scenario.",
+            audience_takeaway="This is a reusable platform layer, not a one-off workflow viewer.",
         ),
         StoryPresentationBeat(
             step=2,
@@ -1638,7 +1638,7 @@ def _build_story_presentation(
             studio_view="runs",
             operator_action="Launch or open the workflow baseline, then the comparison run, and play the timeline for a few events.",
             presenter_note=(
-                "Point out that every action lands in one event spine with graph intent, resolved tools, and snapshots. That is what makes the demo inspectable instead of magical."
+                "Point out that every action lands in one event spine with graph intent, resolved tools, and snapshots. That is what makes the world inspectable instead of magical."
             ),
             proof_point="Same runtime model for deterministic baseline and freer agent behavior.",
             audience_takeaway="This is already a serious observability surface, not just a benchmark harness.",
@@ -1660,7 +1660,7 @@ def _build_story_presentation(
             studio_view="runs",
             operator_action="Finish on Exports and tie the run outputs to RL episodes, continuous eval, and agent operations.",
             presenter_note=(
-                "Close by saying that the demo is impressive because the kernel already emits the ingredients for the next products: RL transitions, eval comparisons, and agent observability."
+                "Close by saying that this world already emits the ingredients for the next products: RL transitions, eval comparisons, and agent observability."
             ),
             proof_point="The future-platform story is a direct extension of the current artifacts, not a speculative rewrite.",
             audience_takeaway="The upside is a family of products built on one world kernel.",
@@ -1674,7 +1674,7 @@ def _build_story_presentation(
         beats=beats,
         closing_argument=(
             "The core claim is simple: VEI already behaves like a world studio for enterprises. "
-            "These demos are different instantiations of one kernel, and the same kernel is what later becomes an RL environment, a continuous eval harness, and an agent management platform."
+            "These worlds are different instantiations of one kernel, and the same kernel is what later becomes an RL environment, a continuous eval harness, and an agent management platform."
         ),
         operator_commands=[
             f"python -m vei.cli.vei project init --vertical {manifest.name} --root {demo.workspace_root}",

@@ -56,6 +56,7 @@ const state = {
   surfaceHighlights: { panels: [], refs: [] },
   surfaceHighlightExpiresAt: 0,
   surfaceHighlightTimer: null,
+  showLivingCompanyGuide: true,
   snapshots: [],
   selectedEventIndex: 0,
   selectedSnapshotFrom: null,
@@ -330,8 +331,13 @@ function toggleDeveloperMode() {
   state.developerMode = !state.developerMode;
   document.body.classList.toggle("developer-mode", state.developerMode);
   document.getElementById("developer-toggle").textContent = state.developerMode
-    ? "Hide Developer Detail"
-    : "Show Developer Detail";
+    ? "Hide Systems Detail"
+    : "Show Systems Detail";
+}
+
+function toggleLivingCompanyGuide() {
+  state.showLivingCompanyGuide = !state.showLivingCompanyGuide;
+  renderLivingCompanyGuide();
 }
 
 function jumpToStudioView(view) {
@@ -354,8 +360,8 @@ function renderPresentationPanel() {
   if (!presentation) {
     panel.innerHTML = `
       <div class="story-card story-span-2">
-        <p class="eyebrow">Presentation flow</p>
-        <p class="metric-detail">Generate or load a story bundle to get the guided presentation flow.</p>
+        <p class="eyebrow">Briefing</p>
+        <p class="metric-detail">Load this world's briefing to get the full walkthrough.</p>
       </div>
     `;
     beatsPanel.innerHTML = "";
@@ -368,22 +374,22 @@ function renderPresentationPanel() {
 
   panel.innerHTML = `
     <div class="story-card accent-card story-span-2">
-      <p class="eyebrow">Opening hook</p>
-      <h3>Lead with the kernel</h3>
+      <p class="eyebrow">What stays fixed</p>
+      <h3>The company is stable. The pressure changes.</h3>
       <p class="metric-detail">${escapeHtml(presentation.opening_hook || story.kernel_thesis || "VEI is one reusable world kernel for enterprises.")}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Demo goal</p>
-      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Show one stable company world, then vary the situation and the objective on top of the same runtime.")}</p>
+      <p class="eyebrow">Why this world exists</p>
+      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Start with one stable company world, then vary the situation and the objective on top of the same runtime.")}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Presenter setup</p>
+      <p class="eyebrow">Open the world</p>
       <div class="stack">
         ${setup.map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}
       </div>
     </div>
     <div class="story-card story-span-2">
-      <p class="eyebrow">User-facing primitives</p>
+      <p class="eyebrow">World primitives</p>
       <div class="briefing-grid">
         ${primitives
           .map(
@@ -402,7 +408,7 @@ function renderPresentationPanel() {
       </div>
     </div>
     <div class="story-card story-span-2">
-      <p class="eyebrow">Operator commands</p>
+      <p class="eyebrow">Launch commands</p>
       <div class="stack">
         ${commands.map((item) => `<pre class="code-panel">${escapeHtml(item)}</pre>`).join("")}
       </div>
@@ -420,10 +426,10 @@ function renderPresentationPanel() {
               ${chip(beat.title)}
             </div>
             <h3>${escapeHtml(beat.title)}</h3>
-            <p class="metric-detail"><strong>Show:</strong> ${escapeHtml(beat.operator_action || "")}</p>
-            <p class="metric-detail"><strong>Say:</strong> ${escapeHtml(beat.presenter_note || "")}</p>
-            <p class="metric-detail"><strong>Proves:</strong> ${escapeHtml(beat.proof_point || "")}</p>
-            <p class="metric-detail"><strong>Takeaway:</strong> ${escapeHtml(beat.audience_takeaway || "")}</p>
+            <p class="metric-detail"><strong>Do:</strong> ${escapeHtml(beat.operator_action || "")}</p>
+            <p class="metric-detail"><strong>Read it as:</strong> ${escapeHtml(beat.presenter_note || "")}</p>
+            <p class="metric-detail"><strong>Shows:</strong> ${escapeHtml(beat.proof_point || "")}</p>
+            <p class="metric-detail"><strong>Leaves behind:</strong> ${escapeHtml(beat.audience_takeaway || "")}</p>
             <button type="button" class="ghost-button presentation-jump" data-jump-view="${escapeHtml(normalizeStudioView(beat.studio_view || "presentation"))}">Jump to this beat</button>
           </div>
         </div>
@@ -442,24 +448,26 @@ function renderStudioShell() {
   const panel = document.getElementById("kernel-thesis-panel");
   const story = state.story || {};
   const presentation = state.presentation || story.presentation || {};
-  const kernelThesis =
-    story.kernel_thesis ||
-    "Same world kernel, same event spine, same contract engine, same playback system. Only the company, situation, and objective overlays change.";
   const selectedWorld = story.manifest?.company_name || state.workspace?.manifest?.title || "Workspace";
+  const companyBriefing =
+    story.company_briefing ||
+    state.workspace?.manifest?.description ||
+    "A stable company world with live tools, shared business state, and pressure building across the work.";
   panel.innerHTML = `
     <div class="story-card accent-card">
-      <p class="eyebrow">Kernel Thesis</p>
-      <h3>One runtime, many enterprise futures</h3>
-      <p class="metric-detail">${escapeHtml(presentation.opening_hook || kernelThesis)}</p>
+      <p class="eyebrow">Start Here</p>
+      <h3>This is a work crisis simulator.</h3>
+      <p class="metric-detail">Read the pressure on the right, scan the tools, then make one move and watch the company change.</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Selected Company</p>
+      <p class="eyebrow">Current Company</p>
       <h3>${escapeHtml(selectedWorld)}</h3>
-      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Use the Studio flow to move from company world to situation, objective, run, branch, outcome, and exports.")}</p>
+      <p class="metric-detail">${escapeHtml(companyBriefing)}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Platform Story</p>
-      <div class="chip-row">${(story.platform_uses || ["RL env", "continuous eval", "agent management"]).map((item) => chip(item)).join("")}</div>
+      <p class="eyebrow">What To Watch</p>
+      <div class="chip-row">${["Current tension", "Changed tools", "Next move", "Move log"].map((item) => chip(item)).join("")}</div>
+      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "The company stays fixed while the situation, the objective, and the outcome move underneath your choices.")}</p>
     </div>
   `;
   setStudioView(state.studioView);
@@ -503,9 +511,9 @@ function renderWorkspaceMetrics() {
   const latestRun = state.runs[0];
   panel.innerHTML = [
     metricTile("Workspace", manifest.title || manifest.name || "Workspace", manifest.source_kind || "template"),
-    metricTile("Scenarios", String((manifest.scenarios || []).length), `active: ${manifest.active_scenario || "default"}`),
-    metricTile("Runs", String(workspace.run_count || 0), latestRun ? `latest: ${latestRun.run_id}` : "no runs yet"),
-    metricTile("Contracts", String((workspace.compiled_scenarios || []).length), "compiled"),
+    metricTile("Situations", String((manifest.scenarios || []).length), `active: ${manifest.active_scenario || "default"}`),
+    metricTile("Paths", String(workspace.run_count || 0), latestRun ? `latest: ${latestRun.run_id}` : "none yet"),
+    metricTile("Objectives", String((workspace.compiled_scenarios || []).length), "compiled"),
   ].join("");
 }
 
@@ -517,7 +525,7 @@ function renderWorkspaceHero() {
   const manifest = workspace.manifest || {};
   const story = state.story || {};
   document.getElementById("workspace-subtitle").textContent =
-    `${manifest.description || "Workspace ready."} ${story.company_briefing ? `${story.company_briefing} ` : ""}${workspace.run_count ? `This workspace has ${workspace.run_count} recorded run${workspace.run_count === 1 ? "" : "s"}.` : "Launch a run to start building a playback history."}`;
+    `${manifest.description || "Workspace ready."} ${story.company_briefing ? `${story.company_briefing} ` : ""}${workspace.run_count ? `This company already has ${workspace.run_count} recorded path${workspace.run_count === 1 ? "" : "s"}.` : "Enter the world to start building a history of decisions and outcomes."}`;
   renderWorkspaceMetrics();
   renderStudioShell();
   renderWorldsPanel();
@@ -560,7 +568,7 @@ function renderWorldsPanel() {
             <h3>${escapeHtml(item.company_name)}</h3>
             <p class="metric-detail">${escapeHtml(item.company_briefing || item.description || "")}</p>
             <div class="chip-row">
-              ${item.name === currentWorldName ? chip("active world", "ok") : chip("same kernel")}
+              ${item.name === currentWorldName ? chip("current company", "ok") : chip("another company")}
               ${(item.key_surfaces || []).slice(0, 3).map((surface) => chip(formatDomainTitle(surface))).join("")}
             </div>
           </div>
@@ -618,7 +626,7 @@ function renderMissionSelector() {
         ${detailTile("World", state.workspace?.manifest?.title || state.playableBundle?.world_name || "workspace")}
         ${detailTile("Mission", currentMission.title || currentMission.mission_name)}
         ${detailTile("Objective", selectedObjective || "default")}
-        ${detailTile("Play status", state.missionState?.status || "ready")}
+        ${detailTile("State", state.missionState?.status || "ready")}
       </div>
     `
     : `<p class="metric-detail">This workspace is not using a playable world pack yet.</p>`;
@@ -640,7 +648,7 @@ function renderMissionSummary() {
     briefing.innerHTML = `
       <div class="story-card story-span-2">
         <p class="eyebrow">Mission</p>
-        <p class="metric-detail">Prepare a playable workspace to turn this company into a mission-driven world.</p>
+        <p class="metric-detail">Prepare the company world to explore a situation inside it.</p>
       </div>
     `;
     catalog.innerHTML = "";
@@ -652,7 +660,7 @@ function renderMissionSummary() {
       <h3>${escapeHtml(currentMission.title)}</h3>
       <p class="metric-detail">${escapeHtml(currentMission.briefing || "")}</p>
       <div class="chip-row">
-        ${chip(currentMission.hero ? "hero world" : "supporting world", currentMission.hero ? "ok" : "")}
+        ${chip(currentMission.hero ? "primary company" : "included company", currentMission.hero ? "ok" : "")}
         ${chip(currentMission.primary_domain || "world")}
         ${(currentMission.branch_labels || []).map((item) => chip(item)).join("")}
       </div>
@@ -672,7 +680,7 @@ function renderMissionSummary() {
         <div class="run-item ${item.mission_name === currentMission.mission_name ? "active" : ""}">
           <div class="chip-row">
             ${chip(item.mission_name)}
-            ${item.hero ? chip("hero", "ok") : chip("included")}
+            ${item.hero ? chip("primary", "ok") : chip("included")}
           </div>
           <h3>${escapeHtml(item.title)}</h3>
           <p class="metric-detail">${escapeHtml(item.briefing || "")}</p>
@@ -694,8 +702,43 @@ function renderMissionSummary() {
 }
 
 function renderLivingCompanyView() {
+  renderLivingCompanyGuide();
   renderSurfaceWall();
   renderLivingCompanyRail();
+}
+
+function renderLivingCompanyGuide() {
+  const panel = document.getElementById("living-company-guide");
+  const toggle = document.getElementById("living-company-guide-toggle");
+  if (!panel || !toggle) {
+    return;
+  }
+  toggle.textContent = state.showLivingCompanyGuide ? "Hide Quick Guide" : "Show Quick Guide";
+  if (!state.showLivingCompanyGuide) {
+    panel.innerHTML = "";
+    panel.classList.add("hidden-panel");
+    return;
+  }
+  panel.classList.remove("hidden-panel");
+  panel.innerHTML = `
+    <div class="living-company-guide-card">
+      <div>
+        <p class="eyebrow">How to read this world</p>
+        <h3>One move changes the company.</h3>
+        <p class="metric-detail">Problem → evidence → choice → consequence.</p>
+      </div>
+      <button type="button" class="ghost-button living-company-guide-dismiss">Got it</button>
+      <div class="living-company-guide-steps">
+        <p><strong>1.</strong> Start on the right. It tells you what is going wrong, what success means, and what your next move will touch.</p>
+        <p><strong>2.</strong> Scan the tools. Chat, email, tracker, docs, approvals, and the business core show the same company from different angles.</p>
+        <p><strong>3.</strong> Play one move below. The changed tools light up and the move log records exactly what happened.</p>
+      </div>
+    </div>
+  `;
+  panel.querySelector(".living-company-guide-dismiss")?.addEventListener("click", () => {
+    state.showLivingCompanyGuide = false;
+    renderLivingCompanyGuide();
+  });
 }
 
 function renderSurfaceWall() {
@@ -712,7 +755,7 @@ function renderSurfaceWall() {
         <h3>${loadingRun ? "Bringing the software wall into focus" : "Enter a world to see the software wall"}</h3>
         <p class="metric-detail">${
           loadingRun
-            ? "VEI is loading the latest run snapshot so the company tools can appear here."
+            ? "Loading the latest company state so the tools can appear here."
             : "Slack, email, tickets, docs, approvals, and the vertical business system will appear here once a run is active."
         }</p>
       </div>
@@ -817,12 +860,12 @@ function renderLivingCompanyRail() {
       }
     </div>
     <div class="story-card">
-      <p class="eyebrow">Kernel proof</p>
+      <p class="eyebrow">State pulse</p>
       <div class="detail-grid">
-        ${detailTile("Events", String((state.timeline || []).length))}
-        ${detailTile("Snapshots", String((state.snapshots || []).length))}
-        ${detailTile("Changed panels", String(changedCount))}
-        ${detailTile("Latest tool", latestToolEvent?.resolved_tool || latestToolEvent?.graph_intent || "waiting")}
+        ${detailTile("Moves", String((missionState?.executed_moves || []).length))}
+        ${detailTile("Changed tools", String(changedCount))}
+        ${detailTile("Latest action", latestToolEvent?.resolved_tool || latestToolEvent?.graph_intent || "waiting")}
+        ${detailTile("Systems", String((surfaceState?.panels || []).length))}
       </div>
       <div class="chip-row">
         ${uniqueStrings((surfaceState?.panels || []).map((item) => formatSurfaceTitle(item.surface)))
@@ -896,7 +939,7 @@ function renderMissionPlay() {
     scorecard.innerHTML = `
       <div class="story-card story-span-2">
         <p class="eyebrow">Play</p>
-        <p class="metric-detail">Choose a mission and enter the world to start a human branch on the same kernel and event spine.</p>
+        <p class="metric-detail">Choose a situation and enter the world to begin making moves inside the company.</p>
       </div>
     `;
     panel.innerHTML = "";
@@ -978,8 +1021,8 @@ function renderMissionPlay() {
   });
   status.textContent =
     missionState.status === "completed"
-      ? "Mission finished. Branch it, inspect results, or switch to a new mission."
-      : "Play a move, branch, or finish the mission. The automated baseline and comparison runs are already recorded for contrast.";
+      ? "Mission finished. Branch it, inspect the outcome, or switch to a new situation."
+      : "Play a move, branch the situation, or finish the run.";
   renderMoveLog();
   renderJson("mission-state-panel", missionState);
   renderLivingCompanyView();
@@ -2387,6 +2430,7 @@ function bindControls() {
     });
   });
   document.getElementById("developer-toggle").addEventListener("click", toggleDeveloperMode);
+  document.getElementById("living-company-guide-toggle").addEventListener("click", toggleLivingCompanyGuide);
   document.getElementById("scenario-select").addEventListener("change", (event) => {
     void loadScenario(event.target.value);
   });

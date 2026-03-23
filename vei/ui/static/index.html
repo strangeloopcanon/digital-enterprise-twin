@@ -25,8 +25,8 @@
 
         <aside class="launch-panel studio-run-launch">
           <div class="panel-heading">
-            <p class="eyebrow">Mission Control</p>
-            <h2>Choose a world, mission, and objective</h2>
+            <p class="eyebrow">World State</p>
+            <h2>Choose the situation, what success means, and your next move</h2>
           </div>
           <div class="run-form">
             <label>
@@ -44,7 +44,7 @@
               <button id="finish-mission-button" type="button" class="ghost-button">Finish Mission</button>
             </div>
             <p id="mission-form-status" class="form-status span-2">
-              The player path uses the same kernel, event spine, contracts, and playback system as the automated runs.
+              Every move changes the same company state, so chat, email, tickets, docs, approvals, and the business core stay in sync.
             </p>
           </div>
           <details class="developer-only">
@@ -101,11 +101,11 @@
       <section class="card studio-shell-card">
         <div class="section-header">
           <div>
-            <p class="eyebrow">Studio Flow</p>
-            <h2>Company → Situation → Objective → Run → Branch → Outcome → Exports</h2>
+            <p class="eyebrow">How To Read This World</p>
+            <h2>Problem → evidence → choice → consequence</h2>
           </div>
           <button id="developer-toggle" type="button" class="ghost-button developer-toggle">
-            Show Developer Detail
+            Show Systems Detail
           </button>
         </div>
         <div id="kernel-thesis-panel" class="studio-banner"></div>
@@ -116,7 +116,7 @@
           <button type="button" class="studio-nav-button" data-studio-view="objectives">3. Objective</button>
           <button type="button" class="studio-nav-button" data-studio-view="results">4. Results</button>
           <button type="button" class="studio-nav-button" data-studio-view="exports">5. Exports</button>
-          <button type="button" class="studio-nav-button" data-studio-view="presentation">6. Story</button>
+          <button type="button" class="studio-nav-button" data-studio-view="presentation">6. Briefing</button>
         </div>
       </section>
 
@@ -127,7 +127,11 @@
               <p class="eyebrow">Living Company</p>
               <h2>Watch the tools, then watch the business change</h2>
             </div>
+            <button id="living-company-guide-toggle" type="button" class="ghost-button">
+              Hide Quick Guide
+            </button>
           </div>
+          <div id="living-company-guide" class="living-company-guide"></div>
           <div class="living-company-layout">
             <div>
               <div id="living-company-surface-wall" class="surface-wall"></div>
@@ -139,8 +143,8 @@
         <section class="card briefing-card" data-studio-view="presentation">
           <div class="section-header">
             <div>
-              <p class="eyebrow">Presentation</p>
-              <h2>The guided presentation flow</h2>
+              <p class="eyebrow">Briefing</p>
+              <h2>How this world is set up</h2>
             </div>
           </div>
           <div id="presentation-panel" class="briefing-grid"></div>

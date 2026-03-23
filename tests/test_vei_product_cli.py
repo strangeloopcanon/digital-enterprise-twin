@@ -637,8 +637,8 @@ def test_product_cli_story_showcase_builds_narrative_bundle(tmp_path: Path) -> N
     presentation_guide = (story_root / "presentation_guide.md").read_text(
         encoding="utf-8"
     )
-    assert "VEI Presentation Guide" in presentation_guide
-    assert "Presentation Flow" in presentation_guide
+    assert "VEI World Briefing Guide" in presentation_guide
+    assert "Walkthrough Flow" in presentation_guide
     exports_preview = json.loads(
         (story_root / "exports_preview.json").read_text(encoding="utf-8")
     )
