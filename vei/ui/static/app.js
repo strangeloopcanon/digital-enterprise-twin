@@ -516,7 +516,9 @@ function renderWorkspaceHero() {
   }
   const manifest = workspace.manifest || {};
   const story = state.story || {};
-  document.getElementById("workspace-subtitle").textContent =
+  const subtitle = document.getElementById("workspace-subtitle");
+  subtitle.classList.remove("loading-pulse");
+  subtitle.textContent =
     `${manifest.description || "Workspace ready."} ${story.company_briefing ? `${story.company_briefing} ` : ""}${workspace.run_count ? `This company already has ${workspace.run_count} recorded path${workspace.run_count === 1 ? "" : "s"}.` : "Enter the world to start building a history of decisions and outcomes."}`;
   renderWorkspaceMetrics();
   renderStudioShell();
@@ -763,7 +765,7 @@ function renderSurfaceWall() {
       return `
         <article
           class="surface-panel surface-panel-${escapeHtml(surfacePanel.kind)} ${changed ? "surface-changed" : ""}"
-          style="--panel-accent:${escapeHtml(surfacePanel.accent || "#1e6cf2")}"
+          ${surfacePanel.accent ? `style="--panel-accent:${escapeHtml(surfacePanel.accent)}"` : ""}
         >
           <header class="surface-panel-header">
             <div>

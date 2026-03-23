@@ -13,6 +13,13 @@
   --border: rgba(17, 34, 53, 0.12);
   --shadow: 0 24px 70px rgba(17, 34, 53, 0.12);
   --surface-highlight-duration: 2.6s;
+
+  --surface-slack: #36c5f0;
+  --surface-mail: #ffb454;
+  --surface-tickets: #ff6d5e;
+  --surface-docs: #1aa88d;
+  --surface-approvals: #9b7bff;
+  --surface-heartbeat: #17324a;
 }
 
 * {
@@ -1180,4 +1187,103 @@ body.developer-mode .developer-only {
   .living-company-guide-card {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- Gradient text in hero --- */
+.gradient-word {
+  background: linear-gradient(135deg, var(--accent-bright) 0%, var(--accent-teal) 50%, var(--accent-bright) 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* --- Loading pulse for subtitle --- */
+.loading-pulse {
+  animation: loadPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes loadPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* --- Card entry animations --- */
+.hero-copy,
+.launch-panel {
+  animation: cardEnter 0.6s ease both;
+}
+
+.launch-panel {
+  animation-delay: 0.1s;
+}
+
+.studio-shell-card {
+  animation: cardEnter 0.5s ease both;
+  animation-delay: 0.15s;
+}
+
+.card[data-studio-view] {
+  animation: cardEnter 0.5s ease both;
+  animation-delay: 0.2s;
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Per-surface-type accent colors --- */
+.surface-panel-chat {
+  --panel-accent: var(--surface-slack);
+}
+
+.surface-panel-mail {
+  --panel-accent: var(--surface-mail);
+}
+
+.surface-panel-queue {
+  --panel-accent: var(--surface-tickets);
+}
+
+.surface-panel-document {
+  --panel-accent: var(--surface-docs);
+}
+
+.surface-panel-approval {
+  --panel-accent: var(--surface-approvals);
+}
+
+.surface-panel-vertical_heartbeat {
+  --panel-accent: var(--surface-heartbeat);
+}
+
+/* --- Dark playback stage grid overlay --- */
+.playback-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.playback-stage > * {
+  position: relative;
+  z-index: 1;
 }
