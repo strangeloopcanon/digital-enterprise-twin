@@ -815,7 +815,7 @@ function renderLivingCompanyRail() {
     <div class="story-card accent-card">
       <p class="eyebrow">Current tension</p>
       <h3>${escapeHtml(surfaceState?.company_name || state.story?.manifest?.company_name || state.workspace?.manifest?.title || "Company")}</h3>
-      <p class="metric-detail">${escapeHtml(surfaceState?.current_tension || mission?.briefing || "Choose a crisis above to bring the company under pressure.")}</p>
+      <p class="metric-detail">${escapeHtml(mission?.briefing || surfaceState?.current_tension || "Choose a crisis above to bring the company under pressure.")}</p>
     </div>
     <div class="story-card">
       <p class="eyebrow">Situation</p>
@@ -2161,9 +2161,11 @@ async function startMission() {
     });
     state.missionState = payload;
     await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
     if (payload.run_id) {
       await selectRun(payload.run_id, { previousSurfaceState: null });
     }
+    renderMissionPlay();
     status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
     setStudioView("company");
   } catch (error) {
@@ -2187,6 +2189,7 @@ async function applyMissionMove(moveId) {
     );
     state.missionState = payload;
     await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
     await selectRun(payload.run_id, { previousSurfaceState });
     status.textContent = payload.status === "completed"
       ? "Mission completed. Inspect the results or branch the run."
@@ -2210,6 +2213,7 @@ async function branchMission() {
     });
     state.missionState = payload;
     await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
     await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
     status.textContent = `Branch ${payload.branch_name} is live.`;
     setStudioView("outcome");
@@ -2230,6 +2234,7 @@ async function finishMission() {
     });
     state.missionState = payload;
     await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
     await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
     status.textContent = payload.scorecard?.mission_success
       ? "Mission finished cleanly."

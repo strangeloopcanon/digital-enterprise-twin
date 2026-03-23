@@ -794,6 +794,12 @@ body.developer-mode .studio-nav-button.developer-only {
   box-shadow: 0 14px 32px rgba(26, 168, 141, 0.1);
 }
 
+.run-item h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-item button,
 .snapshot-item button {
   margin-top: 12px;
@@ -871,6 +877,14 @@ body.developer-mode .studio-nav-button.developer-only {
   padding: 12px 14px;
   border-radius: 16px;
   background: rgba(17, 34, 53, 0.05);
+  overflow: hidden;
+}
+
+.detail-tile span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-tile strong {
