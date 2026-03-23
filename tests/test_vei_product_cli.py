@@ -169,6 +169,18 @@ def test_product_cli_rejects_bc_runner_without_model(tmp_path: Path) -> None:
     assert "bc runner requires bc_model_path" in run_result.output
 
 
+def test_product_cli_exposes_context_and_synthesize_commands() -> None:
+    runner = typer.testing.CliRunner()
+
+    context_result = runner.invoke(app, ["context", "--help"])
+    assert context_result.exit_code == 0, context_result.output
+    assert "Capture live context from enterprise systems." in context_result.output
+
+    synthesize_result = runner.invoke(app, ["synthesize", "--help"])
+    assert synthesize_result.exit_code == 0, synthesize_result.output
+    assert "Generate training data from completed runs." in synthesize_result.output
+
+
 def test_standalone_vei_ui_main_accepts_serve_alias(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -637,8 +649,8 @@ def test_product_cli_story_showcase_builds_narrative_bundle(tmp_path: Path) -> N
     presentation_guide = (story_root / "presentation_guide.md").read_text(
         encoding="utf-8"
     )
-    assert "VEI Presentation Guide" in presentation_guide
-    assert "Presentation Flow" in presentation_guide
+    assert "VEI World Briefing Guide" in presentation_guide
+    assert "Walkthrough Flow" in presentation_guide
     exports_preview = json.loads(
         (story_root / "exports_preview.json").read_text(encoding="utf-8")
     )
@@ -651,3 +663,106 @@ def test_product_cli_story_showcase_builds_narrative_bundle(tmp_path: Path) -> N
         (story_root / "presentation_manifest.json").read_text(encoding="utf-8")
     )
     assert len(presentation_manifest["beats"]) == 7
+
+
+def test_product_cli_prepares_playable_world_and_exports(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    root = tmp_path / "playable-studio"
+
+    studio_result = runner.invoke(
+        app,
+        [
+            "studio",
+            "play",
+            "--root",
+            str(root),
+            "--world",
+            "real_estate_management",
+            "--mission",
+            "tenant_opening_conflict",
+            "--no-serve",
+        ],
+    )
+    assert studio_result.exit_code == 0, studio_result.output
+    studio_payload = json.loads(studio_result.output)
+    assert studio_payload["mission"] == "tenant_opening_conflict"
+    run_id = studio_payload["run_id"]
+    assert (root / "playable_manifest.json").exists()
+    assert (root / "playable_overview.md").exists()
+    assert (root / "fidelity_report.json").exists()
+
+    fidelity_result = runner.invoke(
+        app,
+        ["inspect", "fidelity", "--root", str(root), "--surface", "slack"],
+    )
+    assert fidelity_result.exit_code == 0, fidelity_result.output
+    fidelity_payload = json.loads(fidelity_result.output)
+    assert len(fidelity_payload["cases"]) == 1
+    assert fidelity_payload["cases"][0]["surface"] == "slack"
+
+    export_result = runner.invoke(
+        app,
+        [
+            "export",
+            "mission-run",
+            "--root",
+            str(root),
+            "--run-id",
+            run_id,
+            "--format",
+            "rl",
+        ],
+    )
+    assert export_result.exit_code == 0, export_result.output
+    export_payload = json.loads(export_result.output)
+    assert export_payload["name"] == "rl"
+
+
+def test_product_cli_rejects_unknown_playable_world(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    root = tmp_path / "playable-invalid"
+
+    result = runner.invoke(
+        app,
+        [
+            "studio",
+            "play",
+            "--root",
+            str(root),
+            "--world",
+            "not_a_world",
+            "--no-serve",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "unknown playable world" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_product_cli_playable_showcase_builds_publishable_bundle(
+    tmp_path: Path,
+) -> None:
+    runner = typer.testing.CliRunner()
+    root = tmp_path / "playable-showcase"
+
+    result = runner.invoke(
+        app,
+        [
+            "showcase",
+            "playable",
+            "--root",
+            str(root),
+            "--run-id",
+            "playable_release",
+            "--vertical",
+            "real_estate_management",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["run_id"] == "playable_release"
+    assert len(payload["worlds"]) == 1
+    bundle_root = root / "playable_release"
+    assert (bundle_root / "playable_showcase_result.json").exists()
+    assert (bundle_root / "playable_showcase_overview.md").exists()

@@ -10,7 +10,27 @@ from vei.capability_graph.models import (
     CapabilityGraphPlan,
     RuntimeCapabilityGraphs,
 )
+from vei.fidelity import (
+    TwinFidelityReport,
+    get_or_build_workspace_fidelity_report as _get_or_build_workspace_fidelity_report,
+)
 from vei.orientation.models import WorldOrientation
+from vei.playable import (
+    MissionCatalog,
+    MissionSessionState,
+    PlayableMissionSpec,
+    PlayableShowcaseResult,
+    activate_workspace_playable_mission as _activate_workspace_playable_mission,
+    build_playable_mission_catalog as _build_playable_mission_catalog,
+    export_mission_run as _export_mission_run,
+    get_playable_mission as _get_playable_mission,
+    list_playable_missions as _list_playable_missions,
+    list_workspace_playable_missions as _list_workspace_playable_missions,
+    load_workspace_mission_state as _load_workspace_mission_state,
+    prepare_playable_workspace as _prepare_playable_workspace,
+    run_playable_showcase as _run_playable_showcase,
+    start_workspace_mission_run as _start_workspace_mission_run,
+)
 from vei.blueprint.api import (
     build_blueprint_asset_for_example as _build_blueprint_asset_for_example,
     build_blueprint_asset_for_family as _build_blueprint_asset_for_family,
@@ -973,6 +993,125 @@ def bootstrap_workspace_contract_entry(
 
 def list_workspace_runs_entry(root: str) -> list[WorkspaceRunEntry]:
     return _list_workspace_runs(root)
+
+
+def build_playable_mission_catalog_entry() -> MissionCatalog:
+    return _build_playable_mission_catalog()
+
+
+def list_playable_missions_entry(
+    vertical_name: str | None = None,
+) -> list[PlayableMissionSpec]:
+    return _list_playable_missions(vertical_name)
+
+
+def get_playable_mission_entry(
+    vertical_name: str,
+    mission_name: str,
+) -> PlayableMissionSpec:
+    return _get_playable_mission(vertical_name, mission_name)
+
+
+def list_workspace_playable_missions_entry(root: str) -> list[PlayableMissionSpec]:
+    return _list_workspace_playable_missions(root)
+
+
+def activate_workspace_playable_mission_entry(
+    root: str,
+    mission_name: str,
+    *,
+    objective_variant: str | None = None,
+) -> Dict[str, Any]:
+    return _activate_workspace_playable_mission(
+        root,
+        mission_name,
+        objective_variant=objective_variant,
+    )
+
+
+def start_workspace_mission_run_entry(
+    root: str,
+    *,
+    mission_name: str,
+    objective_variant: str | None = None,
+    run_id: str | None = None,
+    seed: int = 42042,
+) -> MissionSessionState:
+    return _start_workspace_mission_run(
+        root,
+        mission_name=mission_name,
+        objective_variant=objective_variant,
+        run_id=run_id,
+        seed=seed,
+    )
+
+
+def load_workspace_mission_state_entry(
+    root: str,
+    run_id: str | None = None,
+) -> MissionSessionState | None:
+    return _load_workspace_mission_state(root, run_id)
+
+
+def prepare_playable_workspace_entry(
+    root: str,
+    *,
+    world: str,
+    mission: str | None = None,
+    objective: str | None = None,
+    compare_runner: str = "scripted",
+    overwrite: bool = True,
+    seed: int = 42042,
+    max_steps: int = 18,
+) -> MissionSessionState:
+    return _prepare_playable_workspace(
+        root,
+        world=world,
+        mission=mission,
+        objective=objective,
+        compare_runner=compare_runner,
+        overwrite=overwrite,
+        seed=seed,
+        max_steps=max_steps,
+    )
+
+
+def export_mission_run_entry(
+    root: str,
+    *,
+    run_id: str,
+    export_format: str,
+) -> Dict[str, Any]:
+    return _export_mission_run(root, run_id=run_id, export_format=export_format)
+
+
+def run_playable_showcase_entry(
+    root: str,
+    *,
+    world_names: list[str] | None = None,
+    mission_name: str | None = None,
+    objective_variant: str | None = None,
+    compare_runner: str = "scripted",
+    run_id: str = "playable_showcase",
+    overwrite: bool = True,
+    seed: int = 42042,
+    max_steps: int = 18,
+) -> PlayableShowcaseResult:
+    return _run_playable_showcase(
+        root,
+        world_names=world_names,
+        mission_name=mission_name,
+        objective_variant=objective_variant,
+        compare_runner=compare_runner,
+        run_id=run_id,
+        overwrite=overwrite,
+        seed=seed,
+        max_steps=max_steps,
+    )
+
+
+def get_workspace_fidelity_report_entry(root: str) -> TwinFidelityReport:
+    return _get_or_build_workspace_fidelity_report(root)
 
 
 def launch_workspace_run_entry(

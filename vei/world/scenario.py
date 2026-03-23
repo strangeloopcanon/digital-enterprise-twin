@@ -153,6 +153,7 @@ class Scenario:
 
     # Mail configuration
     vendor_reply_variants: Optional[List[str]] = None
+    mail_threads: Optional[List[Dict[str, Any]]] = None
 
     # Browser configuration
     browser_nodes: Optional[Dict[str, dict]] = None

@@ -68,6 +68,22 @@ class BlueprintSlackChannelAsset(BaseModel):
     unread: int = 0
 
 
+class BlueprintMailMessageAsset(BaseModel):
+    from_address: str
+    to_address: str
+    subject: str
+    body_text: str
+    unread: bool = True
+    time_ms: Optional[int] = None
+
+
+class BlueprintMailThreadAsset(BaseModel):
+    thread_id: str
+    title: Optional[str] = None
+    category: str = "external"
+    messages: List[BlueprintMailMessageAsset] = Field(default_factory=list)
+
+
 class BlueprintDocumentAsset(BaseModel):
     doc_id: str
     title: str
@@ -330,6 +346,7 @@ class BlueprintEnvironmentAsset(BaseModel):
     scenario_brief: Optional[str] = None
     slack_initial_message: Optional[str] = None
     slack_channels: List[BlueprintSlackChannelAsset] = Field(default_factory=list)
+    mail_threads: List[BlueprintMailThreadAsset] = Field(default_factory=list)
     documents: List[BlueprintDocumentAsset] = Field(default_factory=list)
     tickets: List[BlueprintTicketAsset] = Field(default_factory=list)
     identity_users: List[BlueprintIdentityUserAsset] = Field(default_factory=list)
@@ -362,6 +379,7 @@ class BlueprintEnvironmentSummary(BaseModel):
     hris_employee_count: int = 0
     crm_deal_count: int = 0
     slack_channel_count: int = 0
+    mail_thread_count: int = 0
     property_count: int = 0
     unit_count: int = 0
     lease_count: int = 0
@@ -388,6 +406,7 @@ class BlueprintIdentityPolicyAsset(BaseModel):
 class BlueprintCommGraphAsset(BaseModel):
     slack_initial_message: Optional[str] = None
     slack_channels: List[BlueprintSlackChannelAsset] = Field(default_factory=list)
+    mail_threads: List[BlueprintMailThreadAsset] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 

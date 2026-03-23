@@ -11,12 +11,28 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from vei.fidelity import get_or_build_workspace_fidelity_report
+from vei.playable import (
+    activate_workspace_playable_mission,
+    apply_workspace_mission_move,
+    branch_workspace_mission_run,
+    build_mission_run_exports,
+    export_mission_run,
+    finish_workspace_mission_run,
+    list_workspace_playable_missions,
+    load_workspace_mission_state,
+    load_workspace_playable_bundle,
+    start_workspace_mission_run,
+)
 from vei.run.api import (
     build_run_timeline,
     diff_run_snapshots,
     generate_run_id,
     get_run_capability_graphs,
     get_run_orientation,
+    get_run_surface_state,
+    get_workspace_run_dir,
+    get_workspace_run_manifest_path,
     launch_workspace_run,
     list_run_manifests,
     list_run_snapshots,
@@ -73,13 +89,27 @@ class ContractActivateRequest(BaseModel):
     variant: str
 
 
+class MissionActivateRequest(BaseModel):
+    mission_name: str
+    objective_variant: str | None = None
+
+
+class MissionStartRequest(BaseModel):
+    mission_name: str | None = None
+    objective_variant: str | None = None
+    run_id: str | None = None
+    seed: int = 42042
+
+
+class MissionBranchRequest(BaseModel):
+    branch_name: str | None = None
+
+
 def create_ui_app(workspace_root: str | Path) -> FastAPI:
     root = Path(workspace_root).expanduser().resolve()
     static_dir = Path(__file__).with_name("static")
     app = FastAPI(title="VEI UI", version=vei_version)
     app.state.workspace_root = root
-    app.state.active_runs = set()
-
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     @app.get("/")
@@ -112,6 +142,119 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     def api_presentation() -> JSONResponse:
         payload = load_workspace_presentation(root)
         return JSONResponse(payload.model_dump(mode="json") if payload else {})
+
+    @app.get("/api/playable")
+    def api_playable() -> JSONResponse:
+        payload = load_workspace_playable_bundle(root)
+        return JSONResponse(payload or {})
+
+    @app.get("/api/fidelity")
+    def api_fidelity() -> JSONResponse:
+        try:
+            payload = get_or_build_workspace_fidelity_report(root)
+        except ValueError:
+            return JSONResponse({})
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/missions")
+    def api_missions() -> JSONResponse:
+        return JSONResponse(
+            [
+                item.model_dump(mode="json")
+                for item in list_workspace_playable_missions(root)
+            ]
+        )
+
+    @app.post("/api/missions/activate")
+    def api_activate_mission(request: MissionActivateRequest) -> JSONResponse:
+        try:
+            payload = activate_workspace_playable_mission(
+                root,
+                request.mission_name,
+                objective_variant=request.objective_variant,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload)
+
+    @app.get("/api/missions/state")
+    def api_mission_state(run_id: str | None = None) -> JSONResponse:
+        if run_id is None:
+            bundle = load_workspace_playable_bundle(root)
+            if bundle is not None and not bundle.get("run_id"):
+                return JSONResponse({})
+        payload = load_workspace_mission_state(root, run_id)
+        return JSONResponse(payload.model_dump(mode="json") if payload else {})
+
+    @app.post("/api/missions/start")
+    def api_start_mission(request: MissionStartRequest) -> JSONResponse:
+        try:
+            mission_name = request.mission_name
+            if mission_name is None:
+                missions = list_workspace_playable_missions(root)
+                if not missions:
+                    raise ValueError("playable missions require a vertical workspace")
+                mission_name = missions[0].mission_name
+            payload = start_workspace_mission_run(
+                root,
+                mission_name=mission_name,
+                objective_variant=request.objective_variant,
+                run_id=request.run_id,
+                seed=request.seed,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/moves/{move_id}")
+    def api_apply_mission_move(run_id: str, move_id: str) -> JSONResponse:
+        try:
+            payload = apply_workspace_mission_move(root, run_id=run_id, move_id=move_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/branch")
+    def api_branch_mission_run(
+        run_id: str,
+        request: MissionBranchRequest,
+    ) -> JSONResponse:
+        try:
+            payload = branch_workspace_mission_run(
+                root,
+                run_id=run_id,
+                branch_name=request.branch_name,
+            )
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/missions/{run_id}/finish")
+    def api_finish_mission_run(run_id: str) -> JSONResponse:
+        try:
+            payload = finish_workspace_mission_run(root, run_id=run_id)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/missions/{run_id}/exports")
+    def api_mission_exports(run_id: str) -> JSONResponse:
+        state = load_workspace_mission_state(root, run_id)
+        if state is None:
+            raise HTTPException(status_code=404, detail="mission run not found")
+        payload = [
+            item.model_dump(mode="json")
+            for item in build_mission_run_exports(root, state)
+        ]
+        return JSONResponse(payload)
+
+    @app.get("/api/missions/{run_id}/exports/{export_name}")
+    def api_mission_export(run_id: str, export_name: str) -> JSONResponse:
+        try:
+            payload = export_mission_run(root, run_id=run_id, export_format=export_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload)
 
     @app.get("/api/imports/summary")
     def api_import_summary() -> JSONResponse:
@@ -242,7 +385,7 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         resolved_run_id = launch.run_id or generate_run_id()
-        if (root / "runs" / resolved_run_id).exists():
+        if get_workspace_run_dir(root, resolved_run_id).exists():
             raise HTTPException(status_code=409, detail="run_id already exists")
 
         if normalized_runner == "llm" and not launch.model:
@@ -251,23 +394,19 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
             raise HTTPException(status_code=400, detail="bc runner requires bc_model")
 
         def _worker() -> None:
-            app.state.active_runs.add(resolved_run_id)
-            try:
-                launch_workspace_run(
-                    root,
-                    runner=normalized_runner,
-                    scenario_name=launch.scenario_name,
-                    run_id=resolved_run_id,
-                    seed=launch.seed,
-                    branch=launch.branch,
-                    model=launch.model,
-                    provider=launch.provider,
-                    bc_model_path=launch.bc_model,
-                    task=launch.task,
-                    max_steps=launch.max_steps,
-                )
-            finally:
-                app.state.active_runs.discard(resolved_run_id)
+            launch_workspace_run(
+                root,
+                runner=normalized_runner,
+                scenario_name=launch.scenario_name,
+                run_id=resolved_run_id,
+                seed=launch.seed,
+                branch=launch.branch,
+                model=launch.model,
+                provider=launch.provider,
+                bc_model_path=launch.bc_model,
+                task=launch.task,
+                max_steps=launch.max_steps,
+            )
 
         Thread(target=_worker, daemon=True).start()
         return JSONResponse(
@@ -276,7 +415,7 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
 
     @app.get("/api/runs/{run_id}")
     def api_run(run_id: str) -> JSONResponse:
-        path = root / "runs" / run_id / "run_manifest.json"
+        path = get_workspace_run_manifest_path(root, run_id)
         if not path.exists():
             raise HTTPException(status_code=404, detail="run not found")
         return JSONResponse(load_run_manifest(path).model_dump(mode="json"))
@@ -299,6 +438,14 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     @app.get("/api/runs/{run_id}/graphs")
     def api_run_graphs(run_id: str) -> JSONResponse:
         return JSONResponse(get_run_capability_graphs(root, run_id))
+
+    @app.get("/api/runs/{run_id}/surfaces")
+    def api_run_surfaces(run_id: str) -> JSONResponse:
+        try:
+            payload = get_run_surface_state(root, run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
 
     @app.get("/api/runs/{run_id}/snapshots")
     def api_run_snapshots(run_id: str) -> JSONResponse:
@@ -332,7 +479,7 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
 
     @app.get("/api/runs/{run_id}/stream")
     async def api_run_stream(run_id: str) -> StreamingResponse:
-        manifest_path = root / "runs" / run_id / "run_manifest.json"
+        manifest_path = get_workspace_run_manifest_path(root, run_id)
 
         async def event_iter():
             last_payload = None

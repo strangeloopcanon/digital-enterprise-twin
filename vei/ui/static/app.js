@@ -29,6 +29,10 @@ const state = {
   workspace: null,
   story: null,
   presentation: null,
+  playableBundle: null,
+  missions: [],
+  missionState: null,
+  fidelityReport: null,
   exportsPreview: [],
   scenarios: [],
   scenarioPreview: null,
@@ -48,11 +52,15 @@ const state = {
   timeline: [],
   orientation: null,
   graphs: null,
+  surfaceState: null,
+  surfaceHighlights: { panels: [], refs: [] },
+  surfaceHighlightExpiresAt: 0,
+  surfaceHighlightTimer: null,
   snapshots: [],
   selectedEventIndex: 0,
   selectedSnapshotFrom: null,
   selectedSnapshotTo: null,
-  studioView: "presentation",
+  studioView: "company",
   developerMode: false,
   playbackTimer: null,
   eventSource: null,
@@ -73,6 +81,16 @@ async function fetchStoryArtifacts() {
     getJson("/api/presentation").catch(() => null),
   ]);
   return { story, exportsPreview, presentation };
+}
+
+async function fetchPlayableArtifacts() {
+  const [playableBundle, missions, missionState, fidelityReport] = await Promise.all([
+    getJson("/api/playable").catch(() => null),
+    getJson("/api/missions").catch(() => []),
+    getJson("/api/missions/state").catch(() => null),
+    getJson("/api/fidelity").catch(() => null),
+  ]);
+  return { playableBundle, missions, missionState, fidelityReport };
 }
 
 function renderJson(id, payload) {
@@ -114,13 +132,28 @@ function formatMs(value) {
 
 function statusClass(value) {
   const normalized = String(value || "").toLowerCase();
-  if (["ok", "true", "passed", "success"].includes(normalized)) {
+  if (["ok", "true", "passed", "success", "approved", "ready", "fresh"].includes(normalized)) {
     return "ok";
   }
-  if (["error", "failed", "false"].includes(normalized)) {
+  if (["error", "failed", "false", "critical", "blocked"].includes(normalized)) {
     return "error";
   }
-  if (["running", "queued"].includes(normalized)) {
+  if (
+    [
+      "running",
+      "queued",
+      "warning",
+      "attention",
+      "open",
+      "in_progress",
+      "review",
+      "pending",
+      "pending_approval",
+      "scheduled",
+      "draft",
+      "stale",
+    ].includes(normalized)
+  ) {
     return "running";
   }
   return "";
@@ -195,17 +228,97 @@ function formatDomainTitle(domain) {
   return GRAPH_TITLES[domain] || domain.replaceAll("_", " ");
 }
 
+const SURFACE_TITLES = {
+  slack: "Slack",
+  mail: "Email",
+  tickets: "Work Tracker",
+  docs: "Docs",
+  approvals: "Approvals",
+  vertical_heartbeat: "Business Core",
+};
+const SURFACE_HIGHLIGHT_MS = 2600;
+
+function formatSurfaceTitle(surface) {
+  return SURFACE_TITLES[surface] || formatDomainTitle(surface);
+}
+
+function summarizeMoveValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.slice(0, 60);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value).slice(0, 60);
+  } catch (error) {
+    return String(value).slice(0, 60);
+  }
+}
+
 function uniqueStrings(values) {
   return [...new Set((values || []).filter((item) => typeof item === "string" && item))];
 }
 
+function clearSurfaceHighlightTimer() {
+  if (!state.surfaceHighlightTimer) {
+    return;
+  }
+  window.clearTimeout(state.surfaceHighlightTimer);
+  state.surfaceHighlightTimer = null;
+}
+
+function setSurfaceHighlights(highlights, { preserveExisting = false } = {}) {
+  const nextPanels = uniqueStrings(highlights?.panels || []);
+  const nextRefs = uniqueStrings(highlights?.refs || []);
+  const hasHighlights = nextPanels.length > 0 || nextRefs.length > 0;
+
+  if (!hasHighlights) {
+    if (preserveExisting && Date.now() < state.surfaceHighlightExpiresAt) {
+      return;
+    }
+    clearSurfaceHighlightTimer();
+    state.surfaceHighlights = { panels: [], refs: [] };
+    state.surfaceHighlightExpiresAt = 0;
+    return;
+  }
+
+  clearSurfaceHighlightTimer();
+  state.surfaceHighlights = { panels: nextPanels, refs: nextRefs };
+  state.surfaceHighlightExpiresAt = Date.now() + SURFACE_HIGHLIGHT_MS;
+  state.surfaceHighlightTimer = window.setTimeout(() => {
+    state.surfaceHighlights = { panels: [], refs: [] };
+    state.surfaceHighlightExpiresAt = 0;
+    state.surfaceHighlightTimer = null;
+    renderLivingCompanyView();
+  }, SURFACE_HIGHLIGHT_MS);
+}
+
+function normalizeStudioView(view) {
+  const normalized = String(view || "").toLowerCase();
+  const ALIASES = {
+    play: "company",
+    worlds: "company",
+    situations: "crisis",
+    missions: "crisis",
+    objectives: "crisis",
+    results: "outcome",
+    runs: "outcome",
+    exports: "outcome",
+  };
+  return ALIASES[normalized] || normalized || "company";
+}
+
 function setStudioView(view) {
-  state.studioView = view;
-  document.querySelectorAll("[data-studio-view]").forEach((node) => {
-    node.classList.toggle("hidden-panel", node.dataset.studioView !== view);
+  state.studioView = normalizeStudioView(view);
+  document.querySelectorAll("main [data-studio-view]").forEach((node) => {
+    node.classList.toggle("hidden-panel", node.dataset.studioView !== state.studioView);
   });
   document.querySelectorAll(".studio-nav-button").forEach((node) => {
-    node.classList.toggle("active", node.dataset.studioView === view);
+    node.classList.toggle("active", node.dataset.studioView === state.studioView);
   });
 }
 
@@ -213,13 +326,14 @@ function toggleDeveloperMode() {
   state.developerMode = !state.developerMode;
   document.body.classList.toggle("developer-mode", state.developerMode);
   document.getElementById("developer-toggle").textContent = state.developerMode
-    ? "Hide Developer Detail"
-    : "Show Developer Detail";
+    ? "Hide Engine"
+    : "Show Engine";
 }
 
 function jumpToStudioView(view) {
-  setStudioView(view);
-  const target = document.querySelector(`[data-studio-view="${view}"]`);
+  const normalized = normalizeStudioView(view);
+  setStudioView(normalized);
+  const target = document.querySelector(`[data-studio-view="${normalized}"]`);
   if (target) {
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -236,8 +350,8 @@ function renderPresentationPanel() {
   if (!presentation) {
     panel.innerHTML = `
       <div class="story-card story-span-2">
-        <p class="eyebrow">Presentation flow</p>
-        <p class="metric-detail">Generate or load a story bundle to get the guided presentation flow.</p>
+        <p class="eyebrow">Briefing</p>
+        <p class="metric-detail">Load this world's briefing to get the full walkthrough.</p>
       </div>
     `;
     beatsPanel.innerHTML = "";
@@ -250,22 +364,22 @@ function renderPresentationPanel() {
 
   panel.innerHTML = `
     <div class="story-card accent-card story-span-2">
-      <p class="eyebrow">Opening hook</p>
-      <h3>Lead with the kernel</h3>
+      <p class="eyebrow">What stays fixed</p>
+      <h3>The company is stable. The pressure changes.</h3>
       <p class="metric-detail">${escapeHtml(presentation.opening_hook || story.kernel_thesis || "VEI is one reusable world kernel for enterprises.")}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Demo goal</p>
-      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Show one stable company world, then vary the situation and the objective on top of the same runtime.")}</p>
+      <p class="eyebrow">Why this world exists</p>
+      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Start with one stable company world, then vary the situation and the objective on top of the same runtime.")}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Presenter setup</p>
+      <p class="eyebrow">Open the world</p>
       <div class="stack">
         ${setup.map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}
       </div>
     </div>
     <div class="story-card story-span-2">
-      <p class="eyebrow">User-facing primitives</p>
+      <p class="eyebrow">World primitives</p>
       <div class="briefing-grid">
         ${primitives
           .map(
@@ -284,7 +398,7 @@ function renderPresentationPanel() {
       </div>
     </div>
     <div class="story-card story-span-2">
-      <p class="eyebrow">Operator commands</p>
+      <p class="eyebrow">Launch commands</p>
       <div class="stack">
         ${commands.map((item) => `<pre class="code-panel">${escapeHtml(item)}</pre>`).join("")}
       </div>
@@ -298,15 +412,15 @@ function renderPresentationPanel() {
           <div class="presentation-step-number">${escapeHtml(String(beat.step))}</div>
           <div class="presentation-step-body">
             <div class="chip-row">
-              ${chip(`view:${beat.studio_view}`)}
+              ${chip(`view:${normalizeStudioView(beat.studio_view)}`)}
               ${chip(beat.title)}
             </div>
             <h3>${escapeHtml(beat.title)}</h3>
-            <p class="metric-detail"><strong>Show:</strong> ${escapeHtml(beat.operator_action || "")}</p>
-            <p class="metric-detail"><strong>Say:</strong> ${escapeHtml(beat.presenter_note || "")}</p>
-            <p class="metric-detail"><strong>Proves:</strong> ${escapeHtml(beat.proof_point || "")}</p>
-            <p class="metric-detail"><strong>Takeaway:</strong> ${escapeHtml(beat.audience_takeaway || "")}</p>
-            <button type="button" class="ghost-button presentation-jump" data-jump-view="${escapeHtml(beat.studio_view || "presentation")}">Jump to this beat</button>
+            <p class="metric-detail"><strong>Do:</strong> ${escapeHtml(beat.operator_action || "")}</p>
+            <p class="metric-detail"><strong>Read it as:</strong> ${escapeHtml(beat.presenter_note || "")}</p>
+            <p class="metric-detail"><strong>Shows:</strong> ${escapeHtml(beat.proof_point || "")}</p>
+            <p class="metric-detail"><strong>Leaves behind:</strong> ${escapeHtml(beat.audience_takeaway || "")}</p>
+            <button type="button" class="ghost-button presentation-jump" data-jump-view="${escapeHtml(normalizeStudioView(beat.studio_view || "presentation"))}">Jump to this beat</button>
           </div>
         </div>
       `
@@ -324,24 +438,25 @@ function renderStudioShell() {
   const panel = document.getElementById("kernel-thesis-panel");
   const story = state.story || {};
   const presentation = state.presentation || story.presentation || {};
-  const kernelThesis =
-    story.kernel_thesis ||
-    "Same world kernel, same event spine, same contract engine, same playback system. Only the company, situation, and objective overlays change.";
   const selectedWorld = story.manifest?.company_name || state.workspace?.manifest?.title || "Workspace";
+  const companyBriefing =
+    story.company_briefing ||
+    state.workspace?.manifest?.description ||
+    "A stable company world with live tools, shared business state, and pressure building across the work.";
   panel.innerHTML = `
     <div class="story-card accent-card">
-      <p class="eyebrow">Kernel Thesis</p>
-      <h3>One runtime, many enterprise futures</h3>
-      <p class="metric-detail">${escapeHtml(presentation.opening_hook || kernelThesis)}</p>
+      <p class="eyebrow">What this is</p>
+      <h3>A full enterprise, running as software.</h3>
+      <p class="metric-detail">Every tool, every person, every process \u2014 simulated end\u2011to\u2011end. Make one move and watch the ripple hit Slack, email, tickets, docs, and the business core at the same time.</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Selected Company</p>
+      <p class="eyebrow">Current Company</p>
       <h3>${escapeHtml(selectedWorld)}</h3>
-      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Use the Studio flow to move from company world to situation, objective, run, branch, outcome, and exports.")}</p>
+      <p class="metric-detail">${escapeHtml(companyBriefing)}</p>
     </div>
     <div class="story-card">
-      <p class="eyebrow">Platform Story</p>
-      <div class="chip-row">${(story.platform_uses || ["RL env", "continuous eval", "agent management"]).map((item) => chip(item)).join("")}</div>
+      <p class="eyebrow">How it works</p>
+      <p class="metric-detail">${escapeHtml(presentation.demo_goal || "Pick a crisis. Define what success looks like. Then play moves and watch the company change \u2014 or fork reality and compare two futures side by side.")}</p>
     </div>
   `;
   setStudioView(state.studioView);
@@ -361,6 +476,19 @@ async function refreshStoryArtifacts() {
   renderExportsPanel();
 }
 
+async function refreshPlayableArtifacts() {
+  const payload = await fetchPlayableArtifacts();
+  state.playableBundle = nonEmptyPayload(payload.playableBundle);
+  state.missions = Array.isArray(payload.missions) ? payload.missions : [];
+  state.missionState = nonEmptyPayload(payload.missionState);
+  state.fidelityReport = nonEmptyPayload(payload.fidelityReport);
+  renderMissionSelector();
+  renderMissionSummary();
+  renderMissionPlay();
+  renderFidelityPanel();
+  renderLivingCompanyView();
+}
+
 function renderWorkspaceMetrics() {
   const workspace = state.workspace;
   const panel = document.getElementById("workspace-metrics");
@@ -372,9 +500,9 @@ function renderWorkspaceMetrics() {
   const latestRun = state.runs[0];
   panel.innerHTML = [
     metricTile("Workspace", manifest.title || manifest.name || "Workspace", manifest.source_kind || "template"),
-    metricTile("Scenarios", String((manifest.scenarios || []).length), `active: ${manifest.active_scenario || "default"}`),
-    metricTile("Runs", String(workspace.run_count || 0), latestRun ? `latest: ${latestRun.run_id}` : "no runs yet"),
-    metricTile("Contracts", String((workspace.compiled_scenarios || []).length), "compiled"),
+    metricTile("Situations", String((manifest.scenarios || []).length), `active: ${manifest.active_scenario || "default"}`),
+    metricTile("Paths", String(workspace.run_count || 0), latestRun ? `latest: ${latestRun.run_id}` : "none yet"),
+    metricTile("Objectives", String((workspace.compiled_scenarios || []).length), "compiled"),
   ].join("");
 }
 
@@ -385,8 +513,10 @@ function renderWorkspaceHero() {
   }
   const manifest = workspace.manifest || {};
   const story = state.story || {};
-  document.getElementById("workspace-subtitle").textContent =
-    `${manifest.description || "Workspace ready."} ${story.company_briefing ? `${story.company_briefing} ` : ""}${workspace.run_count ? `This workspace has ${workspace.run_count} recorded run${workspace.run_count === 1 ? "" : "s"}.` : "Launch a run to start building a playback history."}`;
+  const subtitle = document.getElementById("workspace-subtitle");
+  subtitle.classList.remove("loading-pulse");
+  subtitle.textContent =
+    `${manifest.description || "Workspace ready."} ${story.company_briefing ? `${story.company_briefing} ` : ""}${workspace.run_count ? `This company already has ${workspace.run_count} recorded path${workspace.run_count === 1 ? "" : "s"}.` : "Enter the world to start building a history of decisions and outcomes."}`;
   renderWorkspaceMetrics();
   renderStudioShell();
   renderWorldsPanel();
@@ -410,7 +540,7 @@ function renderWorldsPanel() {
     <div class="story-card accent-card story-span-2">
       <p class="eyebrow">Company</p>
       <h3>${escapeHtml(story?.manifest?.company_name || manifest.title || manifest.name || "Workspace")}</h3>
-      <p class="metric-detail">${escapeHtml(story?.company_briefing || manifest.description || "This workspace is one stable company environment on top of the VEI kernel.")}</p>
+      <p class="metric-detail">${escapeHtml(story?.company_briefing || manifest.description || "This workspace is one stable company environment with shared tools and business state.")}</p>
       <div class="chip-row">${keySurfaces.map((item) => chip(formatDomainTitle(item))).join("")}</div>
     </div>
     <div class="story-card">
@@ -429,7 +559,7 @@ function renderWorldsPanel() {
             <h3>${escapeHtml(item.company_name)}</h3>
             <p class="metric-detail">${escapeHtml(item.company_briefing || item.description || "")}</p>
             <div class="chip-row">
-              ${item.name === currentWorldName ? chip("active world", "ok") : chip("same kernel")}
+              ${item.name === currentWorldName ? chip("current company", "ok") : chip("another company")}
               ${(item.key_surfaces || []).slice(0, 3).map((surface) => chip(formatDomainTitle(surface))).join("")}
             </div>
           </div>
@@ -437,6 +567,528 @@ function renderWorldsPanel() {
       )
       .join("")}
   `;
+}
+
+function renderMissionSelector() {
+  const missionSelect = document.getElementById("mission-select");
+  const objectiveSelect = document.getElementById("objective-select");
+  const summary = document.getElementById("mission-launch-summary");
+  if (!missionSelect || !objectiveSelect || !summary) {
+    return;
+  }
+  const currentMission =
+    state.missionState?.mission ||
+    state.playableBundle?.mission ||
+    state.missions[0] ||
+    null;
+  const selectedMissionName = currentMission?.mission_name || "";
+  missionSelect.innerHTML = state.missions
+    .map(
+      (item) => `
+        <option value="${escapeHtml(item.mission_name)}" ${
+          item.mission_name === selectedMissionName ? "selected" : ""
+        }>${escapeHtml(item.title)}</option>
+      `
+    )
+    .join("");
+  const supportedObjectives = Array.isArray(currentMission?.supported_objectives)
+    ? currentMission.supported_objectives
+    : [];
+  const contractVariants = Array.isArray(state.scenarioPreview?.available_contract_variants)
+    ? state.scenarioPreview.available_contract_variants
+    : [];
+  const selectedObjective =
+    state.missionState?.objective_variant ||
+    currentMission?.default_objective ||
+    supportedObjectives[0] ||
+    "";
+  objectiveSelect.innerHTML = supportedObjectives
+    .map((name) => {
+      const detail = contractVariants.find((item) => item.name === name);
+      const label = detail?.title || name;
+      return `<option value="${escapeHtml(name)}" ${
+        name === selectedObjective ? "selected" : ""
+      }>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  summary.innerHTML = currentMission
+    ? `
+      <div class="detail-grid">
+        ${detailTile("World", state.workspace?.manifest?.title || state.playableBundle?.world_name || "workspace")}
+        ${detailTile("Mission", currentMission.title || currentMission.mission_name)}
+        ${detailTile("Objective", selectedObjective || "default")}
+        ${detailTile("State", state.missionState?.status || "ready")}
+      </div>
+    `
+    : `<p class="metric-detail">No company world is loaded yet.</p>`;
+}
+
+function renderMissionSummary() {
+  const briefing = document.getElementById("mission-briefing");
+  const catalog = document.getElementById("mission-catalog");
+  if (!briefing || !catalog) {
+    return;
+  }
+  const missionState = state.missionState;
+  const currentMission =
+    missionState?.mission ||
+    state.playableBundle?.mission ||
+    state.missions[0] ||
+    null;
+  if (!currentMission) {
+    briefing.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Mission</p>
+        <p class="metric-detail">Prepare the company world to explore a situation inside it.</p>
+      </div>
+    `;
+    catalog.innerHTML = "";
+    return;
+  }
+  briefing.innerHTML = `
+    <div class="story-card accent-card story-span-2">
+      <p class="eyebrow">Current mission</p>
+      <h3>${escapeHtml(currentMission.title)}</h3>
+      <p class="metric-detail">${escapeHtml(currentMission.briefing || "")}</p>
+      <div class="chip-row">
+        ${chip(currentMission.hero ? "primary company" : "included company", currentMission.hero ? "ok" : "")}
+        ${chip(currentMission.primary_domain || "world")}
+        ${(currentMission.branch_labels || []).map((item) => chip(item)).join("")}
+      </div>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Why this matters</p>
+      <p class="metric-detail">${escapeHtml(currentMission.why_it_matters || "")}</p>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Failure impact</p>
+      <p class="metric-detail">${escapeHtml(currentMission.failure_impact || "")}</p>
+    </div>
+  `;
+  catalog.innerHTML = state.missions
+    .map(
+      (item) => `
+        <div class="run-item ${item.mission_name === currentMission.mission_name ? "active" : ""}">
+          <div class="chip-row">
+            ${chip(item.mission_name)}
+            ${item.hero ? chip("primary", "ok") : chip("included")}
+          </div>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p class="metric-detail">${escapeHtml(item.briefing || "")}</p>
+          <p class="metric-detail">${escapeHtml(item.why_it_matters || "")}</p>
+          <div class="chip-row">
+            ${(item.supported_objectives || []).map((objective) => chip(objective)).join("")}
+          </div>
+          <button type="button" class="ghost-button activate-mission-button" data-mission-name="${escapeHtml(item.mission_name)}">Activate mission</button>
+        </div>
+      `
+    )
+    .join("");
+  catalog.querySelectorAll(".activate-mission-button").forEach((node) => {
+    node.addEventListener("click", () => {
+      const objective = document.getElementById("objective-select")?.value || null;
+      void activateMission(node.dataset.missionName, objective);
+    });
+  });
+}
+
+function renderLivingCompanyView() {
+  renderSurfaceWall();
+  renderLivingCompanyRail();
+  updateContextHint();
+}
+
+function updateContextHint() {
+  const hint = document.getElementById("shell-context-hint");
+  if (!hint) {
+    return;
+  }
+  const ms = state.missionState;
+  if (ms?.status === "completed") {
+    hint.textContent = "Mission complete \u2014 branch the outcome or start a new crisis";
+  } else if (ms?.run_id) {
+    const moveCount = (ms.executed_moves || []).length;
+    hint.textContent = moveCount
+      ? `${moveCount} move${moveCount === 1 ? "" : "s"} played \u2014 pick the next action or finish`
+      : "You\u2019re in the world \u2014 play your first move below";
+  } else if (state.missions.length) {
+    hint.textContent = "Pick a crisis above, then watch every system react";
+  } else {
+    hint.textContent = "Loading company world\u2026";
+  }
+}
+
+function renderSurfaceWall() {
+  const panel = document.getElementById("living-company-surface-wall");
+  if (!panel) {
+    return;
+  }
+  const surfaceState = state.surfaceState;
+  if (!surfaceState || !Array.isArray(surfaceState.panels) || !surfaceState.panels.length) {
+    const loadingRun = state.missionState?.run_id || state.activeRunId;
+    panel.innerHTML = `
+      <div class="surface-placeholder">
+        <p class="eyebrow">Living Company</p>
+        <h3>${loadingRun ? "Loading company systems" : "Enter a world to see its tools"}</h3>
+        <p class="metric-detail">${
+          loadingRun
+            ? "Loading the latest company state so the tools can appear here."
+            : "Slack, email, tickets, docs, approvals, and the vertical business system will appear here once a run is active."
+        }</p>
+      </div>
+    `;
+    return;
+  }
+
+  const changedPanels = new Set(state.surfaceHighlights?.panels || []);
+  const changedRefs = new Set(state.surfaceHighlights?.refs || []);
+  panel.innerHTML = surfaceState.panels
+    .map((surfacePanel) => {
+      const changed = changedPanels.has(surfacePanel.surface);
+      return `
+        <article
+          class="surface-panel surface-panel-${escapeHtml(surfacePanel.kind)} ${changed ? "surface-changed" : ""}"
+          ${surfacePanel.accent ? `style="--panel-accent:${escapeHtml(surfacePanel.accent)}"` : ""}
+        >
+          <header class="surface-panel-header">
+            <div>
+              <p class="eyebrow">${escapeHtml(formatSurfaceTitle(surfacePanel.surface))}</p>
+              <h3>${escapeHtml(surfacePanel.title)}</h3>
+            </div>
+            <div class="surface-panel-meta">
+              ${surfacePanel.status ? chip(surfacePanel.status, statusClass(surfacePanel.status)) : ""}
+              ${changed ? `<span class="surface-updated-tag">updated</span>` : ""}
+            </div>
+          </header>
+          ${surfacePanel.headline ? `<p class="surface-headline">${escapeHtml(surfacePanel.headline)}</p>` : ""}
+          <div class="surface-items">
+            ${(surfacePanel.items || [])
+              .map((item) => renderSurfaceItem(surfacePanel, item, changedRefs))
+              .join("")}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderSurfaceItem(surfacePanel, item, changedRefs) {
+  const changed = item.highlight_ref && changedRefs.has(item.highlight_ref);
+  const badges = Array.isArray(item.badges) ? item.badges : [];
+  return `
+    <div class="surface-item ${changed ? "surface-item-changed" : ""}">
+      <div class="surface-item-topline">
+        <strong>${escapeHtml(item.title || item.item_id)}</strong>
+        ${item.status ? `<span class="surface-item-status ${statusClass(item.status)}">${escapeHtml(item.status)}</span>` : ""}
+      </div>
+      ${item.subtitle ? `<div class="surface-item-subtitle">${escapeHtml(item.subtitle)}</div>` : ""}
+      ${item.body ? `<p class="surface-item-body">${escapeHtml(item.body)}</p>` : ""}
+      ${badges.length ? `<div class="chip-row">${badges.map((badgeValue) => chip(badgeValue)).join("")}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderLivingCompanyRail() {
+  const panel = document.getElementById("living-company-rail");
+  if (!panel) {
+    return;
+  }
+  const missionState = state.missionState;
+  const mission = missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
+  const objective = missionState?.objective_variant
+    || document.getElementById("objective-select")?.value
+    || mission?.default_objective
+    || "default";
+  const recommendedMove = (missionState?.available_moves || []).find(
+    (move) => move.availability === "recommended" && !move.executed
+  ) || (missionState?.available_moves || []).find((move) => !move.executed) || null;
+  const latestToolEvent = [...(state.timeline || [])].reverse().find(
+    (event) => event.resolved_tool || event.graph_intent
+  );
+  const changedCount = (state.surfaceHighlights?.panels || []).length;
+  const surfaceState = state.surfaceState;
+
+  const moveCount = (missionState?.executed_moves || []).length;
+  const systemCount = (surfaceState?.panels || []).length;
+
+  panel.innerHTML = `
+    <div class="story-card accent-card">
+      <p class="eyebrow">Current tension</p>
+      <h3>${escapeHtml(surfaceState?.company_name || state.story?.manifest?.company_name || state.workspace?.manifest?.title || "Company")}</h3>
+      <p class="metric-detail">${escapeHtml(mission?.briefing || surfaceState?.current_tension || "Choose a crisis above to bring the company under pressure.")}</p>
+    </div>
+    <div class="story-card">
+      <p class="eyebrow">Situation</p>
+      <h3>${escapeHtml(mission?.title || "No crisis selected")}</h3>
+      <div class="detail-grid">
+        ${detailTile("Success means", objective)}
+        ${detailTile("Branch", state.activeRun?.branch || missionState?.branch_name || "base")}
+      </div>
+      ${mission?.failure_impact ? `<p class="metric-detail">${escapeHtml(mission.failure_impact)}</p>` : ""}
+    </div>
+    ${
+      recommendedMove
+        ? `
+          <div class="story-card">
+            <p class="eyebrow">Recommended move</p>
+            <h3>${escapeHtml(recommendedMove.title)}</h3>
+            <p class="metric-detail">${escapeHtml(recommendedMove.consequence_preview || recommendedMove.summary || "")}</p>
+          </div>
+        `
+        : ""
+    }
+    <div class="story-card">
+      <p class="eyebrow">Pulse</p>
+      <div class="detail-grid">
+        ${detailTile("Moves", String(moveCount))}
+        ${detailTile("Changed", String(changedCount))}
+        ${detailTile("Systems", String(systemCount))}
+        ${detailTile("Last tool", latestToolEvent?.resolved_tool || "waiting")}
+      </div>
+    </div>
+  `;
+}
+
+function diffSurfaceState(before, after) {
+  if (!before || !after) {
+    return { panels: [], refs: [] };
+  }
+  const beforePanels = new Map((before.panels || []).map((panel) => [panel.surface, panel]));
+  const afterPanels = new Map((after.panels || []).map((panel) => [panel.surface, panel]));
+  const changedPanels = [];
+  const changedRefs = [];
+
+  for (const [surface, panel] of afterPanels.entries()) {
+    const previous = beforePanels.get(surface);
+    const currentSignature = JSON.stringify(normalizeSurfacePanel(panel));
+    const previousSignature = previous ? JSON.stringify(normalizeSurfacePanel(previous)) : "";
+    if (currentSignature === previousSignature) {
+      continue;
+    }
+    changedPanels.push(surface);
+    const previousItems = new Map(
+      ((previous && previous.items) || []).map((item) => [item.item_id, JSON.stringify(item)])
+    );
+    for (const item of panel.items || []) {
+      const signature = JSON.stringify(item);
+      if (previousItems.get(item.item_id) !== signature && item.highlight_ref) {
+        changedRefs.push(item.highlight_ref);
+      }
+    }
+  }
+
+  return {
+    panels: changedPanels,
+    refs: [...new Set(changedRefs)],
+  };
+}
+
+function normalizeSurfacePanel(panel) {
+  return {
+    surface: panel.surface,
+    headline: panel.headline,
+    status: panel.status,
+    items: (panel.items || []).map((item) => ({
+      item_id: item.item_id,
+      title: item.title,
+      subtitle: item.subtitle,
+      body: item.body,
+      status: item.status,
+      badges: item.badges,
+    })),
+  };
+}
+
+function renderMissionPlay() {
+  const panel = document.getElementById("mission-moves-panel");
+  const scorecard = document.getElementById("mission-scorecard");
+  const status = document.getElementById("mission-form-status");
+  if (!panel || !scorecard || !status) {
+    return;
+  }
+  const missionState = state.missionState;
+  if (!missionState) {
+    scorecard.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Play</p>
+        <p class="metric-detail">Choose a situation and enter the world to begin making moves inside the company.</p>
+      </div>
+    `;
+    panel.innerHTML = "";
+    renderJson("mission-state-panel", {});
+    return;
+  }
+  const score = missionState.scorecard || {};
+  const budgetTotal = (score.move_count || 0) + (score.action_budget_remaining || 0);
+  const budgetPct = budgetTotal > 0 ? Math.round(((score.action_budget_remaining || 0) / budgetTotal) * 100) : 100;
+  const scorePct = Math.min(100, Math.max(0, score.overall_score || 0));
+  const pressureClass = score.deadline_pressure === "critical" ? "pressure-critical" : score.deadline_pressure === "compressed" ? "pressure-compressed" : "";
+  const riskClass = score.business_risk === "high" ? "pressure-critical" : score.business_risk === "moderate" ? "pressure-compressed" : "";
+  scorecard.innerHTML = `
+    <div class="score-strip">
+      <div class="score-pill">
+        <span class="metric-label">Score</span>
+        <strong>${scorePct}</strong>
+        <div class="score-bar"><div class="score-bar-fill ${scorePct >= 70 ? "bar-ok" : scorePct >= 40 ? "bar-warn" : "bar-danger"}" style="width:${scorePct}%"></div></div>
+      </div>
+      ${scorePill("Mission", score.mission_success === null ? "pending" : score.mission_success ? "pass" : "in play")}
+      <div class="score-pill ${pressureClass}">
+        <span class="metric-label">Budget left</span>
+        <strong>${score.action_budget_remaining || 0}</strong>
+        <div class="score-bar"><div class="score-bar-fill ${budgetPct >= 50 ? "bar-ok" : budgetPct >= 25 ? "bar-warn" : "bar-danger"}" style="width:${budgetPct}%"></div></div>
+      </div>
+      <div class="score-pill ${riskClass}">
+        <span class="metric-label">Risk</span>
+        <strong>${escapeHtml(score.business_risk || "moderate")}</strong>
+      </div>
+      <div class="score-pill ${pressureClass}">
+        <span class="metric-label">Deadline</span>
+        <strong>${escapeHtml(score.deadline_pressure || "stable")}</strong>
+      </div>
+      ${scorePill("Policy", score.policy_correctness || "sound")}
+    </div>
+    <div class="briefing-grid">
+      <div class="story-card accent-card">
+        <p class="eyebrow">Mission health</p>
+        <h3>${escapeHtml(score.summary || "Mission active.")}</h3>
+        <div class="detail-grid">
+          ${detailTile("Moves used", String(score.move_count || 0))}
+          ${detailTile("Assertions", `${score.success_assertions_passed || 0}/${score.success_assertions_total || 0}`)}
+          ${detailTile("Issues", String(score.contract_issue_count || 0))}
+          ${detailTile("Run id", missionState.run_id)}
+        </div>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Branch labels</p>
+        <div class="chip-row">${(missionState.mission?.branch_labels || []).map((item) => chip(item)).join("")}</div>
+      </div>
+    </div>
+  `;
+  panel.innerHTML = (missionState.available_moves || [])
+    .map(
+      (move) => `
+        <div class="run-item ${move.availability === "recommended" ? "active" : ""}">
+          <div class="chip-row">
+            ${chip(move.availability, statusClass(move.availability === "blocked" ? "error" : move.availability === "risky" ? "running" : "ok"))}
+            ${move.executed ? chip("used") : ""}
+          </div>
+          <h3>${escapeHtml(move.title)}</h3>
+          <p class="metric-detail">${escapeHtml(move.summary || "")}</p>
+          <p class="metric-detail">${escapeHtml(move.consequence_preview || "")}</p>
+          ${move.blocked_reason ? `<p class="metric-detail">${escapeHtml(move.blocked_reason)}</p>` : ""}
+          <button
+            type="button"
+            class="ghost-button play-move-button"
+            data-move-id="${escapeHtml(move.move_id)}"
+            ${move.availability === "blocked" ? "disabled" : ""}
+          >${move.availability === "risky" ? "Take risky move" : "Play move"}</button>
+        </div>
+      `
+    )
+    .join("");
+  panel.querySelectorAll(".play-move-button").forEach((node) => {
+    node.addEventListener("click", () => {
+      void applyMissionMove(node.dataset.moveId);
+    });
+  });
+  status.textContent =
+    missionState.status === "completed"
+      ? "Mission finished. Branch it, inspect the outcome, or switch to a new situation."
+      : "Play a move, branch the situation, or finish the run.";
+  renderMoveLog();
+  renderJson("mission-state-panel", missionState);
+  renderLivingCompanyView();
+}
+
+function renderMoveLog() {
+  const panel = document.getElementById("move-log-panel");
+  if (!panel) {
+    return;
+  }
+  const missionState = state.missionState;
+  const executed = missionState?.executed_moves || [];
+  if (!executed.length) {
+    panel.innerHTML = `<p class="metric-detail">No moves played yet. Each move you take will appear here with the tool that fired, the objects it touched, and what the world looked like afterward.</p>`;
+    return;
+  }
+  panel.innerHTML = executed
+    .map((move, index) => {
+      const intentParts = (move.graph_intent || "").split(".", 1);
+      const domain = intentParts[0] || "";
+      const refs = (move.object_refs || []).slice(0, 5);
+      const obs = move.payload?.observation || {};
+      const obsSummary = obs.summary || obs.scenario_brief || "";
+      const result = move.payload?.result || {};
+      const resultKeys = Object.keys(result).slice(0, 4);
+      return `
+        <div class="move-log-entry">
+          <div class="move-log-number">${index + 1}</div>
+          <div class="move-log-body">
+            <div class="chip-row">
+              ${move.resolved_tool ? chip(move.resolved_tool, "ok") : ""}
+              ${domain ? chip(formatDomainTitle(domain)) : ""}
+              ${move.time_ms ? chip(`t=${formatMs(move.time_ms)}`) : ""}
+            </div>
+            <h3>${escapeHtml(move.title)}</h3>
+            <p class="metric-detail">${escapeHtml(move.summary || "")}</p>
+            ${refs.length ? `<div class="chip-row">${refs.map((ref) => chip(ref)).join("")}</div>` : ""}
+            ${resultKeys.length ? `<div class="move-log-result"><strong>Result:</strong> ${resultKeys.map((key) => `${escapeHtml(key)}=${escapeHtml(summarizeMoveValue(result[key]))}`).join(" · ")}</div>` : ""}
+            ${obsSummary ? `<div class="move-log-observation">${escapeHtml(String(obsSummary).slice(0, 200))}</div>` : ""}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderFidelityPanel() {
+  const panel = document.getElementById("fidelity-panel");
+  if (!panel) {
+    return;
+  }
+  const report = state.fidelityReport;
+  if (!report || !Array.isArray(report.cases) || !report.cases.length) {
+    panel.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">System checks</p>
+        <p class="metric-detail">System health checks appear here once a fidelity report is available.</p>
+      </div>
+    `;
+    renderJson("fidelity-raw-panel", {});
+    return;
+  }
+  panel.innerHTML = `
+    <div class="story-card accent-card story-span-2">
+      <p class="eyebrow">Report summary</p>
+      <h3>${escapeHtml(report.company_name || "Company")} · ${chip(report.status, statusClass(report.status))}</h3>
+      <p class="metric-detail">${escapeHtml(report.summary || "System checks ran against the key tools this company depends on.")}</p>
+    </div>
+  ` + report.cases
+    .map(
+      (item) => `
+        <div class="story-card">
+          <p class="eyebrow">${escapeHtml(item.surface)}</p>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p class="metric-detail">${escapeHtml(item.boundary_contract || "")}</p>
+          ${item.why_it_matters ? `<p class="metric-detail"><em>${escapeHtml(item.why_it_matters)}</em></p>` : ""}
+          <div class="chip-row">
+            ${chip(item.status, statusClass(item.status))}
+            ${item.resolved_tool ? chip(item.resolved_tool) : ""}
+          </div>
+          <div class="stack">
+            ${(item.checks || [])
+              .map(
+                (check) => `
+                  <p class="metric-detail"><strong>${escapeHtml(check.name)}</strong>: ${escapeHtml(check.summary)}</p>
+                `
+              )
+              .join("")}
+          </div>
+        </div>
+      `
+    )
+    .join("");
+  renderJson("fidelity-raw-panel", report);
 }
 
 function renderImportSummary() {
@@ -734,7 +1386,7 @@ function renderScenarioBriefing() {
         ? `<div class="story-card story-span-2">
             <p class="eyebrow">What-if paths</p>
             <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-            <p class="metric-detail">These are branchable futures for the same company world, not separate handcrafted demos.</p>
+            <p class="metric-detail">These are alternate futures for the same company, not separate worlds.</p>
           </div>`
         : ""
     }
@@ -936,7 +1588,7 @@ function renderRunSummary() {
       <div class="story-card accent-card">
         <p class="eyebrow">Outcome</p>
         <h3>${run.contract?.ok ? "Good branch" : run.contract?.ok === false ? "Broken branch" : "Outcome pending"}</h3>
-        <p class="metric-detail">This run uses the same kernel as every other world, but this particular path produced a different business outcome.</p>
+        <p class="metric-detail">This path came from the same company state, but it produced a different business outcome.</p>
         <div class="detail-grid">
           ${detailTile("Run events", compactNumber(state.timeline.length))}
           ${detailTile("Graph actions", compactNumber(graphEvents.length))}
@@ -946,14 +1598,14 @@ function renderRunSummary() {
         <div class="chip-row">${graphDomains.map((item) => chip(formatDomainTitle(item))).join("")}</div>
       </div>
       <div class="story-card">
-        <p class="eyebrow">Kernel leverage</p>
-        <h3>One runtime, reusable outputs</h3>
+        <p class="eyebrow">Recorded trail</p>
+        <h3>One path, full receipts</h3>
         <div class="chip-row">
-          ${chip("RL env")}
-          ${chip("continuous eval")}
-          ${chip("agent management")}
+          ${chip("timeline")}
+          ${chip("comparisons")}
+          ${chip("receipts")}
         </div>
-        <p class="metric-detail">The same run artifacts can later drive RL episodes, continuous eval deltas, and live agent operations because the kernel records state, contracts, provenance, and tool resolution in one place.</p>
+        <p class="metric-detail">Every path records state, decisions, receipts, and tool activity in one place, so you can compare what happened and why.</p>
         <div class="chip-row">${resolvedTools.slice(0, 5).map((item) => chip(item)).join("")}</div>
       </div>
       ${
@@ -962,7 +1614,7 @@ function renderRunSummary() {
               <p class="eyebrow">What-if paths</p>
               <h3>Branch labels</h3>
               <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-              <p class="metric-detail">These branch ideas are just alternate futures on top of the same kernel state and snapshot model.</p>
+              <p class="metric-detail">These branch ideas are alternate futures that begin from the same company state.</p>
             </div>`
           : ""
       }
@@ -1005,7 +1657,7 @@ function renderRunSummary() {
       : `
         <div class="story-card story-span-2">
           <p class="eyebrow">Branch story</p>
-          <p class="metric-detail">Launch a workflow baseline plus a comparison run to turn this company world into a branch/outcome narrative.</p>
+          <p class="metric-detail">Open a baseline path and a comparison path to see how the same company can end in different states.</p>
         </div>
       `;
   }
@@ -1019,7 +1671,12 @@ function renderExportsPanel() {
   if (!panel) {
     return;
   }
-  const exportsPreview = Array.isArray(state.exportsPreview) ? state.exportsPreview : [];
+  const exportsPreview =
+    Array.isArray(state.missionState?.exports) && state.missionState.exports.length
+      ? state.missionState.exports
+      : Array.isArray(state.exportsPreview)
+        ? state.exportsPreview
+        : [];
   panel.innerHTML = exportsPreview.length
     ? exportsPreview
         .map(
@@ -1378,9 +2035,10 @@ function togglePlayback() {
 }
 
 async function loadWorkspace() {
-  const [workspace, storyArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
+  const [workspace, storyArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
     getJson("/api/workspace"),
     fetchStoryArtifacts(),
+    fetchPlayableArtifacts(),
     getJson("/api/scenarios"),
     getJson("/api/imports/summary").catch(() => ({})),
     getJson("/api/identity/flow").catch(() => ({})),
@@ -1397,6 +2055,12 @@ async function loadWorkspace() {
     nonEmptyPayload(storyArtifacts.presentation) ||
     nonEmptyPayload(storyArtifacts.story?.presentation) ||
     null;
+  state.playableBundle = nonEmptyPayload(playableArtifacts.playableBundle);
+  state.missions = Array.isArray(playableArtifacts.missions)
+    ? playableArtifacts.missions
+    : [];
+  state.missionState = nonEmptyPayload(playableArtifacts.missionState);
+  state.fidelityReport = nonEmptyPayload(playableArtifacts.fidelityReport);
   state.scenarios = scenarios;
   state.importSummary = importSummary;
   state.identityFlow = identityFlow;
@@ -1409,6 +2073,10 @@ async function loadWorkspace() {
   renderImportSummary();
   renderExportsPanel();
   renderScenarioSelector();
+  renderMissionSelector();
+  renderMissionSummary();
+  renderMissionPlay();
+  renderFidelityPanel();
   if (scenarios.length > 0) {
     const activeName = workspace?.manifest?.active_scenario || scenarios[0].name;
     document.getElementById("scenario-select").value = activeName;
@@ -1452,39 +2120,185 @@ async function activateContractVariant(name) {
   await loadRuns();
 }
 
-async function loadRuns() {
-  state.runs = await getJson("/api/runs");
-  await refreshStoryArtifacts();
-  renderWorkspaceMetrics();
-  renderRuns();
-  if (!state.activeRunId && state.runs.length > 0) {
-    await selectRun(state.runs[0].run_id);
+async function activateMission(name, objectiveVariant = null) {
+  if (!name) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = `Activating mission ${name}...`;
+  try {
+    await getJson("/api/missions/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mission_name: name,
+        objective_variant: objectiveVariant || undefined,
+      }),
+    });
+    await loadWorkspace();
+    status.textContent = `Mission ${name} is ready.`;
+    setStudioView("crisis");
+  } catch (error) {
+    status.textContent = `Mission activation failed: ${error}`;
   }
 }
 
-async function refreshActiveRun(runId, { connectStream = false } = {}) {
-  const [run, timeline, orientation, graphs, snapshots, contract] = await Promise.all([
+async function startMission() {
+  const missionSelect = document.getElementById("mission-select");
+  const objectiveSelect = document.getElementById("objective-select");
+  const status = document.getElementById("mission-form-status");
+  const missionName = missionSelect?.value;
+  const objectiveVariant = objectiveSelect?.value || null;
+  status.textContent = "Entering world...";
+  try {
+    const payload = await getJson("/api/missions/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mission_name: missionName || undefined,
+        objective_variant: objectiveVariant || undefined,
+      }),
+    });
+    state.missionState = payload;
+    await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
+    if (payload.run_id) {
+      await selectRun(payload.run_id, { previousSurfaceState: null });
+    }
+    renderMissionPlay();
+    status.textContent = `Mission ${payload.mission?.title || payload.run_id} is live.`;
+    setStudioView("company");
+  } catch (error) {
+    status.textContent = `Mission start failed: ${error}`;
+  }
+}
+
+async function applyMissionMove(moveId) {
+  if (!moveId || !state.missionState?.run_id) {
+    return;
+  }
+  const previousSurfaceState = state.surfaceState;
+  const status = document.getElementById("mission-form-status");
+  status.textContent = `Playing ${moveId}...`;
+  try {
+    const payload = await getJson(
+      `/api/missions/${state.missionState.run_id}/moves/${encodeURIComponent(moveId)}`,
+      {
+        method: "POST",
+      }
+    );
+    state.missionState = payload;
+    await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
+    await selectRun(payload.run_id, { previousSurfaceState });
+    status.textContent = payload.status === "completed"
+      ? "Mission completed. Inspect the results or branch the run."
+      : `Move ${moveId} applied.`;
+  } catch (error) {
+    status.textContent = `Move failed: ${error}`;
+  }
+}
+
+async function branchMission() {
+  if (!state.missionState?.run_id) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = "Creating branch...";
+  try {
+    const payload = await getJson(`/api/missions/${state.missionState.run_id}/branch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    state.missionState = payload;
+    await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
+    await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
+    status.textContent = `Branch ${payload.branch_name} is live.`;
+    setStudioView("outcome");
+  } catch (error) {
+    status.textContent = `Branch failed: ${error}`;
+  }
+}
+
+async function finishMission() {
+  if (!state.missionState?.run_id) {
+    return;
+  }
+  const status = document.getElementById("mission-form-status");
+  status.textContent = "Finishing mission...";
+  try {
+    const payload = await getJson(`/api/missions/${state.missionState.run_id}/finish`, {
+      method: "POST",
+    });
+    state.missionState = payload;
+    await loadRuns({ selectActiveRun: false });
+    state.missionState = payload;
+    await selectRun(payload.run_id, { previousSurfaceState: state.surfaceState });
+    status.textContent = payload.scorecard?.mission_success
+      ? "Mission finished cleanly."
+      : "Mission finished with remaining risk.";
+    setStudioView("outcome");
+  } catch (error) {
+    status.textContent = `Finish failed: ${error}`;
+  }
+}
+
+async function loadRuns({ selectActiveRun = true } = {}) {
+  state.runs = await getJson("/api/runs");
+  await refreshStoryArtifacts();
+  await refreshPlayableArtifacts();
+  renderWorkspaceMetrics();
+  renderRuns();
+  if (!selectActiveRun) {
+    return;
+  }
+  if (state.missionState?.run_id) {
+    state.activeRunId = state.missionState.run_id;
+  }
+  if (!state.activeRunId && state.runs.length > 0) {
+    await selectRun(state.runs[0].run_id);
+    return;
+  }
+  if (state.activeRunId) {
+    await selectRun(state.activeRunId);
+  }
+}
+
+async function refreshActiveRun(
+  runId,
+  { connectStream = false, previousSurfaceState = null, preserveSurfaceHighlights = false } = {}
+) {
+  const [run, timeline, orientation, graphs, snapshots, contract, surfaces] = await Promise.all([
     getJson(`/api/runs/${runId}`),
     getJson(`/api/runs/${runId}/timeline`),
     getJson(`/api/runs/${runId}/orientation`),
     getJson(`/api/runs/${runId}/graphs`),
     getJson(`/api/runs/${runId}/snapshots`),
     getJson(`/api/runs/${runId}/contract`),
+    getJson(`/api/runs/${runId}/surfaces`).catch(() => null),
   ]);
 
   state.activeRun = run;
   state.timeline = timeline;
   state.orientation = orientation;
   state.graphs = graphs;
+  state.surfaceState = surfaces;
+  setSurfaceHighlights(diffSurfaceState(previousSurfaceState, surfaces), {
+    preserveExisting: preserveSurfaceHighlights,
+  });
   state.snapshots = snapshots;
   state.activeRunContract = contract;
   await refreshStoryArtifacts();
+  await refreshPlayableArtifacts();
   if (state.selectedEventIndex >= timeline.length) {
     state.selectedEventIndex = Math.max(0, timeline.length - 1);
   }
 
   renderRunHeader();
   renderRunSummary();
+  renderLivingCompanyView();
   renderPlaybackStage();
   renderEventDetail();
   renderOrientation();
@@ -1503,7 +2317,7 @@ function connectRunStream(runId) {
   }
   state.eventSource = new EventSource(`/api/runs/${runId}/stream`);
   state.eventSource.onmessage = () => {
-    void refreshActiveRun(runId);
+    void refreshActiveRun(runId, { preserveSurfaceHighlights: true });
   };
   state.eventSource.onerror = () => {
     if (state.eventSource) {
@@ -1513,10 +2327,10 @@ function connectRunStream(runId) {
   };
 }
 
-async function selectRun(runId) {
+async function selectRun(runId, options = {}) {
   state.activeRunId = runId;
   renderRuns();
-  await refreshActiveRun(runId, { connectStream: true });
+  await refreshActiveRun(runId, { connectStream: true, ...options });
 }
 
 async function startRun(event) {
@@ -1568,9 +2382,28 @@ async function activateScenario(name) {
 
 function bindControls() {
   document.getElementById("run-form").addEventListener("submit", startRun);
+  document.getElementById("start-mission-button").addEventListener("click", () => {
+    void startMission();
+  });
+  document.getElementById("branch-mission-button").addEventListener("click", () => {
+    void branchMission();
+  });
+  document.getElementById("finish-mission-button").addEventListener("click", () => {
+    void finishMission();
+  });
+  document.getElementById("mission-select").addEventListener("change", (event) => {
+    const objective = document.getElementById("objective-select").value || null;
+    void activateMission(event.target.value, objective);
+  });
+  document.getElementById("objective-select").addEventListener("change", async (event) => {
+    const selected = event.target.value;
+    if (selected) {
+      await activateContractVariant(selected);
+    }
+  });
   document.querySelectorAll(".studio-nav-button").forEach((node) => {
     node.addEventListener("click", () => {
-      setStudioView(node.dataset.studioView || "worlds");
+      setStudioView(node.dataset.studioView || "company");
     });
   });
   document.getElementById("developer-toggle").addEventListener("click", toggleDeveloperMode);

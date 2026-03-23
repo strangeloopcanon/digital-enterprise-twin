@@ -19,6 +19,7 @@ Plainly: VEI can simulate an enterprise environment where an agent has to discov
 - Vertical worlds
   - Real estate management, digital marketing agency, and storage-solutions company packs with domain objects, deadlines, branch paths, and business-semantic contracts
   - Each world pack now supports multiple scenario variants and contract variants on top of the same stable base company
+  - The same world packs now also ship as playable missions, so a human can step through the world using the same kernel as the automated runs
 - Long-horizon work
   - Multi-step tasks that cross systems, have hidden state, require follow-through, and can fail midway
 - Policies and outcomes
@@ -153,6 +154,39 @@ That path writes:
 
 The point is product legibility: VEI now presents the demo as **Presentation → Company → Situation → Objective → Run → Branch → Outcome → Exports**, while the underlying kernel stays the same. The new presentation artifacts give you a clean live-demo flow on top of the same Studio workspace.
 
+For the publishable local-product path, VEI now ships a mission-driven playable mode:
+
+```bash
+vei studio play \
+  --root _vei_out/playable/harbor_point \
+  --world real_estate_management \
+  --mission tenant_opening_conflict
+```
+
+That command prepares the world, activates the mission and objective, records the baseline/comparison context, generates a twin-fidelity report, and serves Studio in Mission Mode. If you only want the bundle on disk, add `--no-serve`.
+
+The default Studio front door is now the **Living Company View**. Instead of opening on a debug dashboard, it opens on a compact software wall with Slack, email, tickets, docs, approvals, and the vertical business system side by side. The seeded worlds are intentionally denser now, so each company feels like a real operating business before you even play a move, and visible tool panels update when moves land.
+
+To build the wider local playable release:
+
+```bash
+vei showcase playable \
+  --root _vei_out/playable_showcase \
+  --run-id playable_release
+```
+
+That bundle writes:
+- `fidelity_report.json`
+- `playable_manifest.json`
+- `playable_overview.md`
+
+The new product-facing helpers are:
+
+```bash
+vei inspect fidelity --root _vei_out/playable/harbor_point
+vei export mission-run --root _vei_out/playable/harbor_point --run-id human_play_... --format rl
+```
+
 ### Grounded import flow
 
 VEI can now ingest realistic offline enterprise export packs and turn them into a runnable workspace. The import path is:
@@ -241,6 +275,7 @@ The import UI now shows:
 - Canonical append-only run event stream that drives playback, `vei inspect events`, receipts, contract status, and snapshot markers across workflow, scripted, BC, and LLM runs
 - Variant-aware workspace activation so previews, run manifests, showcase bundles, and the UI all explain which scenario overlay and contract overlay are active on top of the base world
 - VEI Studio narrative mode, so the same kernel can be shown as a world studio for enterprises with company briefings, situation/objective selection, branch/outcome explanation, and export previews for future RL/eval/agent-ops layers
+- Mission-driven playable Studio mode, where the same kernel now acts like a work-game runtime with human moves, scorecards, branch points, and twin-fidelity checks
 
 ## Architecture
 

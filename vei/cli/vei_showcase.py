@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from vei.playable import run_playable_showcase
 from vei.verticals import (
     get_vertical_pack_manifest,
 )
@@ -239,6 +240,70 @@ def story_command(
         )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))
+
+
+@app.command("playable")
+def playable_command(
+    root: Path = typer.Option(
+        Path("_vei_out/playable_showcase"),
+        help="Root directory for generated playable workspaces and bundles",
+    ),
+    vertical: list[str] = typer.Option(
+        [],
+        "--vertical",
+        "-v",
+        help="Optional subset of worlds to include",
+    ),
+    mission: str | None = typer.Option(
+        None,
+        help="Override the mission when exactly one world is selected",
+    ),
+    objective: str | None = typer.Option(
+        None,
+        help="Override the objective when exactly one world is selected",
+    ),
+    compare_runner: str = typer.Option(
+        "scripted",
+        help="Comparison runner for the playable bundle: scripted|bc|llm",
+    ),
+    run_id: str = typer.Option("playable_release", help="Playable bundle identifier"),
+    overwrite: bool = typer.Option(
+        True, help="Recreate each playable workspace before running"
+    ),
+    seed: int = typer.Option(42042, help="Seed for reproducibility"),
+    max_steps: int = typer.Option(18, help="Max steps for comparison runs"),
+    compare_model: str | None = typer.Option(
+        None, help="Model name when compare-runner=llm"
+    ),
+    compare_bc_model: Path | None = typer.Option(
+        None,
+        exists=True,
+        readable=True,
+        help="BC policy file when compare-runner=bc",
+    ),
+) -> None:
+    normalized_runner = _resolve_compare_runner(
+        compare_runner,
+        compare_model=compare_model,
+        compare_bc_model=compare_bc_model,
+    )
+    selected_verticals = _resolve_showcase_verticals(vertical)
+    if len(selected_verticals) != 1 and (mission or objective):
+        raise typer.BadParameter(
+            "--mission and --objective require exactly one --vertical"
+        )
+    result = run_playable_showcase(
+        root=root,
+        world_names=selected_verticals,
+        mission_name=mission,
+        objective_variant=objective,
+        compare_runner=normalized_runner,
+        run_id=run_id,
+        overwrite=overwrite,
+        seed=seed,
+        max_steps=max_steps,
+    )
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))
 
 

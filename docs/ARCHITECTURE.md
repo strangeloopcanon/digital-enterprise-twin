@@ -60,6 +60,11 @@ VEI now has a product-shaped layer above the kernel:
 - `vei.ui`
   - local FastAPI + SSE playback/debug app over workspace and run APIs
   - control-room style playback surface for launch, timeline, contract, graph, and snapshot inspection
+  - Living Company View that turns the latest run snapshot into a normalized software wall for chat, mail, work tracking, documents, approvals, and the vertical heartbeat
+- `vei.playable`
+  - mission catalog, move model, scorecards, branch helpers, export previews, and playable release bundles
+- `vei.fidelity`
+  - twin-fidelity validation harness for the surfaces that make playable worlds credible
 - `vei.visualization`
   - shared flow/timeline shaping for CLI and UI playback surfaces
 
@@ -138,7 +143,12 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - graph-native workflow execution now records requested graph intent, resolved underlying tool, and affected object refs in the same event spine
 - `vei.ui`
   - local playback/debug server for workspace runs
-  - now also exposes VEI Studio mode, which presents the same kernel through Presentation, Company, Situation, Objective, Run, Branch, Outcome, and Exports
+  - now also exposes VEI Studio mode, which presents the same kernel through Presentation, Company, Mission, Objective, Play, Results, and Exports
+- `vei.playable`
+  - mission-first product layer over vertical workspaces
+  - human playthroughs use the same graph-native actions, event spine, snapshots, and contract engine as the automated paths
+- `vei.fidelity`
+  - boundary-faithful twin checks for Slack-like comms, docs, tickets, identity/control-plane flows, and the active vertical adapter
 - `vei.verticals`
   - built-in vertical world packs and showcase helpers for believable company-grade demo environments
   - scenario variants, contract variants, curated matrix runners, and narrative story bundles that keep the base company world stable while changing the situation and objective
@@ -155,7 +165,7 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - snapshot/receipt inspection plus runtime capability-graph and orientation rendering
 - `vei`
   - top-level product workflow entrypoint
-  - `project`, `contract`, `scenario`, `run`, `inspect`, `showcase`, and `ui` groups
+  - `project`, `contract`, `scenario`, `run`, `inspect`, `showcase`, `studio`, `export`, and `ui` groups
 - `vei-ui`
   - standalone alias for the local playback/debug server
   - equivalent to `vei ui serve`
@@ -219,4 +229,6 @@ VEI keeps the current router twins, but the public ontology now groups them as f
 - Preserve imported-vs-derived-vs-simulated provenance through normalization, workspace storage, run timelines, and UI inspection.
 - Prefer vertical world packs to be first-class workspaces that exercise the same kernel, run spine, contracts, and UI as the rest of the product, not a separate demo framework.
 - Prefer scenario variants and contract variants to behave as overlays on a stable world pack rather than cloned one-off demo environments.
+- Prefer mission play to sit on top of the same graph-native action ladder and run/event spine instead of inventing a game-only runtime.
+- Prefer fidelity checks that validate the real boundary behavior of the important twins before shipping a playable mission bundle.
 - The vertical demos should always reinforce the platform thesis: domain packs change capability graphs and contracts, while the kernel, event spine, replay model, and playback UI stay the same. That is what lets VEI become an RL environment, a continuous-eval stack, and an agent-management platform later without replacing the core runtime.

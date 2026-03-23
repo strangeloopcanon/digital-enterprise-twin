@@ -533,6 +533,45 @@ class MailSim:
             if scenario and scenario.vendor_reply_variants
             else None
         )
+        seeded_threads = (
+            list(scenario.mail_threads) if scenario and scenario.mail_threads else []
+        )
+        if seeded_threads:
+            seeded_inbox: List[tuple[int, str]] = []
+            for thread in seeded_threads:
+                thread_id = str(thread.get("thread_id") or f"thread-{self.counter}")
+                category = str(thread.get("category") or "external")
+                title = thread.get("title")
+                for index, message in enumerate(thread.get("messages", [])):
+                    mid = f"m{self.counter}"
+                    self.counter += 1
+                    time_ms = int(message.get("time_ms") or (self.bus.clock_ms + index))
+                    sender = str(message.get("from") or "unknown@example")
+                    recipient = str(message.get("to") or "me@example")
+                    unread = bool(message.get("unread", recipient == "me@example"))
+                    record = {
+                        "id": mid,
+                        "from": sender,
+                        "to": recipient,
+                        "subj": str(message.get("subj") or title or "Untitled thread"),
+                        "time": time_ms,
+                        "unread": unread,
+                        "headers": {
+                            "From": sender,
+                            "To": recipient,
+                            "Subject": str(
+                                message.get("subj") or title or "Untitled thread"
+                            ),
+                        },
+                        "body_text": str(message.get("body_text") or ""),
+                        "thread_id": thread_id,
+                        "category": category,
+                    }
+                    self.messages[mid] = record
+                    if recipient == "me@example":
+                        seeded_inbox.append((time_ms, mid))
+            seeded_inbox.sort(key=lambda item: item[0], reverse=True)
+            self.inbox = [message_id for _, message_id in seeded_inbox]
 
     def list(self, folder: str = "INBOX") -> List[Dict[str, Any]]:
         return [self.messages[mid] for mid in self.inbox]

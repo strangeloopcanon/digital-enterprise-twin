@@ -5,9 +5,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from vei.run.api import get_run_capability_graphs, launch_workspace_run
+from vei.run.api import (
+    get_run_capability_graphs,
+    get_run_surface_state,
+    launch_workspace_run,
+)
 from vei.ui.api import create_ui_app
-from vei.verticals import get_vertical_pack_manifest
+from vei.verticals import build_vertical_blueprint_asset, get_vertical_pack_manifest
 from vei.workspace.api import create_workspace_from_template, preview_workspace_scenario
 
 
@@ -104,3 +108,68 @@ def test_vertical_workspace_ui_serves_vertical_graphs(
     assert graphs_response.json()[expected_domain]
     assert workspace_response.status_code == 200
     assert workspace_response.json()["manifest"]["source_kind"] == "vertical"
+
+
+@pytest.mark.parametrize(
+    "vertical_name",
+    [
+        "real_estate_management",
+        "digital_marketing_agency",
+        "storage_solutions",
+    ],
+)
+def test_vertical_packs_seed_dense_company_context(vertical_name: str) -> None:
+    asset = build_vertical_blueprint_asset(vertical_name)
+    graphs = asset.capability_graphs
+    assert graphs is not None
+    assert graphs.comm_graph is not None
+    assert graphs.doc_graph is not None
+    assert graphs.work_graph is not None
+
+    slack_channels = graphs.comm_graph.slack_channels
+    slack_messages = sum(len(channel.messages) for channel in slack_channels)
+    work_item_count = len(graphs.work_graph.tickets) + len(
+        graphs.work_graph.service_requests
+    )
+
+    assert len(slack_channels) >= 5
+    assert slack_messages >= 12
+    assert len(graphs.comm_graph.mail_threads) >= 3
+    assert len(graphs.doc_graph.documents) >= 4
+    assert work_item_count >= 8
+
+
+@pytest.mark.parametrize(
+    "vertical_name",
+    [
+        "real_estate_management",
+        "digital_marketing_agency",
+        "storage_solutions",
+    ],
+)
+def test_vertical_runs_expose_living_surface_state(
+    tmp_path: Path,
+    vertical_name: str,
+) -> None:
+    root = tmp_path / f"{vertical_name}-surfaces"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref=vertical_name,
+    )
+    manifest = launch_workspace_run(root, runner="workflow")
+    surfaces = get_run_surface_state(root, manifest.run_id)
+
+    panel_map = {panel.surface: panel for panel in surfaces.panels}
+
+    assert surfaces.company_name
+    assert surfaces.current_tension
+    assert set(panel_map) == {
+        "slack",
+        "mail",
+        "tickets",
+        "docs",
+        "approvals",
+        "vertical_heartbeat",
+    }
+    assert all(panel.items for panel in panel_map.values())

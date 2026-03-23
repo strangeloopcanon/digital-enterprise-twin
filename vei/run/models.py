@@ -8,6 +8,15 @@ from vei.benchmark.models import BenchmarkDiagnostics, BenchmarkMetrics, Benchma
 
 
 RunStatus = Literal["queued", "running", "ok", "error"]
+SurfacePanelKind = Literal[
+    "chat",
+    "mail",
+    "queue",
+    "document",
+    "approval",
+    "vertical_heartbeat",
+]
+SurfacePanelStatus = Literal["ok", "attention", "warning", "critical"]
 
 
 class RunContractSummary(BaseModel):
@@ -72,6 +81,37 @@ class RunTimelineEvent(BaseModel):
     branch: Optional[str] = None
     snapshot_id: Optional[int] = None
     payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LivingSurfaceItem(BaseModel):
+    item_id: str
+    title: str
+    subtitle: Optional[str] = None
+    body: Optional[str] = None
+    status: Optional[str] = None
+    badges: List[str] = Field(default_factory=list)
+    highlight_ref: Optional[str] = None
+
+
+class LivingSurfacePanel(BaseModel):
+    surface: str
+    kind: SurfacePanelKind
+    title: str
+    accent: str
+    status: SurfacePanelStatus = "ok"
+    headline: Optional[str] = None
+    items: List[LivingSurfaceItem] = Field(default_factory=list)
+    highlight_refs: List[str] = Field(default_factory=list)
+
+
+class LivingSurfaceState(BaseModel):
+    company_name: str
+    vertical_name: str
+    run_id: str
+    branch: Optional[str] = None
+    snapshot_id: int = 0
+    current_tension: str = ""
+    panels: List[LivingSurfacePanel] = Field(default_factory=list)
 
 
 class RunManifest(BaseModel):

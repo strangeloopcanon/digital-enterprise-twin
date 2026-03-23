@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>VEI Studio</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -18,110 +21,245 @@
       <header class="hero">
         <div class="hero-copy">
           <p class="eyebrow">VEI Studio</p>
-          <h1>World Studio For Enterprises</h1>
-          <p id="workspace-subtitle" class="hero-subtitle">Loading workspace...</p>
+          <h1>The enterprise <span class="gradient-word">as software</span></h1>
+          <p id="workspace-subtitle" class="hero-subtitle loading-pulse">Booting world&hellip;</p>
           <div id="workspace-metrics" class="metrics-grid"></div>
         </div>
 
-        <aside class="launch-panel studio-run-launch" data-studio-view="runs">
+        <aside class="launch-panel studio-run-launch">
           <div class="panel-heading">
-            <p class="eyebrow">Run Launcher</p>
-            <h2>Launch the next future</h2>
+            <p class="eyebrow">World State</p>
+            <h2>Choose the crisis, define success, make your move</h2>
           </div>
-          <form id="run-form" class="run-form">
+          <div class="run-form">
             <label>
-              <span>Scenario</span>
-              <select id="scenario-select"></select>
-            </label>
-            <label>
-              <span>Runner</span>
-              <select id="runner-select">
-                <option value="workflow">workflow</option>
-                <option value="scripted">scripted</option>
-                <option value="bc">bc</option>
-                <option value="llm">llm</option>
-              </select>
+              <span>Crisis</span>
+              <select id="mission-select"></select>
             </label>
             <label>
-              <span>Provider</span>
-              <input id="provider-input" placeholder="openai" />
+              <span>Success means</span>
+              <select id="objective-select"></select>
             </label>
-            <label>
-              <span>Model</span>
-              <input id="model-input" placeholder="gpt-5" />
-            </label>
-            <label>
-              <span>BC model</span>
-              <input id="bc-model-input" placeholder="/path/to/bc-policy.json" />
-            </label>
-            <label class="span-2">
-              <span>Task override</span>
-              <textarea
-                id="task-input"
-                rows="3"
-                placeholder="Optional custom task for scripted or llm runs"
-              ></textarea>
-            </label>
-            <label>
-              <span>Max steps</span>
-              <input id="max-steps-input" type="number" min="1" value="12" />
-            </label>
+            <div id="mission-launch-summary" class="span-2 detail-summary"></div>
             <div class="run-form-actions span-2">
-              <button id="start-run-button" type="submit">Start Run</button>
-              <p id="run-form-status" class="form-status">
-                Workflow, scripted, and live LLM runs all land in the same run model.
-              </p>
+              <button id="start-mission-button" type="button">Enter World</button>
+              <button id="branch-mission-button" type="button" class="ghost-button">Fork Reality</button>
+              <button id="finish-mission-button" type="button" class="ghost-button">Close Mission</button>
             </div>
-          </form>
+            <p id="mission-form-status" class="form-status span-2">
+              One move ripples across every system &mdash; chat, email, tickets, docs, approvals, and the business core stay in sync.
+            </p>
+          </div>
+          <details class="developer-only">
+            <summary>Developer run launcher</summary>
+            <form id="run-form" class="run-form">
+              <label>
+                <span>Scenario</span>
+                <select id="scenario-select"></select>
+              </label>
+              <label>
+                <span>Runner</span>
+                <select id="runner-select">
+                  <option value="workflow">workflow</option>
+                  <option value="scripted">scripted</option>
+                  <option value="bc">bc</option>
+                  <option value="llm">llm</option>
+                </select>
+              </label>
+              <label>
+                <span>Provider</span>
+                <input id="provider-input" placeholder="openai" />
+              </label>
+              <label>
+                <span>Model</span>
+                <input id="model-input" placeholder="gpt-5" />
+              </label>
+              <label>
+                <span>BC model</span>
+                <input id="bc-model-input" placeholder="/path/to/bc-policy.json" />
+              </label>
+              <label class="span-2">
+                <span>Task override</span>
+                <textarea
+                  id="task-input"
+                  rows="3"
+                  placeholder="Optional custom task for scripted or llm runs"
+                ></textarea>
+              </label>
+              <label>
+                <span>Max steps</span>
+                <input id="max-steps-input" type="number" min="1" value="12" />
+              </label>
+              <div class="run-form-actions span-2">
+                <button id="start-run-button" type="submit">Start Run</button>
+                <p id="run-form-status" class="form-status">
+                  Workflow, scripted, and live LLM runs all land in the same run model.
+                </p>
+              </div>
+            </form>
+          </details>
         </aside>
       </header>
 
       <section class="card studio-shell-card">
         <div class="section-header">
           <div>
-            <p class="eyebrow">Studio Flow</p>
-            <h2>Company → Situation → Objective → Run → Branch → Outcome → Exports</h2>
+            <p class="eyebrow" id="shell-context-hint">Pick a crisis above, then watch every system react</p>
           </div>
           <button id="developer-toggle" type="button" class="ghost-button developer-toggle">
-            Show Developer Detail
+            Show Engine
           </button>
         </div>
         <div id="kernel-thesis-panel" class="studio-banner"></div>
         <div id="studio-nav" class="studio-nav">
-          <button type="button" class="studio-nav-button active" data-studio-view="presentation">0. Presentation</button>
-          <button type="button" class="studio-nav-button" data-studio-view="worlds">1. Company</button>
-          <button type="button" class="studio-nav-button" data-studio-view="situations">2. Situation</button>
-          <button type="button" class="studio-nav-button" data-studio-view="objectives">3. Objective</button>
-          <button type="button" class="studio-nav-button" data-studio-view="runs">4. Run</button>
+          <button type="button" class="studio-nav-button active" data-studio-view="company">Company</button>
+          <button type="button" class="studio-nav-button" data-studio-view="crisis">Crisis</button>
+          <button type="button" class="studio-nav-button" data-studio-view="outcome">Outcome</button>
+          <button type="button" class="studio-nav-button developer-only" data-studio-view="presentation">Briefing</button>
         </div>
       </section>
 
       <main class="layout">
+
+        <!-- ========== TAB: COMPANY ========== -->
+        <section class="card living-company-card" data-studio-view="company">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Living Company</p>
+              <h2 id="living-company-title">Every system, one view</h2>
+            </div>
+          </div>
+          <div class="living-company-layout">
+            <div>
+              <div id="living-company-surface-wall" class="surface-wall"></div>
+            </div>
+            <aside id="living-company-rail" class="living-company-rail"></aside>
+          </div>
+        </section>
+
+        <section class="card play-card" data-studio-view="company">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Your Moves</p>
+              <h2>Choose the next action</h2>
+            </div>
+          </div>
+          <div id="mission-scorecard" class="contract-scorecard"></div>
+          <div id="mission-moves-panel" class="run-grid"></div>
+        </section>
+
+        <section class="card move-log-card" data-studio-view="company">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Move Log</p>
+              <h2>What happened after each decision</h2>
+            </div>
+          </div>
+          <div id="move-log-panel" class="move-log"></div>
+        </section>
+
+        <section class="card worlds-card" data-studio-view="company">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Other Companies</p>
+              <h2>Same engine, different industries</h2>
+            </div>
+          </div>
+          <div id="worlds-panel" class="briefing-grid"></div>
+        </section>
+
+        <!-- ========== TAB: CRISIS ========== -->
+        <section class="card briefing-card" data-studio-view="crisis">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Current Crisis</p>
+              <h2>What went wrong and why it matters</h2>
+            </div>
+          </div>
+          <div id="mission-briefing" class="briefing-grid"></div>
+          <div id="mission-catalog" class="run-grid"></div>
+        </section>
+
+        <section class="card briefing-card" data-studio-view="crisis">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Situation Detail</p>
+              <h2>What changed from the base world</h2>
+            </div>
+          </div>
+          <div id="scenario-briefing" class="briefing-grid"></div>
+          <div id="situation-story-panel" class="story-grid"></div>
+        </section>
+
+        <section class="card objective-card" data-studio-view="crisis">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Success Criteria</p>
+              <h2>What the run is evaluated against</h2>
+            </div>
+          </div>
+          <div id="objective-scorecard" class="contract-scorecard"></div>
+        </section>
+
+        <!-- ========== TAB: OUTCOME ========== -->
+        <section class="card run-card" data-studio-view="outcome">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Run History</p>
+              <h2>Every path through this world</h2>
+            </div>
+          </div>
+          <div id="runs-panel" class="run-grid"></div>
+        </section>
+
+        <section class="card outcome-card" data-studio-view="outcome">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Branch + Outcome</p>
+              <h2>Two futures, one world</h2>
+            </div>
+          </div>
+          <div id="run-outcome-summary" class="contract-scorecard"></div>
+          <div id="branch-outcome-panel" class="briefing-grid"></div>
+        </section>
+
+        <section class="card exports-card" data-studio-view="outcome">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Exports</p>
+              <h2>Runbooks, training data, and agent configs from the same run</h2>
+            </div>
+          </div>
+          <div id="exports-panel" class="briefing-grid"></div>
+        </section>
+
+        <section class="card export-card" data-studio-view="outcome">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Twin Fidelity</p>
+              <h2>Work surface health checks</h2>
+            </div>
+          </div>
+          <div id="fidelity-panel" class="run-grid"></div>
+        </section>
+
+        <!-- ========== TAB: BRIEFING (developer-only tab) ========== -->
         <section class="card briefing-card" data-studio-view="presentation">
           <div class="section-header">
             <div>
-              <p class="eyebrow">Presentation</p>
-              <h2>The guided presentation flow</h2>
+              <p class="eyebrow">Briefing</p>
+              <h2>How this world is set up</h2>
             </div>
           </div>
           <div id="presentation-panel" class="briefing-grid"></div>
           <div id="presentation-beats" class="presentation-flow"></div>
         </section>
 
-        <section class="card worlds-card" data-studio-view="worlds">
+        <!-- ========== ENGINE PANELS (developer-only, under Company tab) ========== -->
+        <section class="card stage-card developer-only" data-studio-view="company">
           <div class="section-header">
             <div>
-              <p class="eyebrow">Worlds</p>
-              <h2>Same kernel, different companies</h2>
-            </div>
-          </div>
-          <div id="worlds-panel" class="briefing-grid"></div>
-        </section>
-
-        <section class="card stage-card" data-studio-view="runs">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Runs</p>
+              <p class="eyebrow">Playback</p>
               <h2 id="active-run-title">No run selected</h2>
             </div>
             <div id="active-run-badges" class="badge-row"></div>
@@ -144,59 +282,7 @@
           <div id="timeline-feed" class="timeline-feed"></div>
         </section>
 
-        <section class="card briefing-card" data-studio-view="situations">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Situations</p>
-              <h2>What changed from the base world</h2>
-            </div>
-          </div>
-          <div id="scenario-briefing" class="briefing-grid"></div>
-          <div id="situation-story-panel" class="story-grid"></div>
-        </section>
-
-        <section class="card objective-card" data-studio-view="objectives">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Objectives</p>
-              <h2>What the current run is optimizing for</h2>
-            </div>
-          </div>
-          <div id="objective-scorecard" class="contract-scorecard"></div>
-        </section>
-
-        <section class="card run-card" data-studio-view="runs">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Runs</p>
-              <h2>Workspace history</h2>
-            </div>
-          </div>
-          <div id="runs-panel" class="run-grid"></div>
-        </section>
-
-        <section class="card outcome-card" data-studio-view="runs">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Branch + Outcome</p>
-              <h2>Two futures, one world</h2>
-            </div>
-          </div>
-          <div id="run-outcome-summary" class="contract-scorecard"></div>
-          <div id="branch-outcome-panel" class="briefing-grid"></div>
-        </section>
-
-        <section class="card exports-card" data-studio-view="runs">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Exports</p>
-              <h2>What the same run becomes later</h2>
-            </div>
-          </div>
-          <div id="exports-panel" class="briefing-grid"></div>
-        </section>
-
-        <section class="card orientation-card" data-studio-view="runs">
+        <section class="card orientation-card developer-only" data-studio-view="company">
           <div class="section-header">
             <div>
               <p class="eyebrow">Orientation</p>
@@ -207,7 +293,7 @@
           <div id="next-questions" class="question-list"></div>
         </section>
 
-        <section class="card graphs-card" data-studio-view="runs">
+        <section class="card graphs-card developer-only" data-studio-view="company">
           <div class="section-header">
             <div>
               <p class="eyebrow">Capability Graphs</p>
@@ -217,7 +303,7 @@
           <div id="graphs-panel" class="graph-grid"></div>
         </section>
 
-        <section class="card import-card" data-studio-view="situations">
+        <section class="card import-card developer-only" data-studio-view="crisis">
           <div class="section-header">
             <div>
               <p class="eyebrow">Grounded Import</p>
@@ -230,7 +316,7 @@
           <div id="provenance-detail" class="detail-summary"></div>
         </section>
 
-        <section class="card snapshots-card" data-studio-view="runs">
+        <section class="card snapshots-card developer-only" data-studio-view="outcome">
           <div class="section-header">
             <div>
               <p class="eyebrow">Snapshots</p>
@@ -252,7 +338,7 @@
           <pre id="diff-panel" class="code-panel"></pre>
         </section>
 
-        <section class="card detail-card" data-studio-view="runs">
+        <section class="card detail-card developer-only" data-studio-view="outcome">
           <div class="section-header">
             <div>
               <p class="eyebrow">Selection</p>
@@ -285,6 +371,14 @@
           <details>
             <summary>Run Contract Evaluation</summary>
             <pre id="contract-panel" class="code-panel"></pre>
+          </details>
+          <details>
+            <summary>Mission State</summary>
+            <pre id="mission-state-panel" class="code-panel"></pre>
+          </details>
+          <details>
+            <summary>Fidelity Report</summary>
+            <pre id="fidelity-raw-panel" class="code-panel"></pre>
           </details>
           <details>
             <summary>Orientation JSON</summary>
