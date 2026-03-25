@@ -310,6 +310,17 @@ function uniqueStrings(values) {
   return [...new Set((values || []).filter((item) => typeof item === "string" && item))];
 }
 
+function inWorldCopy(value, fallback) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return fallback;
+  }
+  if (/(kernel|demo|world pack|static workflow|proof|same company|same world)/i.test(text)) {
+    return fallback;
+  }
+  return text;
+}
+
 function latestExecutedMove() {
   const executed = state.missionState?.executed_moves || [];
   return executed.length ? executed[executed.length - 1] : null;
@@ -494,46 +505,6 @@ function renderPresentationPanel() {
 }
 
 function renderStudioShell() {
-  const panel = document.getElementById("kernel-thesis-panel");
-  const story = state.story || {};
-  const selectedWorld =
-    story.manifest?.company_name ||
-    state.workspace?.manifest?.title ||
-    "Company";
-  const mission = state.missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
-  const objective =
-    state.missionState?.objective_variant ||
-    mission?.default_objective ||
-    state.scenarioPreview?.active_contract_variant ||
-    "default";
-  const companyBriefing =
-    mission?.briefing ||
-    story.company_briefing ||
-    state.workspace?.manifest?.description ||
-    "Company state is loading.";
-  const systemCount = state.surfaceState?.panels?.length || (story.manifest?.key_surfaces || []).length || 0;
-  if (!panel) {
-    setStudioView(state.studioView);
-    renderPresentationPanel();
-    return;
-  }
-  panel.innerHTML = `
-    <div class="shell-summary-item">
-      <span class="metric-label">Company</span>
-      <strong>${escapeHtml(selectedWorld)}</strong>
-      <span class="metric-detail">${escapeHtml(story.manifest?.title || state.workspace?.manifest?.source_ref || "active workspace")}</span>
-    </div>
-    <div class="shell-summary-item">
-      <span class="metric-label">Current tension</span>
-      <strong>${escapeHtml(mission?.title || "No crisis selected")}</strong>
-      <span class="metric-detail">${escapeHtml(companyBriefing)}</span>
-    </div>
-    <div class="shell-summary-item">
-      <span class="metric-label">Success means</span>
-      <strong>${escapeHtml(objective)}</strong>
-      <span class="metric-detail">${systemCount} live system${systemCount === 1 ? "" : "s"} in view</span>
-    </div>
-  `;
   setStudioView(state.studioView);
   renderPresentationPanel();
 }
@@ -611,7 +582,6 @@ function renderWorkspaceHero() {
   renderWorkspaceMetrics();
   renderStudioShell();
   renderWorldsPanel();
-  renderWorldsStrip();
   renderJson("workspace-panel", workspace);
 }
 
@@ -651,31 +621,10 @@ function renderWorldsPanel() {
     .join("");
 }
 
-function renderWorldsStrip() {
-  const strip = document.getElementById("worlds-strip");
-  if (!strip) return;
-  const story = state.story;
-  const availableWorlds = Array.isArray(story?.available_worlds) ? story.available_worlds : [];
-  if (availableWorlds.length <= 1) {
-    strip.innerHTML = "";
-    return;
-  }
-  const currentWorldName = story?.manifest?.name || state.workspace?.manifest?.source_ref || "";
-  strip.innerHTML = `
-    <span class="worlds-strip-label">Companies in this engine</span>
-    <div class="worlds-strip-chips">
-      ${availableWorlds.map((w) =>
-        `<span class="worlds-strip-chip ${w.name === currentWorldName ? "worlds-strip-chip-active" : ""}">${escapeHtml(w.company_name)}</span>`
-      ).join("")}
-    </div>
-  `;
-}
-
 function renderMissionSelector() {
   const missionSelect = document.getElementById("mission-select");
   const objectiveSelect = document.getElementById("objective-select");
-  const summary = document.getElementById("mission-launch-summary");
-  if (!missionSelect || !objectiveSelect || !summary) {
+  if (!missionSelect || !objectiveSelect) {
     return;
   }
   const currentMission =
@@ -713,22 +662,12 @@ function renderMissionSelector() {
       }>${escapeHtml(label)}</option>`;
     })
     .join("");
-  summary.innerHTML = currentMission
-    ? `
-      <div class="chip-row">
-        ${chip(state.workspace?.manifest?.title || state.playableBundle?.world_name || "workspace")}
-        ${chip(currentMission.title || currentMission.mission_name)}
-        ${chip(selectedObjective || "default")}
-        ${chip(state.missionState?.status || "ready", statusClass(state.missionState?.status || "ready"))}
-      </div>
-    `
-    : `<p class="metric-detail">No company world is loaded yet.</p>`;
 }
 
 function renderMissionSummary() {
   const briefing = document.getElementById("mission-briefing");
   const catalog = document.getElementById("mission-catalog");
-  if (!briefing || !catalog) {
+  if (!briefing) {
     return;
   }
   const missionState = state.missionState;
@@ -740,33 +679,40 @@ function renderMissionSummary() {
   if (!currentMission) {
     briefing.innerHTML = `
       <div class="story-card story-span-2">
-        <p class="eyebrow">Mission</p>
-        <p class="metric-detail">Prepare the company world to explore a situation inside it.</p>
+        <p class="eyebrow">Current crisis</p>
+        <p class="metric-detail">Choose a crisis above to see what changed, why it matters, and how this company will be judged.</p>
       </div>
     `;
-    catalog.innerHTML = "";
+    if (catalog) {
+      catalog.innerHTML = "";
+    }
     return;
   }
   briefing.innerHTML = `
-    <div class="story-card accent-card story-span-2">
-      <p class="eyebrow">Current mission</p>
+    <div class="story-card accent-card story-span-2 crisis-hero-card">
+      <p class="eyebrow">Current crisis</p>
       <h3>${escapeHtml(currentMission.title)}</h3>
       <p class="metric-detail">${escapeHtml(currentMission.briefing || "")}</p>
       <div class="chip-row">
-        ${chip(currentMission.hero ? "primary company" : "included company", currentMission.hero ? "ok" : "")}
         ${chip(currentMission.primary_domain || "world")}
-        ${(currentMission.branch_labels || []).map((item) => chip(item)).join("")}
+        ${chip(`${(currentMission.supported_objectives || []).length || 1} success mode${(currentMission.supported_objectives || []).length === 1 ? "" : "s"}`)}
       </div>
     </div>
     <div class="story-card">
       <p class="eyebrow">Why this matters</p>
-      <p class="metric-detail">${escapeHtml(currentMission.why_it_matters || "")}</p>
+      <p class="metric-detail">${escapeHtml(inWorldCopy(
+        currentMission.why_it_matters,
+        "This is the pressure point most likely to decide whether the company stabilizes or scrambles."
+      ))}</p>
     </div>
     <div class="story-card">
       <p class="eyebrow">Failure impact</p>
       <p class="metric-detail">${escapeHtml(currentMission.failure_impact || "")}</p>
     </div>
   `;
+  if (!catalog) {
+    return;
+  }
   catalog.innerHTML = state.missions
     .map(
       (item) => `
@@ -1576,7 +1522,13 @@ function renderLivingCompanyImpact() {
         <div class="chip-row">
           ${impact.systems.map((item) => chip(formatSurfaceTitle(item), "ok")).join("")}
         </div>
-        ${impact.refs?.length ? `<div class="chip-row">${impact.refs.slice(0, 4).map((item) => chip(item)).join("")}</div>` : ""}
+        ${
+          impact.items?.length
+            ? `<div class="chip-row">${impact.items.slice(0, 3).map((item) => chip(item.title)).join("")}</div>`
+            : impact.refs?.length
+              ? `<div class="chip-row">${impact.refs.slice(0, 4).map((item) => chip(item)).join("")}</div>`
+              : ""
+        }
       </div>
     </div>
   `;
@@ -1625,8 +1577,14 @@ function renderSurfaceWall() {
   }
 
   const impact = state.lastMoveImpact;
-  const changedPanels = new Set(state.surfaceHighlights?.panels || impact?.systems || []);
-  const changedRefs = new Set(state.surfaceHighlights?.refs || []);
+  const highlightPanels = Array.isArray(state.surfaceHighlights?.panels) && state.surfaceHighlights.panels.length
+    ? state.surfaceHighlights.panels
+    : impact?.systems || [];
+  const highlightRefs = Array.isArray(state.surfaceHighlights?.refs) && state.surfaceHighlights.refs.length
+    ? state.surfaceHighlights.refs
+    : (impact?.items || []).map((item) => item.ref).filter(Boolean);
+  const changedPanels = new Set(highlightPanels);
+  const changedRefs = new Set(highlightRefs);
   const isCascade = state.cascadeActive && changedPanels.size > 0;
 
   panel.innerHTML = surfaceState.panels
@@ -1708,9 +1666,6 @@ function renderLivingCompanyRail() {
   const impact = state.lastMoveImpact;
   const surfaceState = state.surfaceState;
 
-  const moveCount = (missionState?.executed_moves || []).length;
-  const systemCount = (surfaceState?.panels || []).length;
-
   panel.innerHTML = `
     <div class="story-card accent-card">
       <p class="eyebrow">Current tension</p>
@@ -1756,30 +1711,34 @@ function renderLivingCompanyRail() {
             <h3>${escapeHtml(impact.title || "Last move")}</h3>
             <p class="metric-detail">${escapeHtml(impact.summary || "The company state changed after the last move.")}</p>
             <div class="chip-row">${(impact.systems || []).map((item) => chip(formatSurfaceTitle(item), "ok")).join("")}</div>
+            ${impact.items?.length ? `<div class="chip-row">${impact.items.slice(0, 2).map((item) => chip(item.title)).join("")}</div>` : ""}
           </div>
         `
         : ""
     }
-    <div class="story-card">
-      <p class="eyebrow">Pulse</p>
-      <div class="detail-grid">
-        ${detailTile("Moves", String(moveCount))}
-        ${detailTile("Systems hit", String((impact?.systems || []).length))}
-        ${detailTile("Systems", String(systemCount))}
-        ${detailTile("Last tool", latestToolEvent?.resolved_tool || "waiting")}
-      </div>
-    </div>
+    ${
+      latestToolEvent
+        ? `
+          <div class="story-card">
+            <p class="eyebrow">Latest tool</p>
+            <h3>${escapeHtml(latestToolEvent.resolved_tool || "waiting")}</h3>
+            <p class="metric-detail">${escapeHtml(latestToolEvent.summary || "The latest action is recorded in the run trail.")}</p>
+          </div>
+        `
+        : ""
+    }
   `;
 }
 
 function diffSurfaceState(before, after) {
   if (!before || !after) {
-    return { panels: [], refs: [] };
+    return { panels: [], refs: [], items: [] };
   }
   const beforePanels = new Map((before.panels || []).map((panel) => [panel.surface, panel]));
   const afterPanels = new Map((after.panels || []).map((panel) => [panel.surface, panel]));
   const changedPanels = [];
   const changedRefs = [];
+  const changedItems = [];
 
   for (const [surface, panel] of afterPanels.entries()) {
     const previous = beforePanels.get(surface);
@@ -1792,10 +1751,30 @@ function diffSurfaceState(before, after) {
     const previousItems = new Map(
       ((previous && previous.items) || []).map((item) => [item.item_id, JSON.stringify(item)])
     );
+    let highlighted = false;
     for (const item of panel.items || []) {
       const signature = JSON.stringify(item);
-      if (previousItems.get(item.item_id) !== signature && item.highlight_ref) {
-        changedRefs.push(item.highlight_ref);
+      if (previousItems.get(item.item_id) !== signature) {
+        if (item.highlight_ref) {
+          changedRefs.push(item.highlight_ref);
+          highlighted = true;
+        }
+        changedItems.push({
+          surface,
+          ref: item.highlight_ref || "",
+          title: item.title || item.item_id || formatSurfaceTitle(surface),
+        });
+      }
+    }
+    if (!highlighted) {
+      const fallback = (panel.items || []).find((item) => item.highlight_ref);
+      if (fallback) {
+        changedRefs.push(fallback.highlight_ref);
+        changedItems.push({
+          surface,
+          ref: fallback.highlight_ref,
+          title: fallback.title || fallback.item_id || formatSurfaceTitle(surface),
+        });
       }
     }
   }
@@ -1803,6 +1782,7 @@ function diffSurfaceState(before, after) {
   return {
     panels: changedPanels,
     refs: [...new Set(changedRefs)],
+    items: changedItems.slice(0, 6),
   };
 }
 
@@ -1829,6 +1809,9 @@ function buildMoveImpact(moveSpec, diff) {
       ? diff.panels
       : guessMoveTargets(moveSpec || executedMove || {})
   );
+  const items = Array.isArray(diff?.items)
+    ? diff.items.filter((item) => item && item.title)
+    : [];
   const refs = uniqueStrings([
     ...(diff?.refs || []),
     ...((executedMove?.object_refs || []).slice(0, 6)),
@@ -1839,14 +1822,29 @@ function buildMoveImpact(moveSpec, diff) {
     executedMove?.payload?.scenario_brief ||
     executedMove?.summary ||
     moveSpec?.summary ||
-    "";
+    buildImpactSummary(systems, items);
   return {
     title: executedMove?.title || moveSpec?.title || "Move applied",
     summary,
     systems,
     refs,
+    items: items.slice(0, 3),
     tool: executedMove?.resolved_tool || "",
   };
+}
+
+function buildImpactSummary(systems, items) {
+  const firstItem = items[0];
+  if (firstItem?.title) {
+    return `${formatSurfaceTitle(firstItem.surface)} now shows ${firstItem.title}.`;
+  }
+  if (systems.length === 1) {
+    return `${formatSurfaceTitle(systems[0])} reacted to the last move.`;
+  }
+  if (systems.length > 1) {
+    return `${systems.map((item) => formatSurfaceTitle(item)).join(", ")} reacted to the last move.`;
+  }
+  return "The company state shifted after the last move.";
 }
 
 function renderMissionPlay() {
@@ -2266,10 +2264,10 @@ function renderScenarioBriefing() {
   const preview = state.scenarioPreview;
   const contract = state.scenarioContract;
   const panel = document.getElementById("scenario-briefing");
-  const storyPanel = document.getElementById("situation-story-panel");
   if (!preview || !contract) {
-    panel.innerHTML = `<div class="metric-tile"><span class="metric-label">Scenario</span><span class="metric-value">Loading</span></div>`;
-    storyPanel.innerHTML = "";
+    if (panel) {
+      panel.innerHTML = `<div class="metric-tile"><span class="metric-label">Scenario</span><span class="metric-value">Loading</span></div>`;
+    }
     return;
   }
 
@@ -2305,75 +2303,47 @@ function renderScenarioBriefing() {
     })
     .slice(0, 4)
     .join(", ");
-  const contractSummary = [
-    metricTile("Scenario", scenario.title || scenario.name || "Scenario", scenario.scenario_name || ""),
-    metricTile("Workflow", compiled.workflow_name || contract.workflow_name || "n/a", compiled.workflow_variant || "default"),
-    metricTile("Scenario variant", activeScenarioVariant?.title || preview.active_scenario_variant || "default", activeScenarioVariant?.name || ""),
-    metricTile("Contract variant", activeContractVariant?.title || preview.active_contract_variant || "default", activeContractVariant?.name || ""),
-    metricTile("Facades", String((compiled.facades || []).length), facadeLabels),
-    metricTile("Focus", scenario.inspection_focus || "summary", (scenario.tags || []).join(", ")),
-  ].join("");
-  panel.innerHTML = contractSummary;
+  if (!panel) {
+    renderObjectiveBriefing(contractVariants, activeContractVariant, contract);
+    return;
+  }
 
-  storyPanel.innerHTML = `
-    <div class="story-card accent-card story-span-2">
-      <p class="eyebrow">Situation briefing</p>
+  panel.innerHTML = `
+    <div class="story-card story-span-2">
+      <p class="eyebrow">What changed</p>
       <h3>${escapeHtml(activeScenarioVariant?.title || scenario.title || "Current situation")}</h3>
       <p class="metric-detail">${escapeHtml(state.story?.situation_briefing || activeScenarioVariant?.description || scenario.description || "")}</p>
       <div class="chip-row">
         ${chip(activeScenarioVariant?.name || preview.active_scenario_variant || "default")}
-        ${(activeScenarioVariant?.branch_labels || whatIfBranches).map((item) => chip(item)).join("")}
+        ${chip(compiled.workflow_name || contract.workflow_name || "workflow")}
+        ${chip(String((compiled.facades || []).length) + " surfaces")}
       </div>
     </div>
+      <div class="story-card">
+        <p class="eyebrow">Why it matters</p>
+      <p class="metric-detail">${escapeHtml(inWorldCopy(
+        activeScenarioVariant?.rationale,
+        "This variation shifts the pressure without changing the underlying company."
+      ))}</p>
+      </div>
     <div class="story-card">
-      <p class="eyebrow">Why this variant exists</p>
-      <p class="metric-detail">${escapeHtml(activeScenarioVariant?.rationale || "This situation is one alternate future on top of the same company world.")}</p>
-    </div>
-    <div class="story-card">
-      <p class="eyebrow">What changed from base world</p>
+      <p class="eyebrow">From the base company</p>
       <p class="metric-detail">${escapeHtml((activeScenarioVariant?.change_summary || ["The base company stays fixed while the situation overlay changes deadlines, faults, or object state."]).join(" · "))}</p>
     </div>
     ${
       whatIfBranches.length
-        ? `<div class="story-card story-span-2">
+        ? `<div class="story-card">
             <p class="eyebrow">What-if paths</p>
             <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-            <p class="metric-detail">These are alternate futures for the same company, not separate worlds.</p>
+            <p class="metric-detail">Each path begins from the same company and pressure, then diverges from there.</p>
           </div>`
         : ""
     }
-    ${
-      scenarioVariants.length
-        ? `<div class="story-card story-span-2">
-            <p class="eyebrow">Available situations</p>
-            <div class="stack">
-              ${scenarioVariants
-                .map(
-                  (item) => `
-                    <div class="run-item">
-                      <div class="chip-row">
-                        ${chip(item.name)}
-                        ${item.active ? chip("active", "ok") : ""}
-                      </div>
-                      <strong>${escapeHtml(item.title)}</strong>
-                      <p class="metric-detail">${escapeHtml(item.rationale || item.description || "")}</p>
-                      <p class="metric-detail">${escapeHtml((item.change_summary || []).join(" · "))}</p>
-                      <button type="button" class="ghost-button activate-scenario-variant" data-variant-name="${escapeHtml(item.name)}">Activate situation</button>
-                    </div>
-                  `
-                )
-                .join("")}
-            </div>
-          </div>`
-        : ""
-    }
+    <div class="story-card">
+      <p class="eyebrow">Surface coverage</p>
+      <p class="metric-detail">${escapeHtml(facadeLabels || verticalName || "Core company surfaces are active for this situation.")}</p>
+    </div>
   `;
-
-  document.querySelectorAll(".activate-scenario-variant").forEach((node) => {
-    node.addEventListener("click", () => {
-      void activateScenarioVariant(node.dataset.variantName);
-    });
-  });
 
   renderJson("scenario-panel", preview);
   renderObjectiveBriefing(contractVariants, activeContractVariant, contract);
@@ -2436,32 +2406,34 @@ function renderObjectiveBriefing(contractVariants = [], activeContractVariant = 
     (item) => item.name === state.scenarioPreview?.active_contract_variant
   );
   panel.innerHTML = `
-    <div class="score-strip">
-      ${scorePill("Success predicates", String(successCount))}
-      ${scorePill("Forbidden predicates", String(forbiddenCount))}
-      ${scorePill("Policy invariants", String(invariants))}
-      ${scorePill("Imported rules", String(importedRuleCount))}
-      ${scorePill("Allowed tools", String(targetContract.observation_boundary?.allowed_tools?.length || targetContract.metadata?.observation_boundary?.allowed_tools?.length || 0))}
-    </div>
     <div class="briefing-grid">
       <div class="story-card accent-card story-span-2">
-        <p class="eyebrow">Objective briefing</p>
+        <p class="eyebrow">Success means</p>
         <h3>${escapeHtml(selectedVariant?.title || state.scenarioPreview?.active_contract_variant || "Default objective")}</h3>
         <p class="metric-detail">${escapeHtml(state.story?.objective_briefing || selectedVariant?.objective_summary || selectedVariant?.description || "The active contract defines what counts as success, what must be avoided, and how tradeoffs are judged.")}</p>
+        <div class="chip-row">
+          ${chip(`${successCount} success checks`)}
+          ${chip(`${forbiddenCount} failure checks`)}
+          ${chip(`${invariants} policy guardrails`)}
+          ${chip(`${importedRuleCount} imported rules`)}
+        </div>
       </div>
       <div class="story-card">
-        <p class="eyebrow">Why this objective exists</p>
-        <p class="metric-detail">${escapeHtml(selectedVariant?.rationale || "The same company world can be evaluated under different executive or operational preferences.")}</p>
+        <p class="eyebrow">Why this target</p>
+        <p class="metric-detail">${escapeHtml(inWorldCopy(
+          selectedVariant?.rationale,
+          "This target says what good looks like while the company is under pressure."
+        ))}</p>
       </div>
       <div class="story-card">
-        <p class="eyebrow">World invariant</p>
-        <p class="metric-detail">${escapeHtml(state.story?.manifest?.objective_focus || "The contract keeps the company world honest by making business consequences explicit.")}</p>
+        <p class="eyebrow">Guardrails</p>
+        <p class="metric-detail">${escapeHtml(state.story?.manifest?.objective_focus || "This target keeps business risk and policy drift visible while the run is in motion.")}</p>
       </div>
       ${
         availableVariants.length
           ? `<div class="story-card story-span-2">
-              <p class="eyebrow">Available objectives</p>
-              <div class="stack">
+              <p class="eyebrow">Other ways to judge this crisis</p>
+              <div class="stack compact-stack">
                 ${availableVariants
                   .map(
                     (item) => `
@@ -2525,40 +2497,56 @@ function renderRunSummary() {
   const graphDomains = uniqueStrings(graphEvents.map((item) => item.graph_domain).filter(Boolean));
   const resolvedTools = uniqueStrings(graphEvents.map((item) => item.resolved_tool).filter(Boolean));
   const story = state.story || {};
+  const outcome = story.outcome || null;
   const whatIfBranches = Array.isArray(story.branch_labels) && story.branch_labels.length
     ? story.branch_labels
     : state.scenarioPreview?.scenario?.metadata?.builder_environment?.what_if_branches || [];
+  const outcomeTitle = run.contract?.ok
+    ? "This path is holding the company together."
+    : run.contract?.ok === false
+      ? "This path still leaves the company exposed."
+      : "This path is still unfolding.";
+  const outcomeBody = inWorldCopy(
+    outcome?.why_it_matters?.[0],
+    run.contract?.ok
+      ? "The moves so far are reducing the business risk tied to this crisis."
+      : "The moves so far have not fully repaired the business risk tied to this crisis."
+  );
+  const changedTitle = inWorldCopy(
+    outcome?.what_changed?.[0],
+    run.contract?.ok
+      ? "The run is starting to clear the operational blockers."
+      : "The run changed the company, but not enough to make the crisis safe yet."
+  );
+  const changedDetail = inWorldCopy(
+    outcome?.what_changed?.[1],
+    `${issueCount} issue${issueCount === 1 ? "" : "s"} remain open across ${graphDomains.length || 1} active domain${graphDomains.length === 1 ? "" : "s"}.`
+  );
   panel.innerHTML = `
     <div class="score-strip">
       ${scorePill("Contract", run.contract?.ok === null ? "pending" : run.contract?.ok ? "pass" : "fail", run.contract?.contract_name || "workspace contract")}
       ${scorePill("Assertions", `${successPassed}/${successTotal}`)}
       ${scorePill("Issues", String(issueCount))}
       ${scorePill("Policy failures", String(policyFails))}
-      ${scorePill("Latency p95", formatMs(run.metrics?.latency_p95_ms || 0))}
-      ${scorePill("Virtual time", formatMs(run.metrics?.time_ms || 0))}
+      ${scorePill("Run events", compactNumber(state.timeline.length))}
     </div>
     <div class="briefing-grid">
-      <div class="story-card accent-card">
-        <p class="eyebrow">Outcome</p>
-        <h3>${run.contract?.ok ? "Good branch" : run.contract?.ok === false ? "Broken branch" : "Outcome pending"}</h3>
-        <p class="metric-detail">This path came from the same company state, but it produced a different business outcome.</p>
+      <div class="story-card accent-card story-span-2">
+        <p class="eyebrow">Did this help?</p>
+        <h3>${escapeHtml(outcomeTitle)}</h3>
+        <p class="metric-detail">${escapeHtml(outcomeBody)}</p>
         <div class="detail-grid">
-          ${detailTile("Run events", compactNumber(state.timeline.length))}
           ${detailTile("Graph actions", compactNumber(graphEvents.length))}
           ${detailTile("Snapshots", compactNumber(state.snapshots.length))}
           ${detailTile("Domains", compactNumber(graphDomains.length))}
+          ${detailTile("Virtual time", formatMs(run.metrics?.time_ms || 0))}
         </div>
         <div class="chip-row">${graphDomains.map((item) => chip(formatDomainTitle(item))).join("")}</div>
       </div>
       <div class="story-card">
-        <p class="eyebrow">Recorded trail</p>
-        <h3>One path, full receipts</h3>
-        <div class="chip-row">
-          ${chip("timeline")}
-          ${chip("comparisons")}
-          ${chip("receipts")}
-        </div>
-        <p class="metric-detail">Every path records state, decisions, receipts, and tool activity in one place, so you can compare what happened and why.</p>
+        <p class="eyebrow">What changed</p>
+        <h3>${escapeHtml(changedTitle)}</h3>
+        <p class="metric-detail">${escapeHtml(changedDetail)}</p>
         <div class="chip-row">${resolvedTools.slice(0, 5).map((item) => chip(item)).join("")}</div>
       </div>
       ${
@@ -2567,14 +2555,19 @@ function renderRunSummary() {
               <p class="eyebrow">What-if paths</p>
               <h3>Branch labels</h3>
               <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
-              <p class="metric-detail">These branch ideas are alternate futures that begin from the same company state.</p>
+              <p class="metric-detail">These are alternate futures that begin from the same company state.</p>
             </div>`
           : ""
       }
     </div>
   `;
   if (branchPanel) {
-    const outcome = story.outcome || null;
+    const branchChangeLines = (outcome?.what_changed || [])
+      .map((item) => inWorldCopy(item, ""))
+      .filter(Boolean);
+    const branchReasonLines = (outcome?.why_it_matters || [])
+      .map((item) => inWorldCopy(item, ""))
+      .filter(Boolean);
     branchPanel.innerHTML = outcome
       ? `
         <div class="story-card accent-card story-span-2">
@@ -2600,11 +2593,11 @@ function renderRunSummary() {
         </div>
         <div class="story-card story-span-2">
           <p class="eyebrow">What changed</p>
-          <div class="stack">${(outcome.what_changed || []).map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}</div>
+          <div class="stack">${(branchChangeLines.length ? branchChangeLines : [changedTitle, changedDetail]).map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}</div>
         </div>
         <div class="story-card story-span-2">
           <p class="eyebrow">Why the result was good or bad</p>
-          <div class="stack">${(outcome.why_it_matters || []).map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}</div>
+          <div class="stack">${(branchReasonLines.length ? branchReasonLines : [outcomeBody]).map((item) => `<p class="metric-detail">${escapeHtml(item)}</p>`).join("")}</div>
         </div>
       `
       : `
