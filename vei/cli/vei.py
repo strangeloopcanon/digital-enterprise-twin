@@ -13,6 +13,7 @@ from vei.cli.vei_export import app as export_app
 from vei.cli.vei_inspect import app as inspect_app
 from vei.cli.vei_llm_test import app as llm_test_app
 from vei.cli.vei_pack import app as pack_app
+from vei.cli.vei_pilot import app as pilot_app
 from vei.cli.vei_project import app as project_app
 from vei.cli.vei_release import app as release_app
 from vei.cli.vei_report import app as report_app
@@ -57,6 +58,7 @@ app.add_typer(eval_app, name="eval")
 app.add_typer(eval_frontier_app, name="eval-frontier")
 app.add_typer(llm_test_app, name="llm-test")
 app.add_typer(pack_app, name="pack")
+app.add_typer(pilot_app, name="pilot")
 app.add_typer(release_app, name="release")
 app.add_typer(report_app, name="report")
 app.add_typer(rollout_app, name="rollout")
