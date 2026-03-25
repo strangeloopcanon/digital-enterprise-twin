@@ -439,53 +439,6 @@ button:disabled {
   align-items: start;
 }
 
-.worlds-strip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  margin-bottom: 10px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(17, 34, 53, 0.06);
-}
-
-.worlds-strip:empty {
-  display: none;
-}
-
-.worlds-strip-label {
-  flex: 0 0 auto;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.worlds-strip-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.worlds-strip-chip {
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 500;
-  background: rgba(17, 34, 53, 0.06);
-  color: var(--ink-soft);
-  border: 1px solid rgba(17, 34, 53, 0.08);
-}
-
-.worlds-strip-chip-active {
-  background: linear-gradient(135deg, rgba(30, 108, 242, 0.12), rgba(26, 168, 141, 0.08));
-  border-color: rgba(30, 108, 242, 0.2);
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .studio-shell-card {
   margin-bottom: 14px;
   padding: 12px 18px;
@@ -1971,8 +1924,6 @@ body.cinema-mode .launch-panel {
   display: none;
 }
 
-body.cinema-mode .worlds-strip { display: none; }
-
 body.cinema-mode .studio-shell-card {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.08);
@@ -2354,7 +2305,6 @@ body.board-mode .hero {
 
 body.board-mode .hero-copy { display: none; }
 body.board-mode .launch-panel { display: none; }
-body.board-mode .worlds-strip { display: none; }
 body.board-mode .studio-shell-card { display: none; }
 body.board-mode .living-company-card { display: none; }
 body.board-mode .play-card { display: none !important; }

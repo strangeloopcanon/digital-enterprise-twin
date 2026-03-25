@@ -505,13 +505,6 @@ function renderPresentationPanel() {
 }
 
 function renderStudioShell() {
-  const panel = document.getElementById("kernel-thesis-panel");
-  if (!panel) {
-    setStudioView(state.studioView);
-    renderPresentationPanel();
-    return;
-  }
-  panel.innerHTML = "";
   setStudioView(state.studioView);
   renderPresentationPanel();
 }
@@ -589,7 +582,6 @@ function renderWorkspaceHero() {
   renderWorkspaceMetrics();
   renderStudioShell();
   renderWorldsPanel();
-  renderWorldsStrip();
   renderJson("workspace-panel", workspace);
 }
 
@@ -629,30 +621,9 @@ function renderWorldsPanel() {
     .join("");
 }
 
-function renderWorldsStrip() {
-  const strip = document.getElementById("worlds-strip");
-  if (!strip) return;
-  const story = state.story;
-  const availableWorlds = Array.isArray(story?.available_worlds) ? story.available_worlds : [];
-  if (availableWorlds.length <= 1) {
-    strip.innerHTML = "";
-    return;
-  }
-  const currentWorldName = story?.manifest?.name || state.workspace?.manifest?.source_ref || "";
-  strip.innerHTML = `
-    <span class="worlds-strip-label">Companies in this engine</span>
-    <div class="worlds-strip-chips">
-      ${availableWorlds.map((w) =>
-        `<span class="worlds-strip-chip ${w.name === currentWorldName ? "worlds-strip-chip-active" : ""}">${escapeHtml(w.company_name)}</span>`
-      ).join("")}
-    </div>
-  `;
-}
-
 function renderMissionSelector() {
   const missionSelect = document.getElementById("mission-select");
   const objectiveSelect = document.getElementById("objective-select");
-  const summary = document.getElementById("mission-launch-summary");
   if (!missionSelect || !objectiveSelect) {
     return;
   }
@@ -691,18 +662,6 @@ function renderMissionSelector() {
       }>${escapeHtml(label)}</option>`;
     })
     .join("");
-  if (summary) {
-    summary.innerHTML = currentMission
-      ? `
-        <div class="chip-row">
-          ${chip(state.workspace?.manifest?.title || state.playableBundle?.world_name || "workspace")}
-          ${chip(currentMission.title || currentMission.mission_name)}
-          ${chip(selectedObjective || "default")}
-          ${chip(state.missionState?.status || "ready", statusClass(state.missionState?.status || "ready"))}
-        </div>
-      `
-      : `<p class="metric-detail">No company world is loaded yet.</p>`;
-  }
 }
 
 function renderMissionSummary() {
