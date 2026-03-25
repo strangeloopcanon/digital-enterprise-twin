@@ -427,11 +427,15 @@ def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
         f'export VEI_PILOT_TOKEN="{manifest.bearer_token}"'
     )
     python_snippet = (
-        "import httpx\n\n"
+        "import json\n"
+        "from urllib.request import Request, urlopen\n\n"
         f'BASE_URL = "{manifest.gateway_url}"\n'
         f'TOKEN = "{manifest.bearer_token}"\n\n'
-        'client = httpx.Client(base_url=BASE_URL, headers={"Authorization": f"Bearer {TOKEN}"})\n'
-        'print(client.get("/slack/api/conversations.list").json())\n'
+        "req = Request(\n"
+        '    f"{BASE_URL}/slack/api/conversations.list",\n'
+        '    headers={"Authorization": f"Bearer {TOKEN}"},\n'
+        ")\n"
+        "print(json.loads(urlopen(req).read()))\n"
     )
     slack_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
@@ -618,165 +622,27 @@ def _default_pilot_snapshot(
     organization_name: str,
     organization_domain: str,
 ) -> ContextSnapshot:
+    fixture_path = Path(__file__).parent / "fixtures" / "default_snapshot.json"
+    raw = fixture_path.read_text(encoding="utf-8").replace(
+        "{{DOMAIN}}", organization_domain
+    )
+    payload = json.loads(raw)
+    now = _iso_now()
+    sources = [
+        ContextSourceResult(
+            provider=src["provider"],
+            captured_at=now,
+            status=src.get("status", "ok"),
+            record_counts=src.get("record_counts", {}),
+            data=src.get("data", {}),
+        )
+        for src in payload["sources"]
+    ]
     return ContextSnapshot(
         organization_name=organization_name,
         organization_domain=organization_domain,
-        captured_at=_iso_now(),
-        sources=[
-            ContextSourceResult(
-                provider="slack",
-                captured_at=_iso_now(),
-                status="ok",
-                record_counts={"channels": 3, "messages": 6},
-                data={
-                    "channels": [
-                        {
-                            "channel": "#renewal-watch",
-                            "unread": 2,
-                            "messages": [
-                                {
-                                    "ts": "1710500100.000100",
-                                    "user": "maya.revops",
-                                    "text": "Northstar wants a clean recovery plan before they sign the renewal.",
-                                },
-                                {
-                                    "ts": "1710500400.000200",
-                                    "user": "elena.cs",
-                                    "text": "Support still sees onboarding jobs stalling on the last export step.",
-                                },
-                            ],
-                        },
-                        {
-                            "channel": "#launch-ops",
-                            "unread": 1,
-                            "messages": [
-                                {
-                                    "ts": "1710500500.000100",
-                                    "user": "tom.pm",
-                                    "text": "Do not send the release note until Jira and CRM are aligned.",
-                                }
-                            ],
-                        },
-                        {
-                            "channel": "#exec-room",
-                            "unread": 1,
-                            "messages": [
-                                {
-                                    "ts": "1710500600.000100",
-                                    "user": "sarah.ceo",
-                                    "text": "I need one owner, one timeline, and a customer-safe next step.",
-                                }
-                            ],
-                        },
-                    ]
-                },
-            ),
-            ContextSourceResult(
-                provider="jira",
-                captured_at=_iso_now(),
-                status="ok",
-                record_counts={"issues": 3},
-                data={
-                    "issues": [
-                        {
-                            "ticket_id": "PIN-142",
-                            "title": "Renewal blocker: onboarding export stalls at account sync",
-                            "status": "open",
-                            "assignee": "maya.revops",
-                            "description": "The Northstar renewal is at risk because the last onboarding export still times out.",
-                        },
-                        {
-                            "ticket_id": "PIN-155",
-                            "title": "Launch checklist still waiting on customer-safe messaging",
-                            "status": "in_progress",
-                            "assignee": "tom.pm",
-                            "description": "Release comms need updated customer language before they can go out.",
-                        },
-                        {
-                            "ticket_id": "PIN-161",
-                            "title": "Support queue compression for enterprise onboarding",
-                            "status": "review",
-                            "assignee": "elena.cs",
-                            "description": "Support handoff is backing up while the export issue remains unresolved.",
-                        },
-                    ]
-                },
-            ),
-            ContextSourceResult(
-                provider="gmail",
-                captured_at=_iso_now(),
-                status="ok",
-                record_counts={"threads": 2},
-                data={
-                    "threads": [
-                        {
-                            "thread_id": "thr-renewal-001",
-                            "subject": "Need a clean renewal plan by today",
-                            "messages": [
-                                {
-                                    "from": "olivia@northstarcapital.example.com",
-                                    "to": f"support@{organization_domain}",
-                                    "subject": "Need a clean renewal plan by today",
-                                    "snippet": "We are still waiting for a concrete recovery plan and an owner we can trust.",
-                                    "labels": ["IMPORTANT"],
-                                    "unread": True,
-                                }
-                            ],
-                        },
-                        {
-                            "thread_id": "thr-launch-002",
-                            "subject": "Hold the release note until onboarding is green",
-                            "messages": [
-                                {
-                                    "from": f"tom.pm@{organization_domain}",
-                                    "to": f"ops@{organization_domain}",
-                                    "subject": "Hold the release note until onboarding is green",
-                                    "snippet": "Customer-facing messaging must match the actual recovery state.",
-                                    "labels": ["INTERNAL"],
-                                    "unread": False,
-                                }
-                            ],
-                        },
-                    ]
-                },
-            ),
-            ContextSourceResult(
-                provider="google",
-                captured_at=_iso_now(),
-                status="ok",
-                record_counts={"users": 3, "documents": 2},
-                data={
-                    "users": [
-                        {
-                            "email": f"maya.revops@{organization_domain}",
-                            "name": "Maya RevOps",
-                        },
-                        {
-                            "email": f"tom.pm@{organization_domain}",
-                            "name": "Tom Product",
-                        },
-                        {
-                            "email": f"elena.cs@{organization_domain}",
-                            "name": "Elena Customer Success",
-                        },
-                    ],
-                    "documents": [
-                        {
-                            "doc_id": "DOC-RECOVERY-001",
-                            "title": "Northstar recovery plan",
-                            "body": "Owner, customer timeline, rollback path, and customer-safe communication plan.",
-                            "tags": ["renewal", "customer"],
-                        },
-                        {
-                            "doc_id": "DOC-LAUNCH-002",
-                            "title": "Launch readiness checklist",
-                            "body": "Release note hold, support staffing, CRM updates, onboarding export validation.",
-                            "tags": ["launch", "ops"],
-                        },
-                    ],
-                },
-            ),
-        ],
+        captured_at=now,
+        sources=sources,
     )
 
 

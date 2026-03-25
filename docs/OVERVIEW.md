@@ -53,6 +53,12 @@ A single-page Studio interface with three views:
 
 A developer mode toggle exposes run forms, raw JSON, orientation data, capability graphs, snapshots, and timeline events.
 
+### Pilot Console
+
+The Pilot Console is a separate operator sidecar at `/pilot` that provides the fastest path for an outside agent (or a researcher) to connect. One command (`vei pilot up`) starts the twin gateway and Studio, writes a launch manifest with bearer token and curl snippets, and serves the Pilot Console where the operator can watch live agent activity, check outcome status, and reset or finalize runs.
+
+![VEI Pilot Console](../docs/assets/vei_pilot_console.png)
+
 ---
 
 ## Connecting Your Own Enterprise Data
@@ -208,6 +214,10 @@ Five distinct user types, each with a different entry point into VEI:
 
 **Entry point:** `vei twin serve --root workspace --port 3020`
 
+### Quick-start for all personas: the Pilot stack
+
+Any of the above can skip the per-step setup by running `vei pilot up`, which builds a twin, starts the gateway and Studio, and writes a manifest with bearer token, curl snippets, and a sample client script. The Pilot Console at `/pilot` shows connection details, live agent activity, outcome status, and reset/finalize controls — one command to get from zero to a working enterprise twin.
+
 ---
 
 ## What Holds It Together
@@ -220,11 +230,11 @@ This coherence is what makes the generated data useful for training, the benchma
 
 | Metric | Count |
 |--------|-------|
-| Python source files | 215 |
-| Lines of Python | ~67,000 |
-| Test files | 75 |
-| Tests | 328 |
-| CLI subcommands | 28 |
+| Python source files | 219 |
+| Lines of Python | ~68,000 |
+| Test files | 77 |
+| Tests | 333 |
+| CLI subcommands | 29 |
 | Simulated enterprise surfaces | ~15 major (Slack, Mail, Browser, Docs, Tickets, CRM, ERP, Identity, ServiceDesk, SIEM, HRIS, PagerDuty, Feature Flags, Spreadsheet, Calendar) |
 | Built-in company verticals | 4 |
 | Scenario variants | ~25 |

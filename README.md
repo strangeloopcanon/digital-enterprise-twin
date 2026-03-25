@@ -38,6 +38,8 @@ Each world pack supports multiple scenario variants and contract variants, so th
 
 ![VEI Studio — four companies, same engine](docs/assets/vei_studio_companies.png)
 
+![VEI Board Game — hex grid strategy view](docs/assets/vei_board_game.png)
+
 ## Core Primitives
 
 VEI now exposes one coherent product shape:
@@ -245,6 +247,8 @@ That flow writes:
 - `pilot_runtime.json`
 
 The Pilot Console lives beside Studio on the same UI server and gives the operator one place to check launch details, copy connection snippets, follow external-agent activity, and reset or finalize the run.
+
+![VEI Pilot Console — live agent sidecar](docs/assets/vei_pilot_console.png)
 
 You can also use the bundled quick-start client:
 
