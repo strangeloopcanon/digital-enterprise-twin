@@ -29,7 +29,7 @@ setup bootstrap: $(SETUP_STAMP)
 check: $(SETUP_STAMP)
 	. $(VENV)/bin/activate && black --check vei tests
 	. $(VENV)/bin/activate && ruff check vei tests
-	. $(VENV)/bin/activate && mypy --follow-imports=skip vei/router/identity.py vei/router/tool_providers.py vei/identity vei/world/api.py vei/world/replay.py vei/router/api.py vei/workspace/api.py vei/run/api.py vei/ui/api.py vei/context vei/synthesis vei/cli/vei.py vei/cli/vei_project.py vei/cli/vei_run.py vei/cli/vei_contract.py vei/cli/vei_scenario.py vei/cli/vei_inspect.py vei/cli/vei_ui.py vei/cli/vei_context.py vei/cli/vei_synthesize.py
+	. $(VENV)/bin/activate && mypy --follow-imports=skip vei/router/identity.py vei/router/tool_providers.py vei/identity vei/world/api.py vei/world/replay.py vei/router/api.py vei/workspace/api.py vei/run/api.py vei/ui/api.py vei/context vei/synthesis vei/pilot vei/cli/vei.py vei/cli/vei_project.py vei/cli/vei_run.py vei/cli/vei_contract.py vei/cli/vei_scenario.py vei/cli/vei_inspect.py vei/cli/vei_ui.py vei/cli/vei_context.py vei/cli/vei_synthesize.py vei/cli/vei_pilot.py
 	. $(VENV)/bin/activate && bandit -q -r vei -ll
 	@mkdir -p .artifacts
 	. $(VENV)/bin/activate && detect-secrets scan $$(git ls-files) > .artifacts/detect-secrets.json
@@ -59,7 +59,7 @@ llm-live: $(SETUP_STAMP)
 		rm -f "$$ART/trace.jsonl" "$$ART/score.json" "$$ART/transcript.json" "$$ART/llm_transcript.jsonl" "$$ART/connector_receipts.jsonl"; \
 		. $(VENV)/bin/activate && \
 				VEI_SCENARIO=$${VEI_SCENARIO:-multi_channel} \
-				vei llm-test --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-18} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-full} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Run full procurement workflow: cite source, post Slack approval with budget amount, email vendor and parse price+ETA reply, log quote in Docs, update ticket, and log CRM activity.}" && \
+				vei llm-test run --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-18} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-full} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Run full procurement workflow: cite source, post Slack approval with budget amount, email vendor and parse price+ETA reply, log quote in Docs, update ticket, and log CRM activity.}" && \
 				$(VENV_BIN)/python -c 'import json,sys;from pathlib import Path;art=Path(sys.argv[1]);score=json.loads((art/"score.json").read_text(encoding="utf-8"));trace=art/"trace.jsonl";records=[json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines() if line.strip()] if trace.exists() else [];times=[int(r.get("time_ms",0)) for r in records if r.get("type")=="call"];lat=[max(0,b-a) for a,b in zip(times,times[1:])];p95=sorted(lat)[int(0.95*(len(lat)-1))] if lat else 0;passed=1 if bool(score.get("success")) else 0;failed=0 if passed else 1;actions=int(score.get("costs",{}).get("actions",len(times)));print(f"llm-live metrics: pass={passed} fail={failed} cost_usd=unknown p95_latency_ms={p95} actions={actions}")' "$$ART"; \
 	fi
 

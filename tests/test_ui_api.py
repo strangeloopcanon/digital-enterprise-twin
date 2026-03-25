@@ -6,7 +6,15 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from vei.imports.api import get_import_package_example_path
+from vei.pilot.models import (
+    PilotManifest,
+    PilotOutcomeSummary,
+    PilotRuntime,
+    PilotServiceRecord,
+    PilotStatus,
+)
 from vei.run.api import launch_workspace_run
+from vei.twin.models import CompatibilitySurfaceSpec
 from vei.ui import api as ui_api
 from vei.workspace.api import (
     create_workspace_from_template,
@@ -459,3 +467,113 @@ def test_ui_api_exposes_playable_mission_mode(tmp_path: Path) -> None:
     ready_state_response = client.get("/api/missions/state")
     assert ready_state_response.status_code == 200
     assert ready_state_response.json() == {}
+
+
+def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "pilot-ui"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref="digital_marketing_agency",
+    )
+    payload = _sample_pilot_status(root)
+
+    monkeypatch.setattr(ui_api, "build_pilot_status", lambda _: payload)
+    monkeypatch.setattr(
+        ui_api,
+        "reset_pilot_gateway",
+        lambda _: payload.model_copy(update={"request_count": 0}),
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "finalize_pilot_run",
+        lambda _: payload.model_copy(update={"twin_status": "completed"}),
+    )
+
+    client = TestClient(ui_api.create_ui_app(root))
+
+    page_response = client.get("/pilot")
+    assert page_response.status_code == 200
+    assert "Pilot Console" in page_response.text
+
+    status_response = client.get("/api/pilot")
+    assert status_response.status_code == 200
+    assert (
+        status_response.json()["manifest"]["organization_name"] == "Pinnacle Analytics"
+    )
+
+    reset_response = client.post("/api/pilot/reset")
+    assert reset_response.status_code == 200
+    assert reset_response.json()["request_count"] == 0
+
+    finalize_response = client.post("/api/pilot/finalize")
+    assert finalize_response.status_code == 200
+    assert finalize_response.json()["twin_status"] == "completed"
+
+
+def _sample_pilot_status(root: Path) -> PilotStatus:
+    return PilotStatus(
+        manifest=PilotManifest(
+            workspace_root=root,
+            workspace_name="pinnacle",
+            organization_name="Pinnacle Analytics",
+            organization_domain="pinnacle.example.com",
+            archetype="b2b_saas",
+            crisis_name="Renewal save",
+            studio_url="http://127.0.0.1:3011",
+            pilot_console_url="http://127.0.0.1:3011/pilot",
+            gateway_url="http://127.0.0.1:3020",
+            gateway_status_url="http://127.0.0.1:3020/api/twin",
+            bearer_token="pilot-token",
+            supported_surfaces=[
+                CompatibilitySurfaceSpec(
+                    name="slack",
+                    title="Slack",
+                    base_path="/slack/api",
+                ),
+                CompatibilitySurfaceSpec(
+                    name="jira",
+                    title="Jira",
+                    base_path="/jira/rest/api/3",
+                ),
+            ],
+            recommended_first_exercise="Read Slack and Jira, then send one customer-safe update.",
+            sample_client_path="/tmp/pilot_client.py",
+        ),
+        runtime=PilotRuntime(
+            workspace_root=root,
+            services=[
+                PilotServiceRecord(
+                    name="gateway",
+                    host="127.0.0.1",
+                    port=3020,
+                    url="http://127.0.0.1:3020",
+                    pid=4101,
+                    state="running",
+                ),
+                PilotServiceRecord(
+                    name="studio",
+                    host="127.0.0.1",
+                    port=3011,
+                    url="http://127.0.0.1:3011",
+                    pid=4102,
+                    state="running",
+                ),
+            ],
+            started_at="2026-03-25T18:00:00+00:00",
+            updated_at="2026-03-25T18:05:00+00:00",
+        ),
+        active_run="external_renewal_run",
+        twin_status="running",
+        request_count=4,
+        services_ready=True,
+        outcome=PilotOutcomeSummary(
+            status="running",
+            contract_ok=False,
+            issue_count=2,
+            summary="The renewal is still at risk and needs another action.",
+            latest_tool="slack.send_message",
+            current_tension="Customer trust is slipping.",
+            affected_surfaces=["Email", "Slack"],
+        ),
+    )

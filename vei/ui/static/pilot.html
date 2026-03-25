@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VEI Pilot Console</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body class="pilot-console-body">
+    <div class="backdrop">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="orb orb-c"></div>
+    </div>
+
+    <div class="shell pilot-shell">
+      <header class="hero pilot-hero">
+        <div>
+          <p class="eyebrow">Pilot Console</p>
+          <h1 id="pilot-company-title">Loading pilot…</h1>
+          <p id="pilot-summary" class="hero-subtitle">Loading launch details, live activity, and outcome status.</p>
+        </div>
+        <div class="pilot-hero-actions">
+          <a id="pilot-open-studio" class="ghost-button" href="/" target="_blank" rel="noreferrer">Open Studio</a>
+          <a id="pilot-open-gateway" class="ghost-button" href="#" target="_blank" rel="noreferrer">Gateway status</a>
+        </div>
+      </header>
+
+      <div id="pilot-status-banner" class="pilot-status-banner">Checking the pilot stack…</div>
+
+      <main class="pilot-layout">
+        <section class="card pilot-card">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Launch</p>
+              <h2>How an outside agent connects</h2>
+            </div>
+          </div>
+          <div id="pilot-launch-grid" class="pilot-launch-grid"></div>
+          <div id="pilot-surface-list" class="chip-row"></div>
+          <div id="pilot-snippets" class="pilot-snippets"></div>
+        </section>
+
+        <section class="card pilot-card">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Activity</p>
+              <h2>What the agent has done so far</h2>
+            </div>
+          </div>
+          <div id="pilot-activity-list" class="pilot-activity-list"></div>
+        </section>
+
+        <section class="card pilot-card">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Outcome</p>
+              <h2>Is the company improving or getting worse?</h2>
+            </div>
+          </div>
+          <div id="pilot-outcome-grid" class="pilot-outcome-grid"></div>
+        </section>
+
+        <section class="card pilot-card">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Controls</p>
+              <h2>Reset or close the run</h2>
+            </div>
+          </div>
+          <div class="pilot-control-row">
+            <button id="pilot-reset-button" type="button">Reset twin</button>
+            <button id="pilot-finalize-button" type="button" class="ghost-button">Finalize run</button>
+          </div>
+          <p id="pilot-action-status" class="form-status">Use reset to start again from baseline, or finalize to close the current run.</p>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/pilot.js"></script>
+  </body>
+</html>

@@ -1,0 +1,144 @@
+{
+  "sources": [
+    {
+      "provider": "slack",
+      "status": "ok",
+      "record_counts": {"channels": 3, "messages": 6},
+      "data": {
+        "channels": [
+          {
+            "channel": "#renewal-watch",
+            "unread": 2,
+            "messages": [
+              {
+                "ts": "1710500100.000100",
+                "user": "maya.revops",
+                "text": "Northstar wants a clean recovery plan before they sign the renewal."
+              },
+              {
+                "ts": "1710500400.000200",
+                "user": "elena.cs",
+                "text": "Support still sees onboarding jobs stalling on the last export step."
+              }
+            ]
+          },
+          {
+            "channel": "#launch-ops",
+            "unread": 1,
+            "messages": [
+              {
+                "ts": "1710500500.000100",
+                "user": "tom.pm",
+                "text": "Do not send the release note until Jira and CRM are aligned."
+              }
+            ]
+          },
+          {
+            "channel": "#exec-room",
+            "unread": 1,
+            "messages": [
+              {
+                "ts": "1710500600.000100",
+                "user": "sarah.ceo",
+                "text": "I need one owner, one timeline, and a customer-safe next step."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "provider": "jira",
+      "status": "ok",
+      "record_counts": {"issues": 3},
+      "data": {
+        "issues": [
+          {
+            "ticket_id": "PIN-142",
+            "title": "Renewal blocker: onboarding export stalls at account sync",
+            "status": "open",
+            "assignee": "maya.revops",
+            "description": "The Northstar renewal is at risk because the last onboarding export still times out."
+          },
+          {
+            "ticket_id": "PIN-155",
+            "title": "Launch checklist still waiting on customer-safe messaging",
+            "status": "in_progress",
+            "assignee": "tom.pm",
+            "description": "Release comms need updated customer language before they can go out."
+          },
+          {
+            "ticket_id": "PIN-161",
+            "title": "Support queue compression for enterprise onboarding",
+            "status": "review",
+            "assignee": "elena.cs",
+            "description": "Support handoff is backing up while the export issue remains unresolved."
+          }
+        ]
+      }
+    },
+    {
+      "provider": "gmail",
+      "status": "ok",
+      "record_counts": {"threads": 2},
+      "data": {
+        "threads": [
+          {
+            "thread_id": "thr-renewal-001",
+            "subject": "Need a clean renewal plan by today",
+            "messages": [
+              {
+                "from": "olivia@northstarcapital.example.com",
+                "to": "support@{{DOMAIN}}",
+                "subject": "Need a clean renewal plan by today",
+                "snippet": "We are still waiting for a concrete recovery plan and an owner we can trust.",
+                "labels": ["IMPORTANT"],
+                "unread": true
+              }
+            ]
+          },
+          {
+            "thread_id": "thr-launch-002",
+            "subject": "Hold the release note until onboarding is green",
+            "messages": [
+              {
+                "from": "tom.pm@{{DOMAIN}}",
+                "to": "ops@{{DOMAIN}}",
+                "subject": "Hold the release note until onboarding is green",
+                "snippet": "Customer-facing messaging must match the actual recovery state.",
+                "labels": ["INTERNAL"],
+                "unread": false
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "provider": "google",
+      "status": "ok",
+      "record_counts": {"users": 3, "documents": 2},
+      "data": {
+        "users": [
+          {"email": "maya.revops@{{DOMAIN}}", "name": "Maya RevOps"},
+          {"email": "tom.pm@{{DOMAIN}}", "name": "Tom Product"},
+          {"email": "elena.cs@{{DOMAIN}}", "name": "Elena Customer Success"}
+        ],
+        "documents": [
+          {
+            "doc_id": "DOC-RECOVERY-001",
+            "title": "Northstar recovery plan",
+            "body": "Owner, customer timeline, rollback path, and customer-safe communication plan.",
+            "tags": ["renewal", "customer"]
+          },
+          {
+            "doc_id": "DOC-LAUNCH-002",
+            "title": "Launch readiness checklist",
+            "body": "Release note hold, support staffing, CRM updates, onboarding export validation.",
+            "tags": ["launch", "ops"]
+          }
+        ]
+      }
+    }
+  ]
+}

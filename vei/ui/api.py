@@ -24,6 +24,11 @@ from vei.playable import (
     load_workspace_playable_bundle,
     start_workspace_mission_run,
 )
+from vei.pilot import (
+    build_pilot_status,
+    finalize_pilot_run,
+    reset_pilot_gateway,
+)
 from vei.run.api import (
     build_run_timeline,
     diff_run_snapshots,
@@ -167,6 +172,10 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     def index() -> FileResponse:
         return FileResponse(static_dir / "index.html")
 
+    @app.get("/pilot")
+    def pilot_console() -> FileResponse:
+        return FileResponse(static_dir / "pilot.html")
+
     @app.get("/favicon.ico")
     def favicon() -> FileResponse:
         return FileResponse(static_dir / "favicon.svg")
@@ -198,6 +207,34 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     def api_playable() -> JSONResponse:
         payload = load_workspace_playable_bundle(root)
         return JSONResponse(payload or {})
+
+    @app.get("/api/pilot")
+    def api_pilot() -> JSONResponse:
+        try:
+            payload = build_pilot_status(root)
+        except FileNotFoundError:
+            return JSONResponse({})
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/finalize")
+    def api_pilot_finalize() -> JSONResponse:
+        try:
+            payload = finalize_pilot_run(root)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/reset")
+    def api_pilot_reset() -> JSONResponse:
+        try:
+            payload = reset_pilot_gateway(root)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
 
     @app.get("/api/fidelity")
     def api_fidelity() -> JSONResponse:

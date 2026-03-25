@@ -38,6 +38,8 @@ Each world pack supports multiple scenario variants and contract variants, so th
 
 ![VEI Studio — four companies, same engine](docs/assets/vei_studio_companies.png)
 
+![VEI Board Game — hex grid strategy view](docs/assets/vei_board_game.png)
+
 ## Core Primitives
 
 VEI now exposes one coherent product shape:
@@ -97,7 +99,7 @@ vei smoke --transport stdio --timeout-s 30
 ### Run a live episode
 
 ```bash
-vei llm-test \
+vei llm-test run \
   --provider openai \
   --model gpt-5 \
   --task "Research price, get Slack approval under budget, and email vendor for quote."
@@ -228,6 +230,39 @@ The fastest way to inspect what was built is:
 
 ```bash
 vei twin status --root _vei_out/customer_twins/acme_cloud
+```
+
+### Pilot stack
+
+VEI also ships a higher-level pilot flow for local agent demos. It starts the customer twin gateway, Studio, and a separate Pilot Console sidecar, then writes a launch manifest and short handoff guide for the person running the exercise.
+
+```bash
+vei pilot up --root _vei_out/pilots/pinnacle
+vei pilot status --root _vei_out/pilots/pinnacle
+```
+
+That flow writes:
+- `pilot_manifest.json`
+- `pilot_guide.md`
+- `pilot_runtime.json`
+
+The Pilot Console lives beside Studio on the same UI server and gives the operator one place to check launch details, copy connection snippets, follow external-agent activity, and reset or finalize the run.
+
+![VEI Pilot Console — live agent sidecar](docs/assets/vei_pilot_console.png)
+
+You can also use the bundled quick-start client:
+
+```bash
+python examples/pilot_client.py \
+  --base-url http://127.0.0.1:3020 \
+  --token YOUR_PILOT_TOKEN \
+  --post-message "Customer-safe update is ready for review."
+```
+
+When you are done:
+
+```bash
+vei pilot down --root _vei_out/pilots/pinnacle
 ```
 
 ### Grounded import flow
@@ -483,7 +518,7 @@ Baseline run:
 
 ```bash
 export VEI_ARTIFACTS_DIR=_vei_out/llmtest
-VEI_SEED=42042 vei llm-test \
+VEI_SEED=42042 vei llm-test run \
   --provider openai \
   --model gpt-5 \
   --max-steps 32 \

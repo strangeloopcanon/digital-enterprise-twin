@@ -3262,3 +3262,179 @@ body.board-mode .compare-toggle {
 .connect-toggle {
   border-color: rgba(74, 222, 128, 0.2);
 }
+
+/* ================================================================
+   Pilot Console
+   ================================================================ */
+
+.pilot-console-body {
+  min-height: 100vh;
+}
+
+.pilot-shell {
+  max-width: 1520px;
+  padding-top: 28px;
+}
+
+.pilot-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.pilot-hero h1 {
+  margin: 0;
+  font-size: clamp(2.3rem, 4vw, 4.2rem);
+  line-height: 0.95;
+  letter-spacing: -0.05em;
+  color: var(--ink);
+}
+
+.hero-subtitle {
+  margin: 10px 0 0;
+  max-width: 64ch;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.pilot-hero-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pilot-hero-actions .ghost-button {
+  width: auto;
+  min-width: 152px;
+}
+
+.pilot-status-banner {
+  margin-bottom: 18px;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(17, 34, 53, 0.12);
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 16px 36px rgba(17, 34, 53, 0.08);
+}
+
+.pilot-status-live {
+  border-color: rgba(26, 168, 141, 0.24);
+  background: linear-gradient(135deg, rgba(26, 168, 141, 0.12), rgba(255, 255, 255, 0.74));
+}
+
+.pilot-status-waiting {
+  border-color: rgba(255, 180, 84, 0.28);
+  background: linear-gradient(135deg, rgba(255, 180, 84, 0.14), rgba(255, 255, 255, 0.74));
+}
+
+.pilot-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.85fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.pilot-card {
+  min-height: 0;
+}
+
+.pilot-card:nth-child(1) {
+  grid-column: 1 / -1;
+}
+
+.pilot-launch-grid,
+.pilot-outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.pilot-snippets,
+.pilot-activity-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.pilot-snippet-card,
+.pilot-activity-card,
+.pilot-outcome-callout {
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(17, 34, 53, 0.08);
+}
+
+.pilot-snippet-head,
+.pilot-activity-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.pilot-snippet-card pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 16px;
+  background: rgba(17, 34, 53, 0.92);
+  color: rgba(244, 248, 251, 0.9);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.pilot-activity-card strong,
+.pilot-snippet-card strong {
+  font-size: 0.96rem;
+}
+
+.pilot-outcome-callout {
+  margin-top: 14px;
+}
+
+.pilot-control-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pilot-control-row button {
+  width: auto;
+  min-width: 150px;
+}
+
+@media (max-width: 980px) {
+  .pilot-hero {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .pilot-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .pilot-shell {
+    padding: 16px 16px 44px;
+  }
+
+  .pilot-launch-grid,
+  .pilot-outcome-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pilot-snippet-head,
+  .pilot-activity-head {
+    flex-direction: column;
+  }
+}
