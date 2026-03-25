@@ -46,10 +46,10 @@
           </label>
           <div class="toolbar-actions">
             <button id="start-mission-button" type="button">Enter World</button>
-            <button id="developer-toggle" type="button" class="ghost-button developer-toggle">Systems Detail</button>
             <details id="views-menu" class="toolbar-menu toolbar-menu-actions">
               <summary>Views</summary>
               <div class="toolbar-menu-panel toolbar-menu-actions-panel">
+                <button id="developer-toggle" type="button" class="ghost-button developer-toggle">Systems Detail</button>
                 <button id="connect-toggle" type="button" class="ghost-button connect-toggle">Connections</button>
                 <button id="board-toggle" type="button" class="ghost-button board-toggle">Board View</button>
                 <button id="compare-toggle" type="button" class="ghost-button compare-toggle">Compare Paths</button>
@@ -63,20 +63,14 @@
 
         <div class="studio-topbar-meta">
           <div id="workspace-metrics" class="workspace-metrics-inline"></div>
-          <div id="mission-launch-summary" class="toolbar-summary"></div>
           <p id="mission-form-status" class="form-status">
             Read the company state, then make the next move.
           </p>
         </div>
       </header>
 
-      <div id="worlds-strip" class="worlds-strip"></div>
-
       <section class="card studio-shell-card">
-        <div class="studio-shell-row">
-          <p class="eyebrow" id="shell-context-hint">Track the company, then make the next move</p>
-          <div id="kernel-thesis-panel" class="studio-banner"></div>
-        </div>
+        <p class="eyebrow" id="shell-context-hint">Track the company, then make the next move</p>
         <div id="studio-nav" class="studio-nav">
           <button type="button" class="studio-nav-button active" data-studio-view="company">Company</button>
           <button type="button" class="studio-nav-button" data-studio-view="crisis">Crisis</button>
@@ -194,17 +188,14 @@
         </section>
 
         <section class="card move-log-card" data-studio-view="company">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">What Changed</p>
-              <h2>What happened after each decision</h2>
-            </div>
-          </div>
-          <div id="move-log-panel" class="move-log"></div>
+          <details id="move-log-shell" class="secondary-disclosure move-log-shell">
+            <summary>Recent changes</summary>
+            <div id="move-log-panel" class="move-log"></div>
+          </details>
         </section>
 
         <!-- ========== TAB: CRISIS ========== -->
-        <section class="card briefing-card" data-studio-view="crisis">
+        <section class="card briefing-card crisis-card" data-studio-view="crisis">
           <div class="section-header">
             <div>
               <p class="eyebrow">Current Crisis</p>
@@ -212,70 +203,36 @@
             </div>
           </div>
           <div id="mission-briefing" class="briefing-grid"></div>
-          <div id="mission-catalog" class="run-grid"></div>
-        </section>
-
-        <section class="card briefing-card" data-studio-view="crisis">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Situation Detail</p>
-              <h2>What changed from the base world</h2>
-            </div>
-          </div>
           <div id="scenario-briefing" class="briefing-grid"></div>
-          <div id="situation-story-panel" class="story-grid"></div>
-        </section>
-
-        <section class="card objective-card" data-studio-view="crisis">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Success Criteria</p>
-              <h2>What the run is evaluated against</h2>
-            </div>
-          </div>
           <div id="objective-scorecard" class="contract-scorecard"></div>
+          <details class="secondary-disclosure secondary-disclosure-quiet">
+            <summary>All situations</summary>
+            <div id="mission-catalog" class="run-grid"></div>
+          </details>
         </section>
 
         <!-- ========== TAB: OUTCOME ========== -->
-        <section class="card run-card" data-studio-view="outcome">
+        <section class="card run-card outcome-card" data-studio-view="outcome">
           <div class="section-header">
             <div>
-              <p class="eyebrow">Run History</p>
-              <h2>Every path through this world</h2>
-            </div>
-          </div>
-          <div id="runs-panel" class="run-grid"></div>
-        </section>
-
-        <section class="card outcome-card" data-studio-view="outcome">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Branch + Outcome</p>
-              <h2>Two futures, one world</h2>
+              <p class="eyebrow">Outcome</p>
+              <h2>Did this path help or hurt?</h2>
             </div>
           </div>
           <div id="run-outcome-summary" class="contract-scorecard"></div>
           <div id="branch-outcome-panel" class="briefing-grid"></div>
-        </section>
-
-        <section class="card exports-card" data-studio-view="outcome">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Exports</p>
-              <h2>Runbooks, training data, and agent configs from the same run</h2>
-            </div>
-          </div>
-          <div id="exports-panel" class="briefing-grid"></div>
-        </section>
-
-        <section class="card export-card" data-studio-view="outcome">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Twin Fidelity</p>
-              <h2>Work surface health checks</h2>
-            </div>
-          </div>
-          <div id="fidelity-panel" class="run-grid"></div>
+          <details class="secondary-disclosure secondary-disclosure-quiet">
+            <summary>Run history</summary>
+            <div id="runs-panel" class="run-grid"></div>
+          </details>
+          <details class="secondary-disclosure secondary-disclosure-quiet">
+            <summary>Recorded outputs</summary>
+            <div id="exports-panel" class="briefing-grid"></div>
+          </details>
+          <details class="secondary-disclosure secondary-disclosure-quiet">
+            <summary>Work surface checks</summary>
+            <div id="fidelity-panel" class="run-grid"></div>
+          </details>
         </section>
 
         <!-- ========== TAB: BRIEFING (developer-only tab) ========== -->
