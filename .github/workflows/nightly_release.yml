@@ -25,7 +25,7 @@ jobs:
       - name: Build Nightly Release Bundle
         run: |
           . .venv/bin/activate
-          vei-release nightly \
+          vei release nightly \
             --release-root _vei_out/releases \
             --workspace-root _vei_out/nightly \
             --environments 5 \
