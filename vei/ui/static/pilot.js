@@ -1,5 +1,8 @@
 const state = {
-  payload: null,
+  pilot: null,
+  exercise: null,
+  dataset: null,
+  mode: "exercise",
 };
 
 function escapeHtml(value) {
@@ -19,6 +22,18 @@ async function getJson(url, options) {
   return response.json();
 }
 
+async function loadJsonOrNull(url, options) {
+  try {
+    const payload = await getJson(url, options);
+    if (!payload || (typeof payload === "object" && !Array.isArray(payload) && !Object.keys(payload).length)) {
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 function metricTile(label, value, detail = "") {
   return `
     <article class="metric-card">
@@ -29,42 +44,53 @@ function metricTile(label, value, detail = "") {
   `;
 }
 
+function renderModePanels() {
+  document.querySelectorAll("[data-operator-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.operatorMode === state.mode);
+  });
+  document.querySelectorAll("[data-operator-mode-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.operatorModePanel !== state.mode;
+  });
+}
+
 function renderBanner() {
   const banner = document.getElementById("pilot-status-banner");
-  const payload = state.payload;
+  const payload = state.pilot;
   if (!banner) {
     return;
   }
   banner.classList.remove("pilot-status-live", "pilot-status-waiting");
-  if (!payload || !payload.manifest) {
-    banner.textContent = "No pilot stack is configured for this workspace yet.";
+  if (!payload?.manifest) {
+    banner.textContent = "No operator stack is configured for this workspace yet.";
     return;
   }
   if (payload.services_ready) {
     banner.classList.add("pilot-status-live");
-    banner.textContent = "Pilot stack is live. Point an outside agent at the gateway and watch the company respond.";
+    banner.textContent = "The operator stack is live. Connect an outside agent, compare it against the baselines, and watch the company respond.";
     return;
   }
   banner.classList.add("pilot-status-waiting");
-  banner.textContent = "Pilot files exist, but the gateway or Studio is not running right now.";
+  banner.textContent = "The files exist, but the gateway or Studio is not running right now.";
 }
 
 function renderHeader() {
-  const payload = state.payload;
-  const manifest = payload?.manifest;
-  document.getElementById("pilot-company-title").textContent = manifest
-    ? `${manifest.organization_name} — ${manifest.crisis_name}`
-    : "Pilot not configured";
-  document.getElementById("pilot-summary").textContent = manifest
-    ? "Launch the twin, connect an outside agent, and follow the live run from one sidecar console."
-    : "Run `vei pilot up` for this workspace to generate the launch details and live controls.";
+  const pilot = state.pilot;
+  const manifest = pilot?.manifest;
+  const exerciseManifest = state.exercise?.manifest;
+  const title = manifest
+    ? `${manifest.organization_name} — ${exerciseManifest?.crisis_name || manifest.crisis_name}`
+    : "Operator stack not configured";
+  const summary = manifest
+    ? "Use the company view in Studio for the world itself. Use this sidecar to connect agents, compare paths, and build datasets."
+    : "Run `vei exercise up` or `vei pilot up` for this workspace to generate the launch details and live controls.";
+  document.getElementById("pilot-company-title").textContent = title;
+  document.getElementById("pilot-summary").textContent = summary;
   document.getElementById("pilot-open-studio").href = manifest?.studio_url || "/";
   document.getElementById("pilot-open-gateway").href = manifest?.gateway_status_url || "#";
 }
 
 function renderLaunch() {
-  const payload = state.payload;
-  const manifest = payload?.manifest;
+  const manifest = state.pilot?.manifest;
   const launchGrid = document.getElementById("pilot-launch-grid");
   const surfaceList = document.getElementById("pilot-surface-list");
   const snippetsPanel = document.getElementById("pilot-snippets");
@@ -72,43 +98,170 @@ function renderLaunch() {
     return;
   }
   if (!manifest) {
-    launchGrid.innerHTML = metricTile("Pilot", "Not configured");
+    launchGrid.innerHTML = metricTile("Operator stack", "Not configured");
     surfaceList.innerHTML = "";
     snippetsPanel.innerHTML = "";
     return;
   }
+  const activeAgents = state.pilot?.active_agents || [];
   launchGrid.innerHTML = [
     metricTile("Studio", manifest.studio_url, "Company-side view"),
-    metricTile("Pilot Console", manifest.pilot_console_url, "Operator sidecar"),
+    metricTile("Operator Console", manifest.pilot_console_url, "Operator sidecar"),
     metricTile("Gateway", manifest.gateway_url, "Outside-agent entrypoint"),
-    metricTile("Bearer token", manifest.bearer_token, "Shared pilot token"),
-    metricTile("First exercise", manifest.recommended_first_exercise, "Suggested starting move"),
-    metricTile("Sample client", manifest.sample_client_path, "Bundled quick-start script"),
+    metricTile("Bearer token", manifest.bearer_token, "Shared local token"),
+    metricTile("Agents seen", String(activeAgents.length), activeAgents.length ? "Names are shown in the activity stream" : "No external agent has connected yet"),
+    metricTile("Recommended first exercise", manifest.recommended_first_exercise, "Start small and stay customer-safe"),
   ].join("");
   surfaceList.innerHTML = (manifest.supported_surfaces || [])
     .map((surface) => `<span class="badge">${escapeHtml(surface.title)} · ${escapeHtml(surface.base_path)}</span>`)
     .join("");
   snippetsPanel.innerHTML = (manifest.snippets || [])
-    .map(
-      (snippet) => `
-        <article class="pilot-snippet-card">
-          <div class="pilot-snippet-head">
-            <strong>${escapeHtml(snippet.title)}</strong>
-            <div class="chip-row">
-              <span class="badge">${escapeHtml(snippet.name)}</span>
-              <span class="badge">${escapeHtml(snippet.language || "bash")}</span>
-            </div>
+    .map((snippet) => `
+      <article class="pilot-snippet-card">
+        <div class="pilot-snippet-head">
+          <strong>${escapeHtml(snippet.title)}</strong>
+          <div class="chip-row">
+            <span class="badge">${escapeHtml(snippet.name)}</span>
+            <span class="badge">${escapeHtml(snippet.language || "bash")}</span>
           </div>
-          <pre>${escapeHtml(snippet.content)}</pre>
-        </article>
-      `
-    )
+        </div>
+        <pre>${escapeHtml(snippet.content)}</pre>
+      </article>
+    `)
+    .join("");
+}
+
+function renderExercise() {
+  const overview = document.getElementById("exercise-overview-grid");
+  const criteria = document.getElementById("exercise-criteria");
+  const comparison = document.getElementById("exercise-comparison");
+  const compatibility = document.getElementById("exercise-compatibility");
+  const catalog = document.getElementById("exercise-catalog");
+  const payload = state.exercise;
+  if (!overview || !criteria || !comparison || !compatibility || !catalog) {
+    return;
+  }
+  if (!payload?.manifest) {
+    overview.innerHTML = metricTile("Exercise", "Not configured", "Run `vei exercise up` to create a scored exercise with comparison paths.");
+    criteria.innerHTML = "";
+    comparison.innerHTML = "";
+    compatibility.innerHTML = "";
+    catalog.innerHTML = "";
+    return;
+  }
+
+  const manifest = payload.manifest;
+  overview.innerHTML = [
+    metricTile("Company", manifest.company_name, manifest.archetype.replaceAll("_", " ")),
+    metricTile("Current crisis", manifest.crisis_name, manifest.scenario_variant),
+    metricTile("Success lens", manifest.contract_variant, "The contract variant that decides whether this path helped"),
+    metricTile("First move", manifest.recommended_first_move, "Start by reading the company before you act"),
+  ].join("");
+
+  criteria.innerHTML = `
+    <article class="pilot-note-card">
+      <p class="eyebrow">Success criteria</p>
+      <ul class="pilot-bullets">
+        ${manifest.success_criteria.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </article>
+  `;
+
+  comparison.innerHTML = payload.comparison
+    .map((row) => `
+      <article class="pilot-activity-card">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(row.label)}</strong>
+          <span class="badge">${escapeHtml(row.status || "missing")}</span>
+        </div>
+        <p class="metric-detail">${escapeHtml(row.summary || "No summary yet.")}</p>
+        <div class="chip-row">
+          ${row.run_id ? `<span class="badge">Run ${escapeHtml(row.run_id)}</span>` : ""}
+          <span class="badge">Actions ${escapeHtml(row.action_count || 0)}</span>
+          <span class="badge">Issues ${escapeHtml(row.issue_count || 0)}</span>
+          ${row.contract_ok === true ? `<span class="badge">Contract healthy</span>` : ""}
+          ${row.contract_ok === false ? `<span class="badge">Contract at risk</span>` : ""}
+        </div>
+      </article>
+    `)
+    .join("");
+
+  compatibility.innerHTML = manifest.supported_api_subset
+    .map((surface) => `
+      <article class="pilot-note-card">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(surface.title)}</strong>
+          <span class="badge">${escapeHtml(surface.base_path)}</span>
+        </div>
+        <ul class="pilot-bullets">
+          ${surface.endpoints.map((endpoint) => `<li><strong>${escapeHtml(endpoint.method)} ${escapeHtml(endpoint.path)}</strong> — ${escapeHtml(endpoint.description)}</li>`).join("")}
+        </ul>
+      </article>
+    `)
+    .join("");
+
+  catalog.innerHTML = manifest.catalog
+    .map((item) => `
+      <article class="pilot-catalog-card ${item.active ? "pilot-catalog-card-active" : ""}">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(item.crisis_name)}</strong>
+          ${item.active ? '<span class="badge">Active</span>' : `<button type="button" class="ghost-button pilot-catalog-button" data-scenario-variant="${escapeHtml(item.scenario_variant)}" data-contract-variant="${escapeHtml(item.contract_variant || "")}">Switch</button>`}
+        </div>
+        <p class="metric-detail">${escapeHtml(item.summary)}</p>
+        <p class="metric-detail">${escapeHtml(item.objective_summary)}</p>
+      </article>
+    `)
+    .join("");
+}
+
+function renderDataset() {
+  const summary = document.getElementById("dataset-summary-grid");
+  const splits = document.getElementById("dataset-splits");
+  const exportsPanel = document.getElementById("dataset-exports");
+  const payload = state.dataset;
+  if (!summary || !splits || !exportsPanel) {
+    return;
+  }
+  if (!payload) {
+    summary.innerHTML = metricTile("Dataset", "Not built", "Run `vei dataset build` to generate a matrix of environments and export a clean corpus.");
+    splits.innerHTML = "";
+    exportsPanel.innerHTML = "";
+    return;
+  }
+  const formats = [...new Set((payload.exports || []).map((item) => item.format))];
+  summary.innerHTML = [
+    metricTile("Environments", String(payload.environment_count || 0), "Distinct twin variants"),
+    metricTile("Runs", String(payload.run_count || 0), "Completed paths included in this bundle"),
+    metricTile("Formats", formats.join(", ") || "none", "Conversation, trajectory, and demonstration exports"),
+    metricTile("Success rate", String(payload.reward_summary?.success_rate ?? 0), `Contract healthy rate ${payload.reward_summary?.contract_ok_rate ?? 0}`),
+  ].join("");
+  splits.innerHTML = (payload.splits || [])
+    .map((split) => `
+      <article class="pilot-note-card">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(split.split)}</strong>
+          <span class="badge">${escapeHtml(split.run_count)} runs</span>
+        </div>
+        <p class="metric-detail">${escapeHtml(split.example_count)} examples</p>
+      </article>
+    `)
+    .join("");
+  exportsPanel.innerHTML = (payload.exports || [])
+    .map((item) => `
+      <article class="pilot-activity-card">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(item.format)} · ${escapeHtml(item.split)}</strong>
+          <span class="badge">${escapeHtml(item.example_count)} examples</span>
+        </div>
+        <p class="metric-detail">${escapeHtml(item.path)}</p>
+      </article>
+    `)
     .join("");
 }
 
 function renderActivity() {
   const panel = document.getElementById("pilot-activity-list");
-  const activity = state.payload?.activity || [];
+  const activity = state.pilot?.activity || [];
   if (!panel) {
     return;
   }
@@ -117,26 +270,28 @@ function renderActivity() {
     return;
   }
   panel.innerHTML = activity
-    .map(
-      (item) => `
+    .map((item) => {
+      const actor = [item.agent_role, item.agent_name].filter(Boolean).join(" / ") || item.agent_source || "Unattributed client";
+      return `
         <article class="pilot-activity-card">
           <div class="pilot-activity-head">
             <strong>${escapeHtml(item.label)}</strong>
             <span class="badge">${escapeHtml(item.channel)}</span>
           </div>
+          <p class="metric-detail">${escapeHtml(actor)}</p>
           <p class="metric-detail">${escapeHtml(item.tool || "No resolved tool recorded")}</p>
           ${(item.object_refs || []).length
             ? `<div class="chip-row">${item.object_refs.map((ref) => `<span class="badge">${escapeHtml(ref)}</span>`).join("")}</div>`
             : ""}
         </article>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
 function renderOutcome() {
-  const payload = state.payload;
-  const outcome = payload?.outcome;
+  const pilot = state.pilot;
+  const outcome = pilot?.outcome;
   const panel = document.getElementById("pilot-outcome-grid");
   if (!panel) {
     return;
@@ -146,8 +301,8 @@ function renderOutcome() {
     return;
   }
   panel.innerHTML = [
-    metricTile("Twin status", payload.twin_status || "stopped", outcome.summary),
-    metricTile("Requests", String(payload.request_count || 0), "External requests handled"),
+    metricTile("Twin status", pilot.twin_status || "stopped", outcome.summary),
+    metricTile("Requests", String(pilot.request_count || 0), "External requests handled"),
     metricTile("Contract", outcome.contract_ok === true ? "healthy" : outcome.contract_ok === false ? "at risk" : "pending", `${outcome.issue_count || 0} open issues`),
     metricTile("Current tension", outcome.current_tension || "No live tension summary", outcome.latest_tool || "No latest tool yet"),
   ].join("");
@@ -164,7 +319,7 @@ function renderOutcome() {
 }
 
 function renderControls() {
-  const manifest = state.payload?.manifest;
+  const manifest = state.pilot?.manifest;
   const actionStatus = document.getElementById("pilot-action-status");
   const resetButton = document.getElementById("pilot-reset-button");
   const finalizeButton = document.getElementById("pilot-finalize-button");
@@ -172,25 +327,31 @@ function renderControls() {
   resetButton.disabled = disabled;
   finalizeButton.disabled = disabled;
   if (!manifest && actionStatus) {
-    actionStatus.textContent = "Run `vei pilot up` to enable reset and finalize controls.";
+    actionStatus.textContent = "Run `vei exercise up` or `vei pilot up` to enable reset and finalize controls.";
   }
 }
 
 function renderAll() {
+  renderModePanels();
   renderBanner();
   renderHeader();
   renderLaunch();
+  renderExercise();
+  renderDataset();
   renderActivity();
   renderOutcome();
   renderControls();
 }
 
-async function loadPilotStatus() {
-  try {
-    state.payload = await getJson("/api/pilot");
-  } catch {
-    state.payload = null;
-  }
+async function loadOperatorStatus() {
+  const [pilot, exercise, dataset] = await Promise.all([
+    loadJsonOrNull("/api/pilot"),
+    loadJsonOrNull("/api/exercise"),
+    loadJsonOrNull("/api/dataset"),
+  ]);
+  state.pilot = pilot;
+  state.exercise = exercise;
+  state.dataset = dataset;
   renderAll();
 }
 
@@ -198,13 +359,41 @@ async function runPilotAction(path, successMessage) {
   const status = document.getElementById("pilot-action-status");
   status.textContent = "Working…";
   try {
-    state.payload = await getJson(path, { method: "POST" });
+    state.pilot = await getJson(path, { method: "POST" });
+    state.exercise = await loadJsonOrNull("/api/exercise");
     status.textContent = successMessage;
     renderAll();
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "Request failed";
   }
 }
+
+async function activateExercise(scenarioVariant, contractVariant) {
+  const status = document.getElementById("pilot-action-status");
+  status.textContent = "Switching the active exercise…";
+  try {
+    state.exercise = await getJson("/api/exercise/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scenario_variant: scenarioVariant,
+        contract_variant: contractVariant || null,
+      }),
+    });
+    state.pilot = await loadJsonOrNull("/api/pilot");
+    status.textContent = "Exercise switched. The baselines were refreshed for the new crisis.";
+    renderAll();
+  } catch (error) {
+    status.textContent = error instanceof Error ? error.message : "Switch failed";
+  }
+}
+
+document.querySelectorAll("[data-operator-mode]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.mode = button.dataset.operatorMode || "exercise";
+    renderModePanels();
+  });
+});
 
 document.getElementById("pilot-reset-button").addEventListener("click", () => {
   runPilotAction("/api/pilot/reset", "Twin reset complete. The gateway is back at baseline.");
@@ -214,5 +403,22 @@ document.getElementById("pilot-finalize-button").addEventListener("click", () =>
   runPilotAction("/api/pilot/finalize", "Current run finalized.");
 });
 
-loadPilotStatus();
-setInterval(loadPilotStatus, 5000);
+document.body.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const button = target.closest(".pilot-catalog-button");
+  if (!(button instanceof HTMLElement)) {
+    return;
+  }
+  const scenarioVariant = button.dataset.scenarioVariant || "";
+  const contractVariant = button.dataset.contractVariant || "";
+  if (!scenarioVariant) {
+    return;
+  }
+  activateExercise(scenarioVariant, contractVariant);
+});
+
+loadOperatorStatus();
+setInterval(loadOperatorStatus, 5000);

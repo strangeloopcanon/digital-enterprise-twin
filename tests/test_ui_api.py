@@ -5,6 +5,13 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
+from vei.dataset.models import DatasetBuildSpec, DatasetBundle, DatasetSplitManifest
+from vei.exercise.models import (
+    ExerciseCatalogItem,
+    ExerciseComparisonRow,
+    ExerciseManifest,
+    ExerciseStatus,
+)
 from vei.imports.api import get_import_package_example_path
 from vei.pilot.models import (
     PilotManifest,
@@ -146,6 +153,86 @@ def test_ui_api_serves_living_company_surfaces_for_vertical_runs(
             "vertical_heartbeat",
         }
         assert panel_map["mail"]["items"]
+
+
+def test_ui_api_serves_exercise_and_dataset_sidecar_payloads(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "workspace"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref="real_estate_management",
+    )
+    client = TestClient(ui_api.create_ui_app(root))
+
+    monkeypatch.setattr(
+        ui_api,
+        "build_exercise_status",
+        lambda *_args, **_kwargs: ExerciseStatus(
+            manifest=ExerciseManifest(
+                workspace_root=root,
+                workspace_name="workspace",
+                company_name="Harbor Point Management",
+                archetype="real_estate_management",
+                crisis_name="Tenant Opening Conflict",
+                scenario_variant="tenant_opening_conflict",
+                contract_variant="opening_readiness",
+                success_criteria=["Protect the opening date."],
+                catalog=[
+                    ExerciseCatalogItem(
+                        scenario_variant="tenant_opening_conflict",
+                        crisis_name="Tenant Opening Conflict",
+                        summary="Opening is blocked.",
+                        contract_variant="opening_readiness",
+                        objective_summary="Keep the opening valid.",
+                        active=True,
+                    )
+                ],
+            ),
+            pilot=_sample_pilot_status(root),
+            comparison=[
+                ExerciseComparisonRow(
+                    runner="workflow",
+                    label="Workflow baseline",
+                    run_id="run_workflow",
+                    status="ok",
+                    summary="healthy",
+                )
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "load_workspace_dataset_bundle",
+        lambda *_args, **_kwargs: DatasetBundle(
+            spec=DatasetBuildSpec(output_root=root / "dataset"),
+            environment_count=1,
+            run_count=3,
+            splits=[
+                DatasetSplitManifest(
+                    split="train",
+                    run_count=2,
+                    example_count=10,
+                    run_ids=["run_a", "run_b"],
+                )
+            ],
+            reward_summary={"success_rate": 1.0},
+            generated_at="2026-03-25T18:00:00+00:00",
+        ),
+    )
+
+    exercise_response = client.get("/api/exercise")
+    assert exercise_response.status_code == 200
+    assert (
+        exercise_response.json()["manifest"]["company_name"]
+        == "Harbor Point Management"
+    )
+
+    dataset_response = client.get("/api/dataset")
+    assert dataset_response.status_code == 200
+    assert dataset_response.json()["run_count"] == 3
 
 
 def test_ui_api_rejects_invalid_runner_before_worker_starts(tmp_path: Path) -> None:
@@ -494,7 +581,7 @@ def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -
 
     page_response = client.get("/pilot")
     assert page_response.status_code == 200
-    assert "Pilot Console" in page_response.text
+    assert "Operator Console" in page_response.text
 
     status_response = client.get("/api/pilot")
     assert status_response.status_code == 200

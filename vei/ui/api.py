@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from vei.dataset import load_workspace_dataset_bundle
+from vei.exercise import activate_exercise, build_exercise_status
 from vei.fidelity import get_or_build_workspace_fidelity_report
 from vei.playable import (
     activate_workspace_playable_mission,
@@ -114,6 +116,11 @@ class ContextCaptureRequest(BaseModel):
     providers: list[str]
 
 
+class ExerciseActivateRequest(BaseModel):
+    scenario_variant: str
+    contract_variant: str | None = None
+
+
 CONTEXT_PROVIDER_ENV_VARS = {
     "slack": "VEI_SLACK_TOKEN",
     "google": "VEI_GOOGLE_TOKEN",
@@ -213,6 +220,33 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
         try:
             payload = build_pilot_status(root)
         except FileNotFoundError:
+            return JSONResponse({})
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/exercise")
+    def api_exercise() -> JSONResponse:
+        try:
+            payload = build_exercise_status(root)
+        except FileNotFoundError:
+            return JSONResponse({})
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/exercise/activate")
+    def api_exercise_activate(request: ExerciseActivateRequest) -> JSONResponse:
+        try:
+            payload = activate_exercise(
+                root,
+                scenario_variant=request.scenario_variant,
+                contract_variant=request.contract_variant,
+            )
+        except (FileNotFoundError, KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/dataset")
+    def api_dataset() -> JSONResponse:
+        payload = load_workspace_dataset_bundle(root)
+        if payload is None:
             return JSONResponse({})
         return JSONResponse(payload.model_dump(mode="json"))
 

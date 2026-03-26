@@ -5,10 +5,12 @@ import typer
 from vei.cli.vei_blueprint import app as blueprint_app
 from vei.cli.vei_context import app as context_app
 from vei.cli.vei_contract import app as contract_app
+from vei.cli.vei_dataset import app as dataset_app
 from vei.cli.vei_demo import app as demo_app
 from vei.cli.vei_det_pipeline import app as det_app
 from vei.cli.vei_eval import app as eval_app
 from vei.cli.vei_eval_frontier import app as eval_frontier_app
+from vei.cli.vei_exercise import app as exercise_app
 from vei.cli.vei_export import app as export_app
 from vei.cli.vei_inspect import app as inspect_app
 from vei.cli.vei_llm_test import app as llm_test_app
@@ -41,8 +43,10 @@ app = typer.Typer(
 app.add_typer(project_app, name="project")
 app.add_typer(context_app, name="context")
 app.add_typer(contract_app, name="contract")
+app.add_typer(dataset_app, name="dataset")
 app.add_typer(scenario_app, name="scenario")
 app.add_typer(scenarios_app, name="scenarios")
+app.add_typer(exercise_app, name="exercise")
 app.add_typer(run_app, name="run")
 app.add_typer(inspect_app, name="inspect")
 app.add_typer(showcase_app, name="showcase")

@@ -48,6 +48,16 @@ def test_start_pilot_writes_handoff_files_and_status(
                     "run_id": "external_renewal_run",
                     "status": "running",
                     "request_count": 3,
+                    "metadata": {
+                        "agents": [
+                            {
+                                "name": "starter-agent",
+                                "role": "exercise-runner",
+                                "team": "external",
+                                "source": "vei-pilot-client/1.0",
+                            }
+                        ]
+                    },
                 },
                 "manifest": {
                     "contract": {
@@ -65,6 +75,14 @@ def test_start_pilot_writes_handoff_files_and_status(
                     "resolved_tool": "slack.send_message",
                     "status": "ok",
                     "object_refs": ["channel:#renewal-watch"],
+                    "payload": {
+                        "agent": {
+                            "name": "starter-agent",
+                            "role": "exercise-runner",
+                            "team": "external",
+                            "source": "vei-pilot-client/1.0",
+                        }
+                    },
                 }
             ]
         if url.endswith("/api/twin/surfaces"):
@@ -94,6 +112,8 @@ def test_start_pilot_writes_handoff_files_and_status(
     assert status.request_count == 3
     assert status.outcome.issue_count == 2
     assert status.activity[0].tool == "slack.send_message"
+    assert status.activity[0].agent_name == "starter-agent"
+    assert status.active_agents[0].role == "exercise-runner"
     assert (root / pilot_api.PILOT_MANIFEST_FILE).exists()
     assert (root / pilot_api.PILOT_GUIDE_FILE).exists()
     assert (root / pilot_api.PILOT_RUNTIME_FILE).exists()

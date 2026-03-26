@@ -10,7 +10,13 @@ from urllib.request import Request, urlopen
 def _get_json(base_url: str, path: str, token: str) -> Any:
     request = Request(
         f"{base_url.rstrip('/')}{path}",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-VEI-Agent-Name": "starter-agent",
+            "X-VEI-Agent-Role": "exercise-runner",
+            "X-VEI-Agent-Team": "external",
+            "User-Agent": "vei-pilot-client/1.0",
+        },
         method="GET",
     )
     with urlopen(request, timeout=10) as response:  # noqa: S310
@@ -24,6 +30,10 @@ def _post_json(base_url: str, path: str, token: str, payload: dict[str, Any]) ->
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            "X-VEI-Agent-Name": "starter-agent",
+            "X-VEI-Agent-Role": "exercise-runner",
+            "X-VEI-Agent-Team": "external",
+            "User-Agent": "vei-pilot-client/1.0",
         },
         data=body,
         method="POST",

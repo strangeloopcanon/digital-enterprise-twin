@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import secrets
 from pathlib import Path
-from typing import Any, Iterable, TypeVar
+from typing import Any, Iterable, Sequence, TypeVar
 
 from pydantic import BaseModel
 
@@ -11,8 +11,13 @@ from vei.blueprint.models import (
     BlueprintAsset,
     BlueprintCapabilityGraphsAsset,
     BlueprintCommGraphAsset,
+    BlueprintDocumentAsset,
     BlueprintDocGraphAsset,
     BlueprintIdentityGraphAsset,
+    BlueprintIdentityUserAsset,
+    BlueprintMailMessageAsset,
+    BlueprintSlackMessageAsset,
+    BlueprintTicketAsset,
     BlueprintWorkGraphAsset,
 )
 from vei.context.api import capture_context, hydrate_blueprint
@@ -32,6 +37,9 @@ from .models import (
     CompatibilitySurfaceSpec,
     ContextMoldConfig,
     CustomerTwinBundle,
+    TwinArchetype,
+    TwinCrisisLevel,
+    TwinDensityLevel,
     TwinGatewayConfig,
 )
 
@@ -205,12 +213,59 @@ def build_customer_twin_asset(
         resolved_domain,
         internal_domains=internal_domains,
     )
+    _apply_mold(
+        base_asset,
+        organization_name=resolved_name,
+        organization_domain=resolved_domain,
+        mold=resolved_mold,
+    )
     return base_asset
 
 
 def load_customer_twin(root: str | Path) -> CustomerTwinBundle:
     workspace_root = Path(root).expanduser().resolve()
     return _read_model(workspace_root / TWIN_MANIFEST_FILE, CustomerTwinBundle)
+
+
+def create_twin_gateway_app(root: str | Path):
+    from .gateway import create_twin_gateway_app as _create_twin_gateway_app
+
+    return _create_twin_gateway_app(root)
+
+
+def build_twin_matrix(
+    output_root: str | Path,
+    *,
+    snapshot: ContextSnapshot | None = None,
+    provider_configs: list[ContextProviderConfig] | None = None,
+    organization_name: str | None = None,
+    organization_domain: str = "",
+    archetypes: Iterable[TwinArchetype] | None = None,
+    density_levels: Iterable[TwinDensityLevel] | None = None,
+    crisis_levels: Iterable[TwinCrisisLevel] | None = None,
+    seeds: Iterable[int] | None = None,
+    overwrite: bool = True,
+):
+    from .matrix import build_twin_matrix as _build_twin_matrix
+
+    return _build_twin_matrix(
+        output_root,
+        snapshot=snapshot,
+        provider_configs=provider_configs,
+        organization_name=organization_name,
+        organization_domain=organization_domain,
+        archetypes=list(archetypes) if archetypes is not None else None,
+        density_levels=list(density_levels) if density_levels is not None else None,
+        crisis_levels=list(crisis_levels) if crisis_levels is not None else None,
+        seeds=list(seeds) if seeds is not None else None,
+        overwrite=overwrite,
+    )
+
+
+def load_twin_matrix(output_root: str | Path):
+    from .matrix import load_twin_matrix as _load_twin_matrix
+
+    return _load_twin_matrix(output_root)
 
 
 def _merge_environment(
@@ -524,6 +579,346 @@ def _rewrite_placeholder_domains(
                     organization_domain,
                     internal_domains=internal_domains,
                 )
+
+
+def _apply_mold(
+    asset: BlueprintAsset,
+    *,
+    organization_name: str,
+    organization_domain: str,
+    mold: ContextMoldConfig,
+) -> None:
+    metadata = {
+        "density_level": mold.density_level,
+        "named_team_expansion": mold.named_team_expansion,
+        "crisis_family": mold.crisis_family,
+        "redaction_mode": mold.redaction_mode,
+        "synthetic_expansion_strength": mold.synthetic_expansion_strength,
+        "included_surfaces": list(mold.included_surfaces),
+    }
+    asset.metadata = {**dict(asset.metadata), "customer_twin_mold": metadata}
+    if asset.capability_graphs is not None:
+        asset.capability_graphs.metadata = {
+            **dict(asset.capability_graphs.metadata),
+            "customer_twin_mold": metadata,
+        }
+    _apply_surface_filter(asset, mold.included_surfaces)
+    if mold.redaction_mode == "mask":
+        _mask_external_contacts(asset, organization_domain)
+    _apply_density(asset, mold.density_level)
+    _apply_named_team_expansion(asset, organization_name, organization_domain, mold)
+    _apply_synthetic_expansion(asset, organization_name, organization_domain, mold)
+
+
+def _apply_surface_filter(
+    asset: BlueprintAsset,
+    included_surfaces: Sequence[str],
+) -> None:
+    if not included_surfaces:
+        return
+    keep = {item.strip().lower() for item in included_surfaces}
+    graphs = asset.capability_graphs
+    if graphs is None:
+        return
+    if "slack" not in keep and graphs.comm_graph is not None:
+        graphs.comm_graph.slack_channels = []
+    if "mail" not in keep and graphs.comm_graph is not None:
+        graphs.comm_graph.mail_threads = []
+    if "docs" not in keep:
+        graphs.doc_graph = None
+    if "tickets" not in keep and "approvals" not in keep:
+        graphs.work_graph = None
+    if "identity" not in keep:
+        graphs.identity_graph = None
+    if "crm" not in keep:
+        graphs.revenue_graph = None
+        if asset.environment is not None:
+            asset.environment.crm_companies = []
+            asset.environment.crm_contacts = []
+            asset.environment.crm_deals = []
+    if "vertical" not in keep:
+        graphs.property_graph = None
+        graphs.campaign_graph = None
+        graphs.inventory_graph = None
+
+
+def _mask_external_contacts(asset: BlueprintAsset, organization_domain: str) -> None:
+    if not organization_domain:
+        return
+    graphs = asset.capability_graphs
+    if graphs is not None and graphs.revenue_graph is not None:
+        for contact in graphs.revenue_graph.contacts:
+            contact.email = _mask_external_email(contact.email, organization_domain)
+    environment = asset.environment
+    if environment is None:
+        return
+    for contact in environment.crm_contacts:
+        contact.email = _mask_external_email(contact.email, organization_domain)
+    for thread in environment.mail_threads:
+        for message in thread.messages:
+            message.from_address = _mask_external_email(
+                message.from_address, organization_domain
+            )
+            message.to_address = _mask_external_email(
+                message.to_address, organization_domain
+            )
+
+
+def _mask_external_email(value: str, organization_domain: str) -> str:
+    if "@" not in value:
+        return value
+    local, domain = value.split("@", 1)
+    if domain.strip().lower() == organization_domain.strip().lower():
+        return value
+    return f"external-{_slug(local)[:12]}@masked.example.com"
+
+
+def _apply_density(asset: BlueprintAsset, density_level: str) -> None:
+    if density_level == "medium":
+        return
+    graphs = asset.capability_graphs
+    if graphs is None:
+        return
+    if density_level == "small":
+        if graphs.comm_graph is not None:
+            graphs.comm_graph.slack_channels = graphs.comm_graph.slack_channels[:3]
+            for channel in graphs.comm_graph.slack_channels:
+                channel.messages = channel.messages[:3]
+            graphs.comm_graph.mail_threads = graphs.comm_graph.mail_threads[:2]
+            for thread in graphs.comm_graph.mail_threads:
+                thread.messages = thread.messages[:1]
+        if graphs.doc_graph is not None:
+            graphs.doc_graph.documents = graphs.doc_graph.documents[:3]
+        if graphs.work_graph is not None:
+            graphs.work_graph.tickets = graphs.work_graph.tickets[:4]
+        if graphs.identity_graph is not None:
+            graphs.identity_graph.users = graphs.identity_graph.users[:5]
+        if graphs.revenue_graph is not None:
+            graphs.revenue_graph.contacts = graphs.revenue_graph.contacts[:4]
+            graphs.revenue_graph.deals = graphs.revenue_graph.deals[:3]
+
+
+def _apply_named_team_expansion(
+    asset: BlueprintAsset,
+    organization_name: str,
+    organization_domain: str,
+    mold: ContextMoldConfig,
+) -> None:
+    if mold.named_team_expansion == "minimal":
+        return
+    graphs = asset.capability_graphs
+    if graphs is None:
+        return
+    if graphs.identity_graph is None:
+        return
+    desired = 8 if mold.named_team_expansion == "standard" else 12
+    existing = {user.email.lower() for user in graphs.identity_graph.users}
+    roles = _role_names_for_archetype(mold.archetype)
+    next_index = 1
+    while len(graphs.identity_graph.users) < desired and roles:
+        role = roles.pop(0)
+        local = f"{_slug(role['first_name'])}.{_slug(role['last_name'])}"
+        email = f"{local}@{organization_domain or 'example.com'}"
+        if email.lower() in existing:
+            continue
+        graphs.identity_graph.users.append(
+            BlueprintIdentityUserAsset(
+                user_id=f"USR-TWIN-{next_index:03d}",
+                email=email,
+                first_name=role["first_name"],
+                last_name=role["last_name"],
+                display_name=f"{role['first_name']} {role['last_name']}",
+                login=email,
+                department=role["department"],
+                title=role["title"],
+                manager=role.get("manager"),
+                groups=[],
+                applications=[],
+                factors=["password"],
+            )
+        )
+        existing.add(email.lower())
+        next_index += 1
+    if asset.environment is not None:
+        asset.environment.organization_name = organization_name
+        asset.environment.organization_domain = (
+            organization_domain or asset.environment.organization_domain
+        )
+
+
+def _apply_synthetic_expansion(
+    asset: BlueprintAsset,
+    organization_name: str,
+    organization_domain: str,
+    mold: ContextMoldConfig,
+) -> None:
+    strength = mold.synthetic_expansion_strength
+    if mold.density_level != "large" and strength == "light":
+        return
+    graphs = asset.capability_graphs
+    if graphs is None:
+        return
+    extra_count = 1 if strength == "light" else 2 if strength == "medium" else 3
+    if graphs.comm_graph is not None and graphs.comm_graph.slack_channels:
+        for channel in graphs.comm_graph.slack_channels[:extra_count]:
+            last_message = channel.messages[-1] if channel.messages else None
+            channel.messages.append(
+                BlueprintSlackMessageAsset(
+                    ts=f"{last_message.ts if last_message else '1711111111.000000'}-x{extra_count}",
+                    user=last_message.user if last_message else "ops.coordinator",
+                    text=(
+                        "Keeping the thread current with one more operator note so the "
+                        "world stays visibly dense."
+                    ),
+                    thread_ts=(last_message.thread_ts if last_message else None),
+                )
+            )
+    if graphs.comm_graph is not None and graphs.comm_graph.mail_threads:
+        for thread in graphs.comm_graph.mail_threads[:extra_count]:
+            last_message = thread.messages[-1] if thread.messages else None
+            thread.messages.append(
+                BlueprintMailMessageAsset(
+                    from_address=(
+                        last_message.to_address
+                        if last_message is not None
+                        else f"ops@{organization_domain or 'example.com'}"
+                    ),
+                    to_address=(
+                        last_message.from_address
+                        if last_message is not None
+                        else f"team@{organization_domain or 'example.com'}"
+                    ),
+                    subject=thread.title or "Follow-up",
+                    body_text=(
+                        f"Additional context for {organization_name}: keep the latest "
+                        "decision, owner, and next check-in visible to the team."
+                    ),
+                    unread=False,
+                    time_ms=(
+                        last_message.time_ms if last_message is not None else None
+                    ),
+                )
+            )
+    if graphs.doc_graph is not None and len(graphs.doc_graph.documents) < 6:
+        doc_count = len(graphs.doc_graph.documents)
+        for index in range(extra_count):
+            graphs.doc_graph.documents.append(
+                BlueprintDocumentAsset(
+                    doc_id=f"DOC-TWIN-{doc_count + index + 1}",
+                    title=f"{organization_name} operator brief {doc_count + index + 1}",
+                    body=(
+                        "Summary of the latest customer-safe path, current blockers, "
+                        "owner handoff, and next decision checkpoint."
+                    ),
+                    tags=["brief", "synthetic"],
+                )
+            )
+    if graphs.work_graph is not None and len(graphs.work_graph.tickets) < 8:
+        ticket_count = len(graphs.work_graph.tickets)
+        for index in range(extra_count):
+            graphs.work_graph.tickets.append(
+                BlueprintTicketAsset(
+                    ticket_id=f"TWIN-{ticket_count + index + 1}",
+                    title=f"Follow-up action {ticket_count + index + 1}",
+                    status="open",
+                    assignee="ops.coordinator",
+                    description="Synthetic follow-up item to keep the queue realistic.",
+                )
+            )
+
+
+def _role_names_for_archetype(archetype: str) -> list[dict[str, str]]:
+    shared = [
+        {
+            "first_name": "Morgan",
+            "last_name": "Vale",
+            "department": "Operations",
+            "title": "Operations Manager",
+        },
+        {
+            "first_name": "Iris",
+            "last_name": "Chen",
+            "department": "Support",
+            "title": "Support Lead",
+        },
+        {
+            "first_name": "Devin",
+            "last_name": "Shaw",
+            "department": "Revenue",
+            "title": "Revenue Lead",
+        },
+        {
+            "first_name": "Lena",
+            "last_name": "Morris",
+            "department": "Product",
+            "title": "Product Manager",
+        },
+        {
+            "first_name": "Omar",
+            "last_name": "Price",
+            "department": "Success",
+            "title": "Customer Success Lead",
+        },
+    ]
+    if archetype == "real_estate_management":
+        return shared + [
+            {
+                "first_name": "Rhea",
+                "last_name": "Dalton",
+                "department": "Facilities",
+                "title": "Facilities Supervisor",
+            },
+            {
+                "first_name": "Evan",
+                "last_name": "Hart",
+                "department": "Leasing",
+                "title": "Leasing Manager",
+            },
+        ]
+    if archetype == "digital_marketing_agency":
+        return shared + [
+            {
+                "first_name": "Paige",
+                "last_name": "Ng",
+                "department": "Creative",
+                "title": "Creative Director",
+            },
+            {
+                "first_name": "Nikhil",
+                "last_name": "Rao",
+                "department": "Media",
+                "title": "Media Strategist",
+            },
+        ]
+    if archetype == "storage_solutions":
+        return shared + [
+            {
+                "first_name": "Marta",
+                "last_name": "Lopez",
+                "department": "Dispatch",
+                "title": "Dispatch Lead",
+            },
+            {
+                "first_name": "Gabe",
+                "last_name": "Owens",
+                "department": "Capacity",
+                "title": "Capacity Planner",
+            },
+        ]
+    return shared + [
+        {
+            "first_name": "Noah",
+            "last_name": "West",
+            "department": "Engineering",
+            "title": "Engineering Manager",
+        },
+        {
+            "first_name": "Ava",
+            "last_name": "Klein",
+            "department": "Sales",
+            "title": "Account Executive",
+        },
+    ]
 
 
 def _rewrite_email(

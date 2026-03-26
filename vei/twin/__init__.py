@@ -2,28 +2,44 @@ from .api import (
     TWIN_MANIFEST_FILE,
     build_customer_twin,
     build_customer_twin_asset,
+    build_twin_matrix,
+    create_twin_gateway_app,
     load_customer_twin,
+    load_twin_matrix,
 )
 from .app import serve_customer_twin
-from .gateway import create_twin_gateway_app
 from .models import (
     CompatibilitySurfaceSpec,
     ContextMoldConfig,
     CustomerTwinBundle,
+    ExternalAgentIdentity,
+    TwinCrisisLevel,
+    TwinDensityLevel,
     TwinGatewayConfig,
+    TwinMatrixBundle,
+    TwinTemplateSpec,
     TwinRuntimeStatus,
+    TwinVariantSpec,
 )
 
 __all__ = [
     "CompatibilitySurfaceSpec",
     "ContextMoldConfig",
     "CustomerTwinBundle",
+    "ExternalAgentIdentity",
     "TWIN_MANIFEST_FILE",
+    "TwinCrisisLevel",
+    "TwinDensityLevel",
     "TwinGatewayConfig",
+    "TwinMatrixBundle",
+    "TwinTemplateSpec",
     "TwinRuntimeStatus",
+    "TwinVariantSpec",
     "build_customer_twin",
     "build_customer_twin_asset",
+    "build_twin_matrix",
     "create_twin_gateway_app",
     "load_customer_twin",
+    "load_twin_matrix",
     "serve_customer_twin",
 ]

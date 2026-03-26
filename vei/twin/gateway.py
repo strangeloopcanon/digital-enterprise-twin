@@ -44,7 +44,7 @@ from vei.workspace.models import WorkspaceRunEntry
 from vei.world.api import WorldSessionAPI
 
 from .api import load_customer_twin
-from .models import CustomerTwinBundle, TwinRuntimeStatus
+from .models import CustomerTwinBundle, ExternalAgentIdentity, TwinRuntimeStatus
 
 
 class TwinRuntime:
@@ -139,6 +139,7 @@ class TwinRuntime:
         resolved_tool: str,
         args: dict[str, Any],
         focus_hint: str,
+        agent: ExternalAgentIdentity | None = None,
     ) -> Any:
         try:
             result = self.session.call_tool(resolved_tool, args)
@@ -151,6 +152,7 @@ class TwinRuntime:
             )
             self.status.latest_snapshot_id = snapshot.snapshot_id
             self.status.request_count += 1
+            self._record_agent_identity(agent)
             self._update_contract_status(contract_eval)
             self._write_contract_eval(contract_eval)
             self._write_manifest(
@@ -164,7 +166,13 @@ class TwinRuntime:
                 tool=external_tool,
                 resolved_tool=resolved_tool,
                 object_refs=_object_refs(args, result),
-                payload={"args": args, "result": result},
+                payload={
+                    "args": args,
+                    "result": result,
+                    "agent": (
+                        agent.model_dump(mode="json") if agent is not None else None
+                    ),
+                },
             )
             self._append_snapshot_event(
                 f"gateway:{external_tool}",
@@ -181,6 +189,7 @@ class TwinRuntime:
             )
             self.status.latest_snapshot_id = snapshot.snapshot_id
             self.status.request_count += 1
+            self._record_agent_identity(agent)
             self._update_contract_status(contract_eval)
             self._write_contract_eval(contract_eval)
             self._write_manifest(
@@ -195,7 +204,13 @@ class TwinRuntime:
                 tool=external_tool,
                 resolved_tool=resolved_tool,
                 object_refs=_object_refs(args, {}),
-                payload={"args": args, "error": _error_payload(exc)},
+                payload={
+                    "args": args,
+                    "error": _error_payload(exc),
+                    "agent": (
+                        agent.model_dump(mode="json") if agent is not None else None
+                    ),
+                },
             )
             self._append_snapshot_event(
                 f"error:{external_tool}",
@@ -294,6 +309,8 @@ class TwinRuntime:
                 "gateway_mode": "compatibility",
                 "organization_name": self.bundle.organization_name,
                 "surfaces": [item.name for item in self.bundle.gateway.surfaces],
+                "agents": list(self.status.metadata.get("agents", [])),
+                "last_agent": self.status.metadata.get("last_agent"),
             },
         )
         write_run_manifest(self.workspace_root, manifest)
@@ -331,6 +348,18 @@ class TwinRuntime:
         )
         self.status.latest_contract_ok = contract_eval.ok
         self.status.contract_issue_count = issues
+
+    def _record_agent_identity(self, agent: ExternalAgentIdentity | None) -> None:
+        if agent is None:
+            return
+        metadata = dict(self.status.metadata)
+        agents = list(metadata.get("agents", []))
+        payload = agent.model_dump(mode="json")
+        if payload not in agents:
+            agents.append(payload)
+        metadata["agents"] = agents
+        metadata["last_agent"] = payload
+        self.status.metadata = metadata
 
     def _append_event(
         self,
@@ -472,7 +501,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         if not _slack_auth_ok(request, bundle.gateway.auth_token):
             return JSONResponse({"ok": False, "error": "invalid_auth"})
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="slack.conversations.list",
                 resolved_tool="slack.list_channels",
                 args={},
@@ -492,7 +523,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         channel_arg = request.query_params.get("channel", "")
         channel_name = _resolve_slack_channel_name(runtime, channel_arg)
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="slack.conversations.history",
                 resolved_tool="slack.open_channel",
                 args={"channel": channel_name},
@@ -520,7 +553,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         )
         thread_ts = request.query_params.get("ts", "")
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="slack.conversations.replies",
                 resolved_tool="slack.fetch_thread",
                 args={"channel": channel_name, "thread_ts": thread_ts},
@@ -552,7 +587,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
             "thread_ts": body.get("thread_ts"),
         }
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="slack.chat.postMessage",
                 resolved_tool="slack.send_message",
                 args=args,
@@ -586,19 +623,21 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     @app.get("/jira/rest/api/3/search")
     async def jira_search_get(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
-        return JSONResponse(_jira_search(runtime, request.query_params))
+        return JSONResponse(_jira_search(runtime, request, request.query_params))
 
     @app.post("/jira/rest/api/3/search")
     async def jira_search_post(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         body = await _request_payload(request)
-        return JSONResponse(_jira_search(runtime, body))
+        return JSONResponse(_jira_search(runtime, request, body))
 
     @app.get("/jira/rest/api/3/issue/{issue_id}")
     async def jira_issue(request: Request, issue_id: str) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="jira.issue.get",
                 resolved_tool="jira.get_issue",
                 args={"issue_id": issue_id},
@@ -612,7 +651,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     async def jira_issue_transitions(request: Request, issue_id: str) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="jira.issue.get",
                 resolved_tool="jira.get_issue",
                 args={"issue_id": issue_id},
@@ -629,7 +670,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         body = await _request_payload(request)
         args = {"issue_id": issue_id, "body": str(body.get("body", ""))}
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="jira.issue.comment",
                 resolved_tool="jira.add_comment",
                 args=args,
@@ -653,7 +696,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         )
         status = transition.get("id") or transition.get("name") or body.get("status")
         try:
-            runtime.dispatch(
+            _dispatch_request(
+                runtime,
+                request,
                 external_tool="jira.issue.transition",
                 resolved_tool="jira.transition_issue",
                 args={"issue_id": issue_id, "status": str(status or "")},
@@ -666,7 +711,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     @app.get("/graph/v1.0/me/messages")
     async def graph_messages(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
-        payload = runtime.dispatch(
+        payload = _dispatch_request(
+            runtime,
+            request,
             external_tool="graph.messages.list",
             resolved_tool="mail.list",
             args={"folder": "INBOX"},
@@ -681,7 +728,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     async def graph_message(request: Request, message_id: str) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         try:
-            summary = runtime.dispatch(
+            summary = _dispatch_request(
+                runtime,
+                request,
                 external_tool="graph.messages.get",
                 resolved_tool="mail.open",
                 args={"id": message_id},
@@ -704,7 +753,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         subject = str(message.get("subject", ""))
         body_content = _graph_body_content(message.get("body"))
         try:
-            runtime.dispatch(
+            _dispatch_request(
+                runtime,
+                request,
                 external_tool="graph.messages.send",
                 resolved_tool="mail.compose",
                 args={"to": to_address, "subj": subject, "body_text": body_content},
@@ -717,7 +768,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     @app.get("/graph/v1.0/me/events")
     async def graph_events(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
-        payload = runtime.dispatch(
+        payload = _dispatch_request(
+            runtime,
+            request,
             external_tool="graph.events.list",
             resolved_tool="calendar.list_events",
             args={},
@@ -744,7 +797,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
             ),
         }
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="graph.events.create",
                 resolved_tool="calendar.create_event",
                 args=args,
@@ -758,7 +813,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     async def salesforce_query(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         query = request.query_params.get("q", "")
-        return JSONResponse(_salesforce_query(runtime, query))
+        return JSONResponse(_salesforce_query(runtime, request, query))
 
     @app.get("/salesforce/services/data/v60.0/sobjects/Opportunity/{record_id}")
     async def salesforce_opportunity_get(
@@ -766,7 +821,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     ) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="salesforce.opportunity.get",
                 resolved_tool="salesforce.opportunity.get",
                 args={"id": record_id},
@@ -789,7 +846,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
             "close_date": body.get("CloseDate"),
         }
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="salesforce.opportunity.create",
                 resolved_tool="salesforce.opportunity.create",
                 args=args,
@@ -812,7 +871,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
             "note": body.get("Description") or body.get("Subject") or "",
         }
         try:
-            payload = runtime.dispatch(
+            payload = _dispatch_request(
+                runtime,
+                request,
                 external_tool="salesforce.task.create",
                 resolved_tool="salesforce.activity.log",
                 args=args,
@@ -897,7 +958,11 @@ def _slack_message(channel: str, message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _jira_search(runtime: TwinRuntime, params: Any) -> dict[str, Any]:
+def _jira_search(
+    runtime: TwinRuntime,
+    request: Request,
+    params: Any,
+) -> dict[str, Any]:
     jql = str(params.get("jql", ""))
     max_results = int(params.get("maxResults", params.get("max_results", 25)) or 25)
     start_at = int(params.get("startAt", params.get("start_at", 0)) or 0)
@@ -908,7 +973,9 @@ def _jira_search(runtime: TwinRuntime, params: Any) -> dict[str, Any]:
         args["status"] = status
     if assignee:
         args["assignee"] = assignee
-    payload = runtime.dispatch(
+    payload = _dispatch_request(
+        runtime,
+        request,
         external_tool="jira.search",
         resolved_tool="jira.list_issues",
         args=args,
@@ -1066,12 +1133,18 @@ def _graph_attendees(payload: Any) -> list[str]:
     return result
 
 
-def _salesforce_query(runtime: TwinRuntime, query: str) -> dict[str, Any]:
+def _salesforce_query(
+    runtime: TwinRuntime,
+    request: Request,
+    query: str,
+) -> dict[str, Any]:
     lowered = query.lower()
     limit_match = re.search(r"limit\s+(\d+)", lowered)
     limit = int(limit_match.group(1)) if limit_match else 25
     if "from opportunity" in lowered:
-        payload = runtime.dispatch(
+        payload = _dispatch_request(
+            runtime,
+            request,
             external_tool="salesforce.query.opportunity",
             resolved_tool="salesforce.opportunity.list",
             args={"limit": limit},
@@ -1081,7 +1154,9 @@ def _salesforce_query(runtime: TwinRuntime, query: str) -> dict[str, Any]:
         records = [_salesforce_opportunity(item) for item in rows[:limit]]
         return {"totalSize": len(records), "done": True, "records": records}
     if "from contact" in lowered:
-        payload = runtime.dispatch(
+        payload = _dispatch_request(
+            runtime,
+            request,
             external_tool="salesforce.query.contact",
             resolved_tool="salesforce.contact.list",
             args={"limit": limit},
@@ -1090,7 +1165,9 @@ def _salesforce_query(runtime: TwinRuntime, query: str) -> dict[str, Any]:
         rows = payload if isinstance(payload, list) else payload.get("contacts", [])
         records = [_salesforce_contact(item) for item in rows[:limit]]
         return {"totalSize": len(records), "done": True, "records": records}
-    payload = runtime.dispatch(
+    payload = _dispatch_request(
+        runtime,
+        request,
         external_tool="salesforce.query.account",
         resolved_tool="salesforce.account.list",
         args={"limit": limit},
@@ -1247,6 +1324,34 @@ def _ms_to_iso(value: int) -> str:
     if value <= 0:
         return datetime.now(UTC).isoformat()
     return datetime.fromtimestamp(value / 1000, tz=UTC).isoformat()
+
+
+def _dispatch_request(
+    runtime: TwinRuntime,
+    request: Request,
+    *,
+    external_tool: str,
+    resolved_tool: str,
+    args: dict[str, Any],
+    focus_hint: str,
+) -> Any:
+    return runtime.dispatch(
+        external_tool=external_tool,
+        resolved_tool=resolved_tool,
+        args=args,
+        focus_hint=focus_hint,
+        agent=_request_agent_identity(request),
+    )
+
+
+def _request_agent_identity(request: Request) -> ExternalAgentIdentity | None:
+    name = request.headers.get("x-vei-agent-name") or None
+    role = request.headers.get("x-vei-agent-role") or None
+    team = request.headers.get("x-vei-agent-team") or None
+    source = request.headers.get("user-agent") or None
+    if not any([name, role, team, source]):
+        return None
+    return ExternalAgentIdentity(name=name, role=role, team=team, source=source)
 
 
 def _iso_now() -> str:

@@ -21,6 +21,7 @@ from vei.twin.api import build_customer_twin, load_customer_twin
 from vei.twin.models import (
     ContextMoldConfig,
     CustomerTwinBundle,
+    ExternalAgentIdentity,
     TwinArchetype,
 )
 
@@ -277,6 +278,7 @@ def build_pilot_status(root: str | Path) -> PilotStatus:
     outcome = _build_outcome(gateway_payload, surfaces_payload, activity)
     twin_runtime = gateway_payload.get("runtime", {}) if gateway_payload else {}
     services_ready = _services_ready(runtime)
+    active_agents = _parse_active_agents(gateway_payload)
     return PilotStatus(
         manifest=manifest,
         runtime=runtime,
@@ -284,6 +286,7 @@ def build_pilot_status(root: str | Path) -> PilotStatus:
         twin_status=twin_runtime.get("status", "stopped"),
         request_count=int(twin_runtime.get("request_count", 0) or 0),
         services_ready=services_ready,
+        active_agents=active_agents,
         activity=activity,
         outcome=outcome,
     )
@@ -424,7 +427,9 @@ def _build_manifest(
 def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
     env_block = (
         f'export VEI_PILOT_BASE_URL="{manifest.gateway_url}"\n'
-        f'export VEI_PILOT_TOKEN="{manifest.bearer_token}"'
+        f'export VEI_PILOT_TOKEN="{manifest.bearer_token}"\n'
+        'export VEI_AGENT_NAME="starter-agent"\n'
+        'export VEI_AGENT_ROLE="exercise-runner"'
     )
     python_snippet = (
         "import json\n"
@@ -433,24 +438,36 @@ def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
         f'TOKEN = "{manifest.bearer_token}"\n\n'
         "req = Request(\n"
         '    f"{BASE_URL}/slack/api/conversations.list",\n'
-        '    headers={"Authorization": f"Bearer {TOKEN}"},\n'
+        "    headers={\n"
+        '        "Authorization": f"Bearer {TOKEN}",\n'
+        '        "X-VEI-Agent-Name": "starter-agent",\n'
+        '        "X-VEI-Agent-Role": "exercise-runner",\n'
+        "    },\n"
         ")\n"
         "print(json.loads(urlopen(req).read()))\n"
     )
     slack_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Name: starter-agent' "
+        "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/slack/api/conversations.list'"
     )
     jira_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Name: starter-agent' "
+        "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/jira/rest/api/3/search'"
     )
     graph_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Name: starter-agent' "
+        "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/graph/v1.0/me/messages'"
     )
     salesforce_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Name: starter-agent' "
+        "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/salesforce/services/data/v60.0/query?q=SELECT+Name+FROM+Opportunity'"
     )
     return [
@@ -530,7 +547,7 @@ def _render_pilot_guide(manifest: PilotManifest) -> str:
         f"- Archetype: **{manifest.archetype.replace('_', ' ')}**\n"
         f"- Current crisis: **{manifest.crisis_name}**\n"
         f"- Studio: `{manifest.studio_url}`\n"
-        f"- Pilot Console: `{manifest.pilot_console_url}`\n"
+        f"- Operator Console: `{manifest.pilot_console_url}`\n"
         f"- Gateway: `{manifest.gateway_url}`\n\n"
         f"## Supported surfaces\n\n"
         f"{surface_lines}\n\n"
@@ -541,8 +558,8 @@ def _render_pilot_guide(manifest: PilotManifest) -> str:
         f"## Connection snippets\n\n"
         f"{snippets}\n\n"
         "## Reset or finalize\n\n"
-        "- Reset the twin to baseline: use `vei pilot down` then `vei pilot up`, or the reset control in the Pilot Console.\n"
-        "- Finalize the current run: use the Pilot Console finalize control or `POST /api/twin/finalize` on the gateway.\n"
+        "- Reset the twin to baseline: use `vei pilot down` then `vei pilot up`, or the reset control in the Operator Console.\n"
+        "- Finalize the current run: use the Operator Console finalize control or `POST /api/twin/finalize` on the gateway.\n"
     )
 
 
@@ -555,6 +572,8 @@ def _build_activity(history_payload: Any) -> list[PilotActivityItem]:
             continue
         if raw.get("kind") != "workflow_step":
             continue
+        payload = raw.get("payload", {}) if isinstance(raw.get("payload"), dict) else {}
+        agent = payload.get("agent", {}) if isinstance(payload, dict) else {}
         items.append(
             PilotActivityItem(
                 label=str(raw.get("label", "")),
@@ -562,9 +581,51 @@ def _build_activity(history_payload: Any) -> list[PilotActivityItem]:
                 tool=raw.get("resolved_tool") or raw.get("tool"),
                 status=raw.get("status"),
                 object_refs=[str(item) for item in raw.get("object_refs", [])],
+                agent_name=(
+                    str(agent.get("name"))
+                    if isinstance(agent, dict) and agent.get("name")
+                    else None
+                ),
+                agent_role=(
+                    str(agent.get("role"))
+                    if isinstance(agent, dict) and agent.get("role")
+                    else None
+                ),
+                agent_team=(
+                    str(agent.get("team"))
+                    if isinstance(agent, dict) and agent.get("team")
+                    else None
+                ),
+                agent_source=(
+                    str(agent.get("source"))
+                    if isinstance(agent, dict) and agent.get("source")
+                    else None
+                ),
             )
         )
     return items[-6:][::-1]
+
+
+def _parse_active_agents(
+    gateway_payload: dict[str, Any] | None,
+) -> list[ExternalAgentIdentity]:
+    if not isinstance(gateway_payload, dict):
+        return []
+    runtime = gateway_payload.get("runtime", {})
+    if not isinstance(runtime, dict):
+        return []
+    metadata = runtime.get("metadata", {})
+    if not isinstance(metadata, dict):
+        return []
+    raw_agents = metadata.get("agents", [])
+    if not isinstance(raw_agents, list):
+        return []
+    agents: list[ExternalAgentIdentity] = []
+    for item in raw_agents:
+        if not isinstance(item, dict):
+            continue
+        agents.append(ExternalAgentIdentity.model_validate(item))
+    return agents
 
 
 def _build_outcome(

@@ -28,6 +28,7 @@ const GRAPH_TITLES = {
 const state = {
   workspace: null,
   story: null,
+  exercise: null,
   presentation: null,
   playableBundle: null,
   missions: [],
@@ -98,6 +99,11 @@ async function fetchStoryArtifacts() {
   return { story, exportsPreview, presentation };
 }
 
+async function fetchExerciseArtifacts() {
+  const exercise = await getJson("/api/exercise").catch(() => null);
+  return { exercise };
+}
+
 async function fetchPlayableArtifacts() {
   const [playableBundle, missions, missionState, fidelityReport] = await Promise.all([
     getJson("/api/playable").catch(() => null),
@@ -130,6 +136,114 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function activeMission() {
+  return state.missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
+}
+
+function hasExerciseMode() {
+  return Boolean(state.exercise?.manifest);
+}
+
+function activeScenarioVariant() {
+  const variants = Array.isArray(state.scenarioPreview?.available_scenario_variants)
+    ? state.scenarioPreview.available_scenario_variants
+    : [];
+  return variants.find((item) => item.name === state.scenarioPreview?.active_scenario_variant) || null;
+}
+
+function activeContractVariant() {
+  const variants = Array.isArray(state.scenarioPreview?.available_contract_variants)
+    ? state.scenarioPreview.available_contract_variants
+    : [];
+  return variants.find((item) => item.name === state.scenarioPreview?.active_contract_variant) || null;
+}
+
+function currentCrisisTitle() {
+  if (hasExerciseMode()) {
+    const scenarioVariant = activeScenarioVariant();
+    if (scenarioVariant?.title) {
+      return scenarioVariant.title;
+    }
+    if (state.exercise?.manifest?.crisis_name) {
+      return state.exercise.manifest.crisis_name;
+    }
+  }
+  const mission = activeMission();
+  if (mission?.title) {
+    return mission.title;
+  }
+  const scenarioVariant = activeScenarioVariant();
+  if (scenarioVariant?.title) {
+    return scenarioVariant.title;
+  }
+  return state.scenarioPreview?.scenario?.title || "Current crisis";
+}
+
+function currentCrisisSummary() {
+  if (hasExerciseMode()) {
+    const scenarioVariant = activeScenarioVariant();
+    if (scenarioVariant?.description) {
+      return scenarioVariant.description;
+    }
+    if (state.scenarioPreview?.scenario?.description) {
+      return state.scenarioPreview.scenario.description;
+    }
+  }
+  const mission = activeMission();
+  if (mission?.briefing) {
+    return mission.briefing;
+  }
+  const scenarioVariant = activeScenarioVariant();
+  if (scenarioVariant?.description) {
+    return scenarioVariant.description;
+  }
+  if (state.scenarioPreview?.scenario?.description) {
+    return state.scenarioPreview.scenario.description;
+  }
+  return state.story?.company_briefing
+    || state.workspace?.manifest?.description
+    || "Choose a crisis and enter the world.";
+}
+
+function currentFailureImpact() {
+  if (hasExerciseMode()) {
+    const scenarioVariant = activeScenarioVariant();
+    if (Array.isArray(scenarioVariant?.change_summary) && scenarioVariant.change_summary.length) {
+      return scenarioVariant.change_summary.join(" · ");
+    }
+  }
+  const mission = activeMission();
+  if (mission?.failure_impact) {
+    return mission.failure_impact;
+  }
+  const scenarioVariant = activeScenarioVariant();
+  if (Array.isArray(scenarioVariant?.change_summary) && scenarioVariant.change_summary.length) {
+    return scenarioVariant.change_summary.join(" · ");
+  }
+  return state.story?.failure_impact || "";
+}
+
+function currentObjectiveSummary() {
+  if (hasExerciseMode()) {
+    const contractVariant = activeContractVariant();
+    if (contractVariant?.objective_summary) {
+      return contractVariant.objective_summary;
+    }
+    if (contractVariant?.description) {
+      return contractVariant.description;
+    }
+  }
+  const contractVariant = activeContractVariant();
+  if (contractVariant?.objective_summary) {
+    return contractVariant.objective_summary;
+  }
+  if (contractVariant?.description) {
+    return contractVariant.description;
+  }
+  return state.story?.objective_briefing
+    || "The active target defines what counts as success, what must be avoided, and how tradeoffs are judged.";
 }
 
 function compactNumber(value) {
@@ -569,11 +683,10 @@ function renderWorkspaceHero() {
   }
   const manifest = workspace.manifest || {};
   const story = state.story || {};
-  const mission = state.missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
   const title = document.getElementById("workspace-title");
   const subtitle = document.getElementById("workspace-subtitle");
   const companyName = story.manifest?.company_name || manifest.title || "Workspace";
-  const missionLine = mission?.briefing || story.company_briefing || manifest.description || "Choose a crisis and enter the world.";
+  const missionLine = currentCrisisSummary();
   if (title) {
     title.textContent = companyName;
   }
@@ -624,7 +737,38 @@ function renderWorldsPanel() {
 function renderMissionSelector() {
   const missionSelect = document.getElementById("mission-select");
   const objectiveSelect = document.getElementById("objective-select");
+  const startButton = document.getElementById("start-mission-button");
   if (!missionSelect || !objectiveSelect) {
+    return;
+  }
+  if (hasExerciseMode()) {
+    const scenarioVariants = Array.isArray(state.scenarioPreview?.available_scenario_variants)
+      ? state.scenarioPreview.available_scenario_variants
+      : [];
+    missionSelect.innerHTML = scenarioVariants
+      .map(
+        (item) => `
+          <option value="${escapeHtml(item.name || "")}" ${
+            item.name === state.scenarioPreview?.active_scenario_variant ? "selected" : ""
+          }>${escapeHtml(item.title || item.name || "Scenario")}</option>
+        `
+      )
+      .join("");
+    const contractVariants = Array.isArray(state.scenarioPreview?.available_contract_variants)
+      ? state.scenarioPreview.available_contract_variants
+      : [];
+    objectiveSelect.innerHTML = contractVariants
+      .map(
+        (item) => `
+          <option value="${escapeHtml(item.name || "")}" ${
+            item.name === state.scenarioPreview?.active_contract_variant ? "selected" : ""
+          }>${escapeHtml(item.title || item.name || "Objective")}</option>
+        `
+      )
+      .join("");
+    if (startButton) {
+      startButton.textContent = "Apply Crisis";
+    }
     return;
   }
   const currentMission =
@@ -662,6 +806,9 @@ function renderMissionSelector() {
       }>${escapeHtml(label)}</option>`;
     })
     .join("");
+  if (startButton) {
+    startButton.textContent = "Enter World";
+  }
 }
 
 function renderMissionSummary() {
@@ -670,21 +817,60 @@ function renderMissionSummary() {
   if (!briefing) {
     return;
   }
-  const missionState = state.missionState;
-  const currentMission =
-    missionState?.mission ||
-    state.playableBundle?.mission ||
-    state.missions[0] ||
-    null;
-  if (!currentMission) {
+  const currentMission = activeMission();
+  const scenarioVariant = activeScenarioVariant();
+  if (hasExerciseMode() || !currentMission) {
+    const crisisTitle = currentCrisisTitle();
+    const crisisSummary = currentCrisisSummary();
+    const failureImpact = currentFailureImpact();
     briefing.innerHTML = `
-      <div class="story-card story-span-2">
+      <div class="story-card accent-card story-span-2 crisis-hero-card">
         <p class="eyebrow">Current crisis</p>
-        <p class="metric-detail">Choose a crisis above to see what changed, why it matters, and how this company will be judged.</p>
+        <h3>${escapeHtml(crisisTitle)}</h3>
+        <p class="metric-detail">${escapeHtml(crisisSummary)}</p>
+        <div class="chip-row">
+          ${chip(state.scenarioPreview?.active_scenario_variant || "default")}
+          ${chip(state.scenarioPreview?.active_contract_variant || "default objective")}
+        </div>
       </div>
+      <div class="story-card">
+        <p class="eyebrow">Why this matters</p>
+        <p class="metric-detail">${escapeHtml(inWorldCopy(
+          scenarioVariant?.rationale,
+          "This is the pressure point most likely to decide whether the company stabilizes or scrambles."
+        ))}</p>
+      </div>
+      ${failureImpact ? `
+        <div class="story-card">
+          <p class="eyebrow">Failure impact</p>
+          <p class="metric-detail">${escapeHtml(failureImpact)}</p>
+        </div>
+      ` : ""}
     `;
     if (catalog) {
-      catalog.innerHTML = "";
+      const scenarioVariants = Array.isArray(state.scenarioPreview?.available_scenario_variants)
+        ? state.scenarioPreview.available_scenario_variants
+        : [];
+      catalog.innerHTML = scenarioVariants
+        .map(
+          (item) => `
+            <div class="run-item ${item.name === state.scenarioPreview?.active_scenario_variant ? "active" : ""}">
+              <div class="chip-row">
+                ${chip(item.name || "scenario")}
+                ${item.name === state.scenarioPreview?.active_scenario_variant ? chip("active", "ok") : ""}
+              </div>
+              <h3>${escapeHtml(item.title || item.name || "Scenario")}</h3>
+              <p class="metric-detail">${escapeHtml(item.description || "")}</p>
+              <button type="button" class="ghost-button activate-scenario-variant-button" data-variant-name="${escapeHtml(item.name || "")}">Switch crisis</button>
+            </div>
+          `
+        )
+        .join("");
+      catalog.querySelectorAll(".activate-scenario-variant-button").forEach((node) => {
+        node.addEventListener("click", () => {
+          void activateScenarioVariant(node.dataset.variantName || "");
+        });
+      });
     }
     return;
   }
@@ -1477,15 +1663,15 @@ function renderLivingCompanyContext() {
   if (!panel) return;
   const story = state.story || {};
   const companyName = story.manifest?.company_name || state.workspace?.manifest?.title || "";
-  const briefing = story.company_briefing || state.workspace?.manifest?.description || "";
-  const mission = state.missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
-  const failureImpact = story.failure_impact || mission?.failure_impact || "";
+  const briefing = currentCrisisSummary();
+  const crisisTitle = currentCrisisTitle();
+  const failureImpact = currentFailureImpact();
   if (!companyName) {
     panel.innerHTML = "";
     return;
   }
-  const crisisLine = mission
-    ? `<strong>${escapeHtml(mission.title)}</strong>: ${escapeHtml(mission.briefing || mission.description || "")}`
+  const crisisLine = crisisTitle
+    ? `<strong>${escapeHtml(crisisTitle)}</strong>: ${escapeHtml(briefing)}`
     : "";
   panel.innerHTML = `
     <div class="context-strip">
@@ -1649,10 +1835,11 @@ function renderLivingCompanyRail() {
     return;
   }
   const missionState = state.missionState;
-  const mission = missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
+  const mission = activeMission();
   const objective = missionState?.objective_variant
     || document.getElementById("objective-select")?.value
     || mission?.default_objective
+    || state.scenarioPreview?.active_contract_variant
     || "default";
   const recommendedMove = (missionState?.available_moves || []).find(
     (move) => move.availability === "recommended" && !move.executed
@@ -1670,16 +1857,16 @@ function renderLivingCompanyRail() {
     <div class="story-card accent-card">
       <p class="eyebrow">Current tension</p>
       <h3>${escapeHtml(surfaceState?.company_name || state.story?.manifest?.company_name || state.workspace?.manifest?.title || "Company")}</h3>
-      <p class="metric-detail">${escapeHtml(mission?.briefing || state.story?.company_briefing || "Choose a crisis above to bring the company under pressure.")}</p>
+      <p class="metric-detail">${escapeHtml(currentCrisisSummary())}</p>
     </div>
     <div class="story-card">
       <p class="eyebrow">Situation</p>
-      <h3>${escapeHtml(mission?.title || "No crisis selected")}</h3>
+      <h3>${escapeHtml(currentCrisisTitle())}</h3>
       <div class="detail-grid">
         ${detailTile("Success means", objective)}
         ${detailTile("Branch", state.activeRun?.branch || missionState?.branch_name || "base")}
       </div>
-      ${mission?.failure_impact ? `<p class="metric-detail">${escapeHtml(mission.failure_impact)}</p>` : ""}
+      ${currentFailureImpact() ? `<p class="metric-detail">${escapeHtml(currentFailureImpact())}</p>` : ""}
     </div>
     ${
       blockedMove
@@ -1860,7 +2047,11 @@ function renderMissionPlay() {
     scorecard.innerHTML = `
       <div class="story-card story-span-2">
         <p class="eyebrow">Play</p>
-        <p class="metric-detail">Choose a situation and enter the world to begin making moves inside the company.</p>
+        <p class="metric-detail">${
+          hasExerciseMode()
+            ? "Apply a crisis above, then connect an outside agent or use the operator console to watch the company respond."
+            : "Choose a situation and enter the world to begin making moves inside the company."
+        }</p>
       </div>
     `;
     panel.innerHTML = "";
@@ -2312,7 +2503,7 @@ function renderScenarioBriefing() {
     <div class="story-card story-span-2">
       <p class="eyebrow">What changed</p>
       <h3>${escapeHtml(activeScenarioVariant?.title || scenario.title || "Current situation")}</h3>
-      <p class="metric-detail">${escapeHtml(state.story?.situation_briefing || activeScenarioVariant?.description || scenario.description || "")}</p>
+      <p class="metric-detail">${escapeHtml(activeScenarioVariant?.description || scenario.description || state.story?.situation_briefing || "")}</p>
       <div class="chip-row">
         ${chip(activeScenarioVariant?.name || preview.active_scenario_variant || "default")}
         ${chip(compiled.workflow_name || contract.workflow_name || "workflow")}
@@ -2410,7 +2601,7 @@ function renderObjectiveBriefing(contractVariants = [], activeContractVariant = 
       <div class="story-card accent-card story-span-2">
         <p class="eyebrow">Success means</p>
         <h3>${escapeHtml(selectedVariant?.title || state.scenarioPreview?.active_contract_variant || "Default objective")}</h3>
-        <p class="metric-detail">${escapeHtml(state.story?.objective_briefing || selectedVariant?.objective_summary || selectedVariant?.description || "The active contract defines what counts as success, what must be avoided, and how tradeoffs are judged.")}</p>
+        <p class="metric-detail">${escapeHtml(currentObjectiveSummary())}</p>
         <div class="chip-row">
           ${chip(`${successCount} success checks`)}
           ${chip(`${forbiddenCount} failure checks`)}
@@ -2981,9 +3172,10 @@ function togglePlayback() {
 }
 
 async function loadWorkspace() {
-  const [workspace, storyArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
+  const [workspace, storyArtifacts, exerciseArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex] = await Promise.all([
     getJson("/api/workspace"),
     fetchStoryArtifacts(),
+    fetchExerciseArtifacts(),
     fetchPlayableArtifacts(),
     getJson("/api/scenarios"),
     getJson("/api/imports/summary").catch(() => ({})),
@@ -2996,6 +3188,7 @@ async function loadWorkspace() {
   ]);
   state.workspace = workspace;
   state.story = nonEmptyPayload(storyArtifacts.story);
+  state.exercise = nonEmptyPayload(exerciseArtifacts.exercise);
   state.exportsPreview = storyArtifacts.exportsPreview;
   state.presentation =
     nonEmptyPayload(storyArtifacts.presentation) ||
@@ -3037,6 +3230,11 @@ async function loadScenario(name) {
   ]);
   state.scenarioPreview = preview;
   state.scenarioContract = contract;
+  renderWorkspaceHero();
+  renderMissionSelector();
+  renderMissionSummary();
+  renderMissionPlay();
+  renderLivingCompanyView();
   renderScenarioBriefing();
 }
 
@@ -3096,6 +3294,27 @@ async function startMission() {
   const status = document.getElementById("mission-form-status");
   const missionName = missionSelect?.value;
   const objectiveVariant = objectiveSelect?.value || null;
+  if (hasExerciseMode()) {
+    status.textContent = "Applying crisis\u2026";
+    state.lastMoveImpact = null;
+    try {
+      await getJson("/api/exercise/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario_variant: missionName || undefined,
+          contract_variant: objectiveVariant || undefined,
+        }),
+      });
+      await loadWorkspace();
+      await loadRuns();
+      status.textContent = "Company pressure updated.";
+      setStudioView("company");
+    } catch (error) {
+      status.textContent = `Crisis update failed: ${error}`;
+    }
+    return;
+  }
   status.textContent = "Entering world\u2026";
   state.lastMoveImpact = null;
   try {

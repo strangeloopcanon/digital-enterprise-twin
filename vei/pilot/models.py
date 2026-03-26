@@ -5,7 +5,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from vei.twin.models import CompatibilitySurfaceSpec, TwinArchetype
+from vei.twin.models import (
+    CompatibilitySurfaceSpec,
+    ExternalAgentIdentity,
+    TwinArchetype,
+)
 
 
 PilotServiceName = Literal["gateway", "studio"]
@@ -62,6 +66,10 @@ class PilotActivityItem(BaseModel):
     tool: str | None = None
     status: str | None = None
     object_refs: list[str] = Field(default_factory=list)
+    agent_name: str | None = None
+    agent_role: str | None = None
+    agent_team: str | None = None
+    agent_source: str | None = None
 
 
 class PilotOutcomeSummary(BaseModel):
@@ -81,5 +89,6 @@ class PilotStatus(BaseModel):
     twin_status: str = "stopped"
     request_count: int = 0
     services_ready: bool = False
+    active_agents: list[ExternalAgentIdentity] = Field(default_factory=list)
     activity: list[PilotActivityItem] = Field(default_factory=list)
     outcome: PilotOutcomeSummary
