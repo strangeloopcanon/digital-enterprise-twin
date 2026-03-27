@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vei"
 version = "0.2.0a1"
-description = "Digital Enterprise Twin (VEI) — MCP-native enterprise environment builder and simulation kernel"
+description = "VEI — programmable replica of an enterprise software stack for agent testing, RL training, and operational simulation"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

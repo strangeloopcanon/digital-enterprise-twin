@@ -1,5 +1,5 @@
-## Digital Enterprise Twin (VEI)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/strangeloopcanon/digital-enterprise-twin)
+## VEI
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/strangeloopcanon/vei)
 
 ![VEI Studio — Pinnacle Analytics](docs/assets/vei_studio_hero.png)
 

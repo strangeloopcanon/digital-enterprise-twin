@@ -14,7 +14,7 @@ from vei.scenario_runner.api import run_workflow
 
 app = typer.Typer(
     add_completion=False,
-    help="Digital Enterprise Twin phases 0-6 workflow/corpus pipeline commands.",
+    help="VEI phases 0-6 workflow/corpus pipeline commands.",
 )
 
 

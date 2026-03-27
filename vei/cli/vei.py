@@ -38,7 +38,7 @@ from vei.cli.vei_world import app as world_app
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="VEI: Digital Enterprise Twin — simulation, context capture, and synthesis.",
+    help="VEI — programmable enterprise simulation, context capture, and synthesis.",
 )
 
 app.add_typer(project_app, name="project")
