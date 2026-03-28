@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-import json
 import re
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Literal
 
+from vei.score_common import (
+    build_score_envelope,
+    load_trace_records,
+    trace_artifact_path,
+)
+
 
 def compute_score(
     artifacts_dir: str | Path, success_mode: Literal["email", "full"] = "email"
 ) -> dict:
-    trace_path = Path(artifacts_dir) / "trace.jsonl"
+    trace_path = trace_artifact_path(artifacts_dir)
     if not trace_path.exists():
         raise FileNotFoundError(f"No trace.jsonl in artifacts dir: {artifacts_dir}")
 
@@ -86,10 +91,7 @@ def compute_score(
             }
         )
 
-    for raw in trace_path.read_text(encoding="utf-8").splitlines():
-        if not raw.strip():
-            continue
-        rec = json.loads(raw)
+    for rec in load_trace_records(artifacts_dir):
         max_time_ms = max(max_time_ms, int(rec.get("time_ms", 0)))
         if rec.get("type") == "call":
             calls.append(rec)
@@ -327,16 +329,18 @@ def compute_score(
         "error_count": sum(1 for f in policy_findings if f["severity"] == "error"),
     }
 
-    return {
-        "success": success,
-        "subgoals": subgoals,
-        "costs": {"actions": len(calls), "time_ms": max_time_ms},
-        "provenance_ok": True,
-        "policy": policy_summary,
-        "usage": dict(tool_counts),
-        "success_email_only": success_email,
-        "success_full_flow": success_full,
-    }
+    return build_score_envelope(
+        success=success,
+        costs={"actions": len(calls), "time_ms": max_time_ms},
+        extra={
+            "subgoals": subgoals,
+            "provenance_ok": True,
+            "policy": policy_summary,
+            "usage": dict(tool_counts),
+            "success_email_only": success_email,
+            "success_full_flow": success_full,
+        },
+    )
 
 
 _AMOUNT_PATTERN = re.compile(

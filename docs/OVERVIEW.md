@@ -1,8 +1,10 @@
-# VEI: What This Is
+# VEI
 
 VEI is a programmable replica of an entire company's operational software stack. You give it a company description — or connect it to real Slack, Gmail, Jira, and Teams data — and it builds a fully functioning simulated copy of that company with working Slack channels, email threads, ticket queues, CRM pipelines, document stores, identity systems, and more. An agent or a human can then operate inside it: play crisis scenarios, train on the traces, and synthesize operational artifacts from what happened.
 
-It is ~72,500 lines of Python (247 source files, 357 tests), a single-page Studio UI, and 32 CLI subcommands under one `vei` entry point.
+It spans hundreds of Python files and tests, a single-page Studio UI, and one unified `vei` CLI for project setup, world simulation, benchmarking, release/export, and evaluation.
+
+Use the root `README.md` for install and operator quickstart. Use this document for product framing, personas, and the end-to-end story. Use `docs/ARCHITECTURE.md` for the technical map and `docs/BENCHMARKS.md` for the evaluation surface.
 
 ## The Five Layers
 
@@ -64,7 +66,7 @@ A developer mode toggle exposes run forms, raw JSON, orientation data, capabilit
 
 The Pilot Console is a separate operator sidecar at `/pilot` that provides the fastest path for an outside agent (or a researcher) to connect. One command (`vei pilot up`) starts the twin gateway and Studio, writes a launch manifest with bearer token and curl snippets, and serves the Pilot Console where the operator can watch live agent activity, check outcome status, and reset or finalize runs.
 
-![VEI Pilot Console](../docs/assets/vei_pilot_console.png)
+![VEI Pilot Console](assets/vei_pilot_console.png)
 
 ---
 
@@ -189,7 +191,7 @@ Five distinct user types, each with a different entry point into VEI:
 
 **How they use VEI:** Drop in their agent via the MCP interface or the SDK. Run it against progressively harder scenarios (p0-easy through pX-adversarial). The contract system tells them exactly what the agent got right and wrong. Branch from the failure point and try a different approach. Compare paths side by side.
 
-**Entry point:** `vei llm-test --provider openai --model gpt-5 --task "..."`
+**Entry point:** `vei llm-test run --provider openai --model gpt-5 --task "..."`
 
 ### 2. Synthetic Data Teams
 
@@ -237,7 +239,7 @@ The fastest path. One command creates a workspace from a built-in vertical, star
 
 The Twin Gateway exposes provider-shaped HTTP endpoints (Slack Web API, Jira REST v3, Microsoft Graph, Salesforce REST) backed by the simulation. Your agent connects with a bearer token and interacts as if talking to real services. VEI evaluates the run against the contract (success predicates, forbidden predicates, policy invariants) and produces a scorecard. Results appear in the Studio UI timeline and as run artifacts (`events.jsonl`, contract evaluation JSON, state snapshots).
 
-For MCP-native agents, bypass the HTTP gateway entirely: `python -m vei.router --root workspace`.
+For MCP-native agents, bypass the HTTP gateway entirely with `python -m vei.router`. Configure scenario, seed, and artifact paths through environment variables or `mcp.json`.
 
 ---
 
@@ -247,20 +249,16 @@ The thing that makes VEI more than a collection of mock APIs is that it's **one 
 
 This coherence is what makes the generated data useful for training, the benchmarks meaningful for evaluation, the "what if" scenarios credible for ops teams, and the test environment realistic for integration teams.
 
-## Numbers
+## Scale Snapshot
 
-| Metric | Count |
-|--------|-------|
-| Python source files | 247 |
-| Lines of Python | ~72,500 |
-| Test files | 82 |
-| Tests | 357 |
-| CLI subcommands | 32 |
-| Simulated enterprise surfaces | ~15 major (Slack, Mail, Browser, Docs, Tickets, CRM, ERP, Identity, ServiceDesk, SIEM, HRIS, PagerDuty, Feature Flags, Spreadsheet, Calendar) |
+| Area | Current shape |
+|------|---------------|
+| Source tree | Hundreds of Python files under `vei/` plus a single-page Studio UI |
+| Test coverage | Hundreds of pytest cases across kernel, CLI, UI, workspace, benchmark, and import flows |
+| CLI surface | One `vei` entry point with grouped commands for project, world, benchmark, release, UI, and data workflows |
+| Simulated surfaces | ~15 major enterprise surfaces (Slack, Mail, Browser, Docs, Tickets, CRM, ERP, Identity, ServiceDesk, SIEM, HRIS, PagerDuty, Feature Flags, Spreadsheet, Calendar) |
 | Built-in company verticals | 4 |
 | Scenario variants | ~25 |
 | Difficulty tiers | 4 (p0-easy → pX-adversarial) |
 | Frontier rubric scenarios | 9 |
 | Context providers | 6 (Slack, Gmail, Teams, Jira, Google, Okta) |
-| UI (app.js) | ~3,500 lines |
-| UI (styles.css) | ~3,200 lines |

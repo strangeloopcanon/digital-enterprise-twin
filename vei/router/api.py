@@ -37,6 +37,26 @@ class RouterAPI(Protocol):
     def register_tool_provider(self, provider: RouterToolProvider) -> None: ...
 
 
+class RouterServerAPI(RouterAPI, Protocol):
+    registry: Any
+    scenario: Optional[Scenario]
+    world_session: Any
+
+    def state_snapshot(
+        self,
+        *,
+        include_state: bool = False,
+        tool_tail: int = 20,
+        include_receipts: bool = True,
+    ) -> Dict[str, Any]: ...
+
+    def help_payload(self) -> Dict[str, Any]: ...
+
+    def search_tools(self, query: str, top_k: int = 10) -> Dict[str, Any]: ...
+
+    def tick(self, dt_ms: int) -> Dict[str, Any]: ...
+
+
 def create_router(
     *,
     seed: int,
@@ -45,7 +65,7 @@ def create_router(
     connector_mode: Optional[str] = None,
     branch: str = "main",
     surface_fidelity: Optional[Dict[str, Any]] = None,
-) -> RouterAPI:
+) -> RouterServerAPI:
     """Factory for the router runtime exposed as a typed module API."""
     from .core import Router
 

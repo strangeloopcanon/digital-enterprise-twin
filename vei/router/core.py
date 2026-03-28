@@ -616,11 +616,9 @@ class Router:
 
     def _sync_world_snapshot(self, label: Optional[str] = None) -> None:
         try:
-            from vei.world.session import WorldSession
+            from vei.world.api import ensure_world_session
 
-            if self.world_session is None:
-                self.world_session = WorldSession.attach_router(self)
-            self.world_session.snapshot(label=label)
+            ensure_world_session(self).snapshot(label=label)
         except Exception:
             # Snapshotting is best-effort to preserve runtime continuity.
             pass

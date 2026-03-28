@@ -884,7 +884,7 @@ def _render_flow_html(
         </aside>
       </section>
       <footer>
-        Generated with <code>vei-visualize flow</code>. Same environment, different agent paths.
+        Generated with <code>vei visualize flow</code>. Same environment, different agent paths.
       </footer>
     </div>
     <script>
@@ -1636,7 +1636,7 @@ def export(
         from PIL import Image
     except Exception as exc:  # pragma: no cover - optional dependency
         raise typer.BadParameter(
-            "Pillow is required for GIF export. Install via `pip install Pillow`."
+            "Pillow is required for GIF export. Install extras via `pip install -e '.[browser]'`."
         ) from exc
 
     dataset = _load_flow_dataset(source)

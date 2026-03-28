@@ -1,8 +1,8 @@
 """CLI for generating comprehensive evaluation reports and leaderboards.
 
 Usage:
-    vei-report --root _vei_out/frontier_eval --format markdown
-    vei-report --root _vei_out/frontier_eval --format csv --output results.csv
+    vei report generate --root _vei_out/frontier_eval --format markdown
+    vei report generate --root _vei_out/frontier_eval --format csv --output results.csv
 """
 
 from __future__ import annotations
@@ -19,9 +19,7 @@ import typer
 from vei.benchmark.families import get_benchmark_family_manifest
 
 
-app = typer.Typer(
-    name="vei-report", help="Generate evaluation reports and leaderboards"
-)
+app = typer.Typer(name="report", help="Generate evaluation reports and leaderboards")
 
 
 def load_all_results(root_dir: Path) -> List[Dict[str, Any]]:

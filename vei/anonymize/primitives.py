@@ -5,7 +5,7 @@ import hashlib
 
 def deterministic_hash(value: str, *, salt: str = "vei") -> str:
     text = f"{salt}:{value}".encode("utf-8")
-    return hashlib.sha256(text).hexdigest()[:12]
+    return hashlib.sha256(text, usedforsecurity=False).hexdigest()[:12]
 
 
 def pseudonymize_email(email: str, *, salt: str = "vei") -> str:
