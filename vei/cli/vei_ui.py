@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import sys
 
 import typer
 
@@ -23,12 +22,4 @@ def serve(
 
 
 if __name__ == "__main__":
-    app()
-
-
-def main() -> None:
-    args = sys.argv[1:]
-    if args and args[0] == "serve":
-        args = args[1:]
-    sys.argv = [sys.argv[0], *args]
     app()

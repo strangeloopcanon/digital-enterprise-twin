@@ -117,7 +117,7 @@ def quickstart_command(
         f"  Graph    http://127.0.0.1:{gateway_port}/graph/v1.0/",
         f"  SFDC     http://127.0.0.1:{gateway_port}/salesforce/services/data/v60.0/",
         "",
-        f"[bold]MCP endpoint[/bold]     python -m vei.router --root {root.resolve()}",
+        "[bold]MCP endpoint[/bold]     python -m vei.router",
         "",
         "[dim]Press Ctrl-C to stop all servers.[/dim]",
     ]

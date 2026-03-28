@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import random
 
 from vei.router.core import Router
-from vei.world.scenarios import generate_scenario
 from vei.config import Config
+from vei.world.scenarios import generate_scenario
+from vei.world.scenarios._generation import _rand_from_range
 
 
 def test_generate_scenario_and_derail(monkeypatch):
@@ -74,3 +76,26 @@ def test_config_from_env(tmp_path, monkeypatch):
     assert cfg.scenario is not None
     assert any("CfgVendor" in v for v in (cfg.scenario.vendor_reply_variants or []))
     monkeypatch.delenv("VEI_SCENARIO_CONFIG", raising=False)
+
+
+def test_dynamic_scenario_helpers_cover_float_ranges_and_fallbacks() -> None:
+    rng = random.Random(7)
+
+    sampled = _rand_from_range(rng, [1.5, 2.5])
+    assert 1.5 <= sampled <= 2.5
+    assert _rand_from_range(rng, ["bad", "range"]) == ["bad", "range"]
+
+    scenario = generate_scenario(
+        {
+            "budget_cap_usd": 5000,
+            "derail_prob": 0.2,
+            "slack_initial_message": "Check the runbook.",
+            "vendors": [{"name": "VendorC", "price": 2000, "eta_days": 4}],
+            "database_tables": {"orders": [{"id": "1"}]},
+        },
+        seed=9,
+    )
+
+    assert scenario.slack_initial_message == "Check the runbook."
+    assert scenario.vendor_reply_variants == ["VendorC quote: $2000, ETA: 4 days."]
+    assert scenario.database_tables == {"orders": [{"id": "1"}]}

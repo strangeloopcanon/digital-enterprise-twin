@@ -12,8 +12,8 @@ import pytest
 @pytest.mark.anyio("asyncio")
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    not os.getenv("OPENAI_API_KEY"),
-    reason="Requires OPENAI_API_KEY in environment/.env",
+    not os.getenv("OPENAI_API_KEY") or os.getenv("VEI_RUN_LLM_SMOKE") != "1",
+    reason="Requires OPENAI_API_KEY and VEI_RUN_LLM_SMOKE=1",
 )
 async def test_llm_stdio_smoke(tmp_path: Path) -> None:
     """Live LLM + stdio MCP smoke: one plan + one tool call.

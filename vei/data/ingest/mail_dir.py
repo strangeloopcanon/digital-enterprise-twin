@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import List
 
-from ..anonymize import pseudonymize_email
+from vei.anonymize import pseudonymize_email
 from ..models import BaseEvent
 
 

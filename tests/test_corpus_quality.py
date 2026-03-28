@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from vei.corpus.generator import generate_corpus
 from vei.corpus.models import GeneratedWorkflowSpec
+from vei.quality import filter as quality_filter
 from vei.quality.filter import filter_workflow_corpus
 from vei.scenario_engine.api import compile_workflow
 from vei.scenario_runner.api import run_workflow
@@ -57,3 +60,92 @@ def test_generated_workflows_are_runnable_without_random_faults() -> None:
         compiled = compile_workflow(workflow.spec, seed=workflow.seed)
         result = run_workflow(compiled, seed=workflow.seed, connector_mode="sim")
         assert result.ok, workflow.scenario_id
+
+
+def test_quality_filter_helpers_cover_thresholds_and_alias_services(
+    monkeypatch,
+) -> None:
+    realistic_spec = {
+        "objective": {"statement": "Recover the environment."},
+        "steps": [
+            {"tool": "browser.open"},
+            {"tool": "mail.compose"},
+            {"tool": "slack.send_message"},
+            {"tool": "tickets.create"},
+            {"tool": "db.query"},
+            {"tool": "salesforce.opportunity.create"},
+            {"tool": "xero.create_purchase_order"},
+            {"tool": "okta.assign_group"},
+            {"tool": "servicedesk.list_requests"},
+        ],
+        "approvals": [{"stage": "manager"}],
+        "constraints": [{"name": "audit"}],
+        "metadata": {"scenario_seed": 42, "keep": "yes"},
+    }
+    lean_spec = {
+        "objective": {"statement": "Check the basics."},
+        "steps": [
+            {"tool": "browser.open"},
+            {"tool": "mail.compose"},
+            {"tool": "slack.send_message"},
+        ],
+    }
+
+    assert quality_filter.realism_score(realistic_spec) == 1.0
+    assert quality_filter.realism_score(lean_spec) == pytest.approx(0.75)
+    assert quality_filter._tool_service({"tool": "salesforce.account.list"}) == "crm"
+    assert quality_filter._tool_service({"tool": "xero.create_invoice"}) == "erp"
+    assert quality_filter._tool_service({"tool": "not-a-tool"}) == ""
+    assert quality_filter._structure_key({"steps": "not-a-list"}) == "none"
+    assert quality_filter._normalized_spec(realistic_spec)["metadata"] == {
+        "keep": "yes"
+    }
+
+    monkeypatch.setattr(
+        quality_filter,
+        "compile_workflow_spec",
+        lambda spec: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    assert quality_filter.runnability_score(realistic_spec) == 0.0
+
+
+def test_quality_filter_rejects_low_realism_failed_runs_and_repeated_structures(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        quality_filter,
+        "runnability_score",
+        lambda spec: 0.0 if spec.get("mode") == "broken" else 1.0,
+    )
+
+    workflows = [
+        GeneratedWorkflowSpec(
+            scenario_id=f"scenario-{index}",
+            env_id="env-1",
+            seed=index,
+            spec={
+                "mode": "broken" if index == 0 else "ok",
+                "objective": (
+                    {}
+                    if index == 0
+                    else {"statement": f"Handle request {index} safely."}
+                ),
+                "steps": [
+                    {"tool": "browser.open"},
+                    {"tool": "mail.compose"},
+                    {"tool": "slack.send_message"},
+                ],
+                "metadata": {"scenario_seed": index, "nonce": index},
+            },
+        )
+        for index in range(6)
+    ]
+
+    report = filter_workflow_corpus(workflows, realism_threshold=0.56)
+
+    assert "realism_below_threshold:0.550" in report.rejected[0].reasons
+    assert "static_runnability_failed" in report.rejected[0].reasons
+    assert any(
+        "low_structural_novelty:0.167" in item.reasons for item in report.rejected
+    )
+    assert report.accepted

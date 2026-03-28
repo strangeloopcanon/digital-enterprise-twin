@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-import typer
 from typer.testing import CliRunner
 
 from vei.benchmark.models import (
@@ -11,7 +11,7 @@ from vei.benchmark.models import (
     BenchmarkCaseResult,
     BenchmarkCaseSpec,
 )
-from vei.cli.vei_eval_frontier import app as frontier_app
+from vei.cli.vei_eval import app as eval_app
 
 
 def _make_batch(specs: list[BenchmarkCaseSpec], run_id: str) -> BenchmarkBatchResult:
@@ -36,7 +36,7 @@ def _make_batch(specs: list[BenchmarkCaseSpec], run_id: str) -> BenchmarkBatchRe
     )
 
 
-def test_frontier_cli_explicit_scenario_does_not_expand_to_all(
+def test_frontier_benchmark_explicit_scenario_does_not_expand_to_all(
     tmp_path: Path, monkeypatch
 ) -> None:
     captured_specs: list[BenchmarkCaseSpec] = []
@@ -48,17 +48,17 @@ def test_frontier_cli_explicit_scenario_does_not_expand_to_all(
         return _make_batch(specs, run_id)
 
     monkeypatch.setattr(
-        "vei.cli.vei_eval_frontier.run_benchmark_batch",
-        fake_run_benchmark_batch,
+        "vei.cli.vei_eval.run_benchmark_batch", fake_run_benchmark_batch
     )
 
     runner = CliRunner()
     result = runner.invoke(
-        frontier_app,
+        eval_app,
         [
-            "run",
+            "benchmark",
             "--runner",
             "scripted",
+            "--frontier",
             "--scenario",
             "f1_budget_reconciliation",
             "--artifacts-root",
@@ -70,37 +70,44 @@ def test_frontier_cli_explicit_scenario_does_not_expand_to_all(
     assert [spec.scenario_name for spec in captured_specs] == [
         "f1_budget_reconciliation"
     ]
+    assert all(spec.frontier for spec in captured_specs)
 
 
-def test_frontier_cli_prints_progress_before_batch_runs(
+def test_frontier_list_is_available_on_unified_eval_cli() -> None:
+    runner = CliRunner()
+    result = runner.invoke(eval_app, ["frontier-list"])
+
+    assert result.exit_code == 0, result.output
+    assert "Frontier Evaluation Scenarios" in result.output
+    assert "f1_budget_reconciliation" in result.output
+
+
+def test_frontier_score_is_available_on_unified_eval_cli(
     tmp_path: Path, monkeypatch
 ) -> None:
-    def fake_run_benchmark_batch(
-        specs: list[BenchmarkCaseSpec], *, run_id: str, output_dir: Path | None = None
-    ) -> BenchmarkBatchResult:
-        typer.echo("BATCH_START")
-        return _make_batch(specs, run_id)
+    trace_path = tmp_path / "trace.jsonl"
+    trace_path.write_text("{}\n", encoding="utf-8")
+    output_path = tmp_path / "frontier_score.json"
 
     monkeypatch.setattr(
-        "vei.cli.vei_eval_frontier.run_benchmark_batch",
-        fake_run_benchmark_batch,
+        "vei.score_frontier.compute_frontier_score",
+        lambda artifacts_dir, use_llm_judge=False: {
+            "success": True,
+            "composite_score": 1.0,
+        },
     )
 
     runner = CliRunner()
     result = runner.invoke(
-        frontier_app,
+        eval_app,
         [
-            "run",
-            "--runner",
-            "scripted",
-            "--scenario",
-            "f1_budget_reconciliation",
-            "--artifacts-root",
+            "frontier-score",
+            "--artifacts-dir",
             str(tmp_path),
+            "--output",
+            str(output_path),
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert result.output.index("Starting frontier evaluation") < result.output.index(
-        "BATCH_START"
-    )
+    assert json.loads(output_path.read_text(encoding="utf-8"))["success"] is True

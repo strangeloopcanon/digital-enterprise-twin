@@ -1,5 +1,7 @@
 # VEI Architecture
 
+Use `README.md` for install and operator flows, `docs/OVERVIEW.md` for product framing, and this document for module boundaries, runtime shape, and subsystem relationships.
+
 VEI is a deterministic, MCP-native enterprise simulator built around one stable boundary: `WorldSession`.
 
 ## Core Primitives
