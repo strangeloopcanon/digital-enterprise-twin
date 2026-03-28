@@ -2,7 +2,7 @@
 
 VEI is a programmable replica of an entire company's operational software stack. You give it a company description — or connect it to real Slack, Gmail, Jira, and Teams data — and it builds a fully functioning simulated copy of that company with working Slack channels, email threads, ticket queues, CRM pipelines, document stores, identity systems, and more. An agent or a human can then operate inside it: play crisis scenarios, train on the traces, and synthesize operational artifacts from what happened.
 
-It is ~72,000 lines of Python (240 source files, 339 tests), a single-page Studio UI, and 31 CLI subcommands under one `vei` entry point.
+It is ~72,000 lines of Python (241 source files, 339 tests), a single-page Studio UI, and 32 CLI subcommands under one `vei` entry point.
 
 ## The Five Layers
 
@@ -215,6 +215,8 @@ Five distinct user types, each with a different entry point into VEI:
 
 **Entry point:** `vei eval-frontier run --scenario-set reasoning --model gpt-5`
 
+**Quick benchmarking:** `vei bench list` shows all available scenarios, vertical packs, and benchmark families. `vei bench run --scenario multi_channel --runner scripted` runs a benchmark and produces a scorecard. `vei bench scorecard <dir>` renders results from a previous run.
+
 ### 5. Platform / Integration Teams
 
 **Pain:** "We're building AI features that integrate with Slack, Jira, Salesforce, etc. Testing against real APIs is slow, expensive, flaky, and requires sandbox accounts. We need a local replica that behaves like the real thing."
@@ -253,7 +255,7 @@ This coherence is what makes the generated data useful for training, the benchma
 | Lines of Python | ~72,000 |
 | Test files | 81 |
 | Tests | 339 |
-| CLI subcommands | 31 |
+| CLI subcommands | 32 |
 | Simulated enterprise surfaces | ~15 major (Slack, Mail, Browser, Docs, Tickets, CRM, ERP, Identity, ServiceDesk, SIEM, HRIS, PagerDuty, Feature Flags, Spreadsheet, Calendar) |
 | Built-in company verticals | 4 |
 | Scenario variants | ~25 |

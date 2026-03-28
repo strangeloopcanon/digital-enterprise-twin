@@ -382,7 +382,7 @@ In one line: the next phase is about making `vei.run` the canonical execution sp
 Install directly from GitHub:
 
 ```bash
-pip install "git+https://github.com/strangeloopcanon/digital-enterprise-twin.git@main"
+pip install "git+https://github.com/strangeloopcanon/vei.git@main"
 ```
 
 For the full product workflow, including the local UI and live LLM runs:
@@ -457,6 +457,10 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
   - `vei world`
   - `vei blueprint bundle|bundles|asset|compile|show|observe|orient|examples|facades`
   - `vei visualize replay|flow|dashboard|export`
+- Benchmarking
+  - `vei bench list` — list scenarios, vertical packs, and benchmark families
+  - `vei bench run` — run benchmarks against scenarios and produce a scorecard
+  - `vei bench scorecard` — render a scorecard from existing results
 - Evaluation and release
   - `vei eval`, `vei eval-frontier`, `vei rollout`, `vei train`, `vei score`, `vei release`
 - Catalog/debug surfaces
@@ -603,16 +607,16 @@ vei showcase verticals \
   --run-id world_showcase
 ```
 
-That command creates three separate workspace-backed companies, runs the deterministic workflow baseline plus a freer comparison runner for each, and writes one `vertical_showcase_overview.md` bundle alongside ready-to-open workspace roots:
+That command creates four separate workspace-backed companies, runs the deterministic workflow baseline plus a freer comparison runner for each, and writes one `vertical_showcase_overview.md` bundle alongside ready-to-open workspace roots:
 
 - `b2b_saas`: Pinnacle Analytics / `enterprise_renewal_risk`
 - `real_estate_management`: Harbor Point Management / `tenant_opening_conflict`
 - `digital_marketing_agency`: Northstar Growth / `campaign_launch_guardrail`
 - `storage_solutions`: Atlas Storage Systems / `capacity_quote_commitment`
 
-The point of that showcase is not just three flashy demos. It is one proof repeated three times:
+The point of that showcase is not just four flashy demos. It is one proof repeated four times:
 
-- the same world kernel compiles three different businesses into runnable environments
+- the same world kernel compiles four different businesses into runnable environments
 - the same event spine records every run, graph action, tool resolution, and snapshot
 - the same contract engine judges deterministic baselines and freer agent runs
 - the same playback UI makes the result inspectable
