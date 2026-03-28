@@ -73,7 +73,13 @@ This repository is licensed under the Business Source License 1.1 in [LICENSE](L
 ### Install
 
 ```bash
-pip install -e ".[llm,sse,ui]"
+make setup
+```
+
+Or directly with uv:
+
+```bash
+uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev
 ```
 
 ### Configure `.env`
@@ -91,7 +97,7 @@ make setup
 make check
 make test
 make llm-live
-vei smoke --transport stdio --timeout-s 30
+uv run vei smoke run --transport stdio --timeout-s 30
 ```
 
 `make llm-live` auto-loads `.env` when present and writes `summary.json` next to the other live-run artifacts under `_vei_out/llm_live/latest`.
@@ -107,26 +113,27 @@ vei llm-test run \
 
 ### Workspace and UI flow
 
+First create a workspace (required before anything else):
+
 ```bash
-vei project init --root _vei_out/workspaces/acquired_cutover --example acquired_user_cutover
-vei contract validate --root _vei_out/workspaces/acquired_cutover
-vei run start --root _vei_out/workspaces/acquired_cutover --runner workflow
-vei ui serve --root _vei_out/workspaces/acquired_cutover
+uv run vei project init --root _vei_out/workspaces/pinnacle --vertical b2b_saas
 ```
 
-Or equivalently:
+Then validate, run, and serve:
 
 ```bash
-vei ui serve --root _vei_out/workspaces/acquired_cutover
+uv run vei contract validate --root _vei_out/workspaces/pinnacle
+uv run vei run start --root _vei_out/workspaces/pinnacle --runner workflow
+uv run vei ui serve --root _vei_out/workspaces/pinnacle
 ```
 
 The unified root CLI exposes the same lifecycle:
 
 ```bash
-vei project show --root _vei_out/workspaces/acquired_cutover
-vei scenario preview --root _vei_out/workspaces/acquired_cutover
-vei inspect events --root _vei_out/workspaces/acquired_cutover
-vei inspect graphs --root _vei_out/workspaces/acquired_cutover --domain identity_graph
+uv run vei project show --root _vei_out/workspaces/pinnacle
+uv run vei scenario preview --root _vei_out/workspaces/pinnacle
+uv run vei inspect events --root _vei_out/workspaces/pinnacle
+uv run vei inspect graphs --root _vei_out/workspaces/pinnacle --domain revenue_graph
 ```
 
 The vertical demos now support the same company world under multiple futures and objective functions:
@@ -388,7 +395,7 @@ pip install "git+https://github.com/strangeloopcanon/vei.git@main"
 For the full product workflow, including the local UI and live LLM runs:
 
 ```bash
-pip install -e ".[llm,sse,ui]"
+uv sync --extra llm --extra sse --extra ui
 ```
 
 SDK embedding:

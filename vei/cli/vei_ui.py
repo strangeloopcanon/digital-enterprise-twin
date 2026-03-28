@@ -19,6 +19,7 @@ def serve(
 
     from vei.ui.app import serve_ui
 
+    typer.echo(f"VEI Studio running on http://{host}:{port}")
     serve_ui(root, host=host, port=port)
 
 
