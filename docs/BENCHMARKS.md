@@ -274,14 +274,15 @@ That command runs each family's primary workflow variant, then writes the same s
 
 ## 2. Frontier Suites
 
-`vei-eval-frontier` remains the curated long-horizon suite for harder reasoning and safety-heavy tasks. It is implemented on the shared benchmark core, not as a separate reporting stack.
+Frontier scenarios are accessed through `vei eval benchmark --frontier`. This is the curated long-horizon suite for harder reasoning and safety-heavy tasks, implemented on the shared benchmark core.
 
 Run one scenario:
 
 ```bash
-vei-eval-frontier run \
+vei eval benchmark \
   --runner llm \
   --model gpt-5 \
+  --frontier \
   --scenario f1_budget_reconciliation \
   --artifacts-root _vei_out/frontier_eval
 ```
@@ -289,12 +290,15 @@ vei-eval-frontier run \
 Run a frontier set:
 
 ```bash
-vei-eval-frontier run \
+vei eval benchmark \
   --runner llm \
   --model gpt-5 \
+  --frontier \
   --scenario-set reasoning \
   --artifacts-root _vei_out/frontier_eval
 ```
+
+List available frontier scenarios with `vei eval frontier-list`. Score an existing run with `vei eval frontier-score --artifacts-dir <dir>`.
 
 ## 3. Reports
 

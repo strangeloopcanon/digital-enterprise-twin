@@ -462,7 +462,7 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
   - `vei bench run` — run benchmarks against scenarios and produce a scorecard
   - `vei bench scorecard` — render a scorecard from existing results
 - Evaluation and release
-  - `vei eval`, `vei eval-frontier`, `vei rollout`, `vei train`, `vei score`, `vei release`
+  - `vei eval`, `vei rollout`, `vei train`, `vei score`, `vei release`
 - Catalog/debug surfaces
   - `vei scenarios list|manifest|dump`
   - `vei smoke`, `vei demo`, `vei det sample-workflow|compile-workflow|run-workflow|generate-corpus|filter-corpus`
@@ -685,9 +685,10 @@ That command runs each family's primary workflow variant and writes stable `lead
 Frontier batch for one model:
 
 ```bash
-vei eval-frontier run \
+vei eval benchmark \
   --runner llm \
   --model gpt-5 \
+  --frontier \
   --scenario-set reasoning \
   --artifacts-root _vei_out/frontier_eval
 ```

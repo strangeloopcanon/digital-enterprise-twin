@@ -163,7 +163,7 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - SSE MCP transport
 - `vei`
   - unified CLI — all subcommands are now under `vei <group> <command>`
-  - `project`, `contract`, `scenario`, `run`, `inspect`, `showcase`, `studio`, `export`, `ui`, `world`, `blueprint`, `eval`, `eval-frontier`, `llm-test`, `pack`, `rollout`, `train`, `score`, `smoke`, `demo`, `det`, `context`, `synthesize`, `release`, `report`, `visualize`
+  - `project`, `quickstart`, `contract`, `scenario`, `scenarios`, `run`, `inspect`, `showcase`, `studio`, `export`, `ui`, `world`, `blueprint`, `bench`, `eval`, `llm-test`, `pack`, `pilot`, `rollout`, `train`, `score`, `smoke`, `demo`, `det`, `context`, `synthesize`, `release`, `report`, `visualize`
 
 ## Software Twins
 

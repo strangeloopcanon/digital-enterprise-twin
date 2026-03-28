@@ -2,7 +2,7 @@
 
 VEI is a programmable replica of an entire company's operational software stack. You give it a company description — or connect it to real Slack, Gmail, Jira, and Teams data — and it builds a fully functioning simulated copy of that company with working Slack channels, email threads, ticket queues, CRM pipelines, document stores, identity systems, and more. An agent or a human can then operate inside it: play crisis scenarios, train on the traces, and synthesize operational artifacts from what happened.
 
-It is ~72,000 lines of Python (241 source files, 339 tests), a single-page Studio UI, and 32 CLI subcommands under one `vei` entry point.
+It is ~72,500 lines of Python (247 source files, 357 tests), a single-page Studio UI, and 32 CLI subcommands under one `vei` entry point.
 
 ## The Five Layers
 
@@ -213,7 +213,7 @@ Five distinct user types, each with a different entry point into VEI:
 
 **How they use VEI:** Run the built-in benchmark families (security containment, enterprise onboarding, revenue incidents) across difficulty tiers. Use the contract system for objective scoring. Publish leaderboards. The frontier scenarios test edge cases (contradictory requirements, ethical dilemmas, cascading failures) that most benchmarks ignore.
 
-**Entry point:** `vei eval-frontier run --scenario-set reasoning --model gpt-5`
+**Entry point:** `vei eval benchmark --frontier --scenario-set reasoning --model gpt-5`
 
 **Quick benchmarking:** `vei bench list` shows all available scenarios, vertical packs, and benchmark families. `vei bench run --scenario multi_channel --runner scripted` runs a benchmark and produces a scorecard. `vei bench scorecard <dir>` renders results from a previous run.
 
@@ -251,10 +251,10 @@ This coherence is what makes the generated data useful for training, the benchma
 
 | Metric | Count |
 |--------|-------|
-| Python source files | 240 |
-| Lines of Python | ~72,000 |
-| Test files | 81 |
-| Tests | 339 |
+| Python source files | 247 |
+| Lines of Python | ~72,500 |
+| Test files | 82 |
+| Tests | 357 |
 | CLI subcommands | 32 |
 | Simulated enterprise surfaces | ~15 major (Slack, Mail, Browser, Docs, Tickets, CRM, ERP, Identity, ServiceDesk, SIEM, HRIS, PagerDuty, Feature Flags, Spreadsheet, Calendar) |
 | Built-in company verticals | 4 |
