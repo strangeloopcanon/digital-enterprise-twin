@@ -84,6 +84,8 @@ Or directly with uv:
 uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev
 ```
 
+CLI examples below assume the repo environment is active. If you prefer not to activate it, use `.venv/bin/vei ...` or `uv run vei ...`.
+
 Add `.[browser]` if you want animated GIF export from `vei visualize export`.
 
 ### Configure `.env`
@@ -101,7 +103,7 @@ make setup
 make check
 make test
 make llm-live
-uv run vei smoke run --transport stdio --timeout-s 30
+vei smoke run --transport stdio --timeout-s 30
 ```
 
 `make llm-live` auto-loads `.env` when present and writes `summary.json`, `score.json`, `trace.jsonl`, `llm_metrics.json`, and transcript artifacts under `_vei_out/llm_live/latest`.
@@ -117,27 +119,26 @@ vei llm-test run \
 
 ### Workspace and UI flow
 
-First create a workspace (required before anything else):
-
 ```bash
-uv run vei project init --root _vei_out/workspaces/pinnacle --vertical b2b_saas
+vei project init --root _vei_out/workspaces/acquired_cutover --example acquired_user_cutover
+vei contract validate --root _vei_out/workspaces/acquired_cutover
+vei run start --root _vei_out/workspaces/acquired_cutover --runner workflow
+vei ui serve --root _vei_out/workspaces/acquired_cutover
 ```
 
-Then validate, run, and serve:
+Or equivalently:
 
 ```bash
-uv run vei contract validate --root _vei_out/workspaces/pinnacle
-uv run vei run start --root _vei_out/workspaces/pinnacle --runner workflow
-uv run vei ui serve --root _vei_out/workspaces/pinnacle
+vei ui serve --root _vei_out/workspaces/acquired_cutover
 ```
 
 The unified root CLI exposes the same lifecycle:
 
 ```bash
-uv run vei project show --root _vei_out/workspaces/pinnacle
-uv run vei scenario preview --root _vei_out/workspaces/pinnacle
-uv run vei inspect events --root _vei_out/workspaces/pinnacle
-uv run vei inspect graphs --root _vei_out/workspaces/pinnacle --domain revenue_graph
+vei project show --root _vei_out/workspaces/acquired_cutover
+vei scenario preview --root _vei_out/workspaces/acquired_cutover
+vei inspect events --root _vei_out/workspaces/acquired_cutover
+vei inspect graphs --root _vei_out/workspaces/acquired_cutover --domain identity_graph
 ```
 
 The vertical demos now support the same company world under multiple futures and objective functions:
@@ -399,7 +400,7 @@ pip install "git+https://github.com/strangeloopcanon/vei.git@main"
 For the full product workflow, including the local UI and live LLM runs:
 
 ```bash
-uv sync --extra llm --extra sse --extra ui
+make setup
 ```
 
 SDK embedding:

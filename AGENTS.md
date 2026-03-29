@@ -58,7 +58,7 @@ Drop‑In Rules for Autonomous Coding Agents
 ---
 
 ## 3) Environments
-- **Python:** Use `uv` for dependency management. `uv sync` creates the venv and installs all deps from `uv.lock`. Never rely on global Python.
+- **Python:** Use the repo-local environment in `.venv`. `make setup` is the standard path; `uv sync` is also fine when working from `uv.lock`. Never rely on global Python.
 - **Node/TS (if present):** `npm ci` or `pnpm i --frozen-lockfile`.
 - **OS:** Linux runner/container by default. Log any OS‑specific choice.
 
@@ -276,8 +276,8 @@ USE the bd tool instead of markdown for all new work. We only and always track w
 - `pyproject.toml`: package, extras, and console scripts.
 
 ### Build, Test, and Dev Commands
-- Install: `uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev` (or `make setup`)
-- Run any CLI command: `uv run vei --help`
+- Install: `make setup` (or `uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev`)
+- Run any CLI command: `.venv/bin/vei --help` (or `uv run vei --help`)
 - Repo validation: `make check && make test`
 - Run tests: `pytest -q`
 - Transport smoke (no API key): `vei smoke --transport stdio --timeout-s 30`

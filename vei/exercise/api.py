@@ -94,7 +94,8 @@ def activate_exercise(
         bootstrap_contract=True,
     )
     selected_contract = contract_variant or _default_contract_variant(workspace_root)
-    activate_workspace_contract_variant(workspace_root, selected_contract)
+    if selected_contract:
+        activate_workspace_contract_variant(workspace_root, selected_contract)
     _ensure_comparison_runs(workspace_root, force_new=True)
     try:
         reset_pilot_gateway(workspace_root)
