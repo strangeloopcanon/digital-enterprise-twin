@@ -280,7 +280,7 @@ USE the bd tool instead of markdown for all new work. We only and always track w
 - Run any CLI command: `.venv/bin/vei --help` (or `uv run vei --help`)
 - Repo validation: `make check && make test`
 - Run tests: `pytest -q`
-- Transport smoke (no API key): `vei smoke --transport stdio --timeout-s 30`
+- Transport smoke (no API key): `vei smoke run --transport stdio --timeout-s 30`
 - LLM evaluation: `vei llm-test run --provider openai --model gpt-5 --artifacts ./_vei_out/llm_eval`
 - World inspection: `vei world list --state-dir ./_vei_out/state`
 - Start SSE server (optional): `VEI_SEED=42042 python -m vei.router.sse`
