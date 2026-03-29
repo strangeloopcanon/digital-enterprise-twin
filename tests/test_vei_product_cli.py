@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 import typer.testing
 
 from vei.cli.vei import app
-from vei.cli import vei_ui
 from vei.imports.api import get_import_package_example_path
 from vei.workspace.models import WorkspaceSourceConfig, WorkspaceSourceSyncRecord
 
@@ -179,20 +177,6 @@ def test_product_cli_exposes_context_and_synthesize_commands() -> None:
     synthesize_result = runner.invoke(app, ["synthesize", "--help"])
     assert synthesize_result.exit_code == 0, synthesize_result.output
     assert "Generate training data from completed runs." in synthesize_result.output
-
-
-def test_standalone_vei_ui_main_accepts_serve_alias(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_app() -> None:
-        captured["argv"] = sys.argv[1:]
-
-    monkeypatch.setattr(vei_ui, "app", fake_app)
-    monkeypatch.setattr(sys, "argv", ["vei-ui", "serve", "--root", "workspace"])
-
-    vei_ui.main()
-
-    assert captured["argv"] == ["--root", "workspace"]
 
 
 def test_product_cli_import_flow_supports_generation_and_provenance(

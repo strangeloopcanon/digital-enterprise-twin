@@ -9,6 +9,8 @@ Pick a company, pick a crisis, define what success looks like, then play moves o
 
 **[Full overview: what this is, who it's for, and how to connect your own data →](docs/OVERVIEW.md)**
 
+Use this README for installation and operator quickstart. Use `docs/OVERVIEW.md` for product framing, `docs/ARCHITECTURE.md` for internals, and `docs/BENCHMARKS.md` for evaluation flows.
+
 ## What VEI Simulates
 
 VEI simulates a complete enterprise environment — every software system, every person, every process — as one deterministic, branchable world. An agent (or a human) discovers what systems exist, inspects state, takes actions that ripple across all tools simultaneously, and is evaluated against business constraints.
@@ -82,6 +84,8 @@ Or directly with uv:
 uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev
 ```
 
+Add `.[browser]` if you want animated GIF export from `vei visualize export`.
+
 ### Configure `.env`
 
 ```env
@@ -100,7 +104,7 @@ make llm-live
 uv run vei smoke run --transport stdio --timeout-s 30
 ```
 
-`make llm-live` auto-loads `.env` when present and writes `summary.json` next to the other live-run artifacts under `_vei_out/llm_live/latest`.
+`make llm-live` auto-loads `.env` when present and writes `summary.json`, `score.json`, `trace.jsonl`, `llm_metrics.json`, and transcript artifacts under `_vei_out/llm_live/latest`.
 
 ### Run a live episode
 
@@ -784,7 +788,7 @@ Options: `--world digital_marketing_agency`, `--studio-port`, `--gateway-port`,
    (`events.jsonl`, contract evaluation, snapshots)
 
 For MCP-native agents, connect directly:
-`python -m vei.router --root workspace`
+`python -m vei.router`
 
 ## Examples
 

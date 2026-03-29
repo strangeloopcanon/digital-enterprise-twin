@@ -26,7 +26,17 @@ Repository = "https://github.com/strangeloopcanon/vei"
 
 [project.optional-dependencies]
 browser = [
-  "playwright>=1.45.0"
+  "playwright>=1.45.0",
+  "Pillow>=10.4.0",
+]
+dev = [
+  "black==24.8.0",
+  "ruff==0.6.8",
+  "mypy==1.11.2",
+  "bandit==1.7.9",
+  "detect-secrets==1.5.0",
+  "pip-audit==2.7.3",
+  "pre-commit==4.4.0",
 ]
 sse = [
   "uvicorn>=0.30.0"
@@ -37,20 +47,16 @@ ui = [
 llm = [
   "openai>=1.55.0",
   "python-dotenv>=1.0.0",
-  "openai-agents>=0.2.0",
   "anthropic>=0.34.0",
   "google-genai>=0.3.0",
-  "llm>=0.15",            # optional: alternative engine
-  "llm-openai-plugin>=0.1.0",    # optional plugin for specific API
-  "llm-anthropic>=0.1.0",        # official plugin
-  "llm-gemini>=0.1.0",           # official plugin for Google
 ]
 rl = [
   "gymnasium>=0.29.0"
 ]
 test = [
-    "pytest>=8.3.2",
-    "pytest-timeout>=2.3.1",
+  "pytest==9.0.2",
+  "pytest-timeout==2.4.0",
+  "pytest-cov==7.0.0",
 ]
 dev = [
     "black==24.8.0",

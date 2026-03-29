@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List
 
 from ..models import BaseEvent
-from ..anonymize import pseudonymize_email
+from vei.anonymize import pseudonymize_email
 
 
 def load_slack_export(path: str | Path, *, channel: str, actor: str) -> List[BaseEvent]:

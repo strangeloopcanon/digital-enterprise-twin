@@ -2,7 +2,7 @@ Test setup (stdio-first)
 
 - No server to pre-start: stdio tests spawn `python -m vei.router` automatically.
 - Live LLM test requires an API key in environment or `.env` (OPENAI_API_KEY).
-- `make llm-live` now auto-loads `.env` when present and writes `summary.json` alongside `score.json`, `trace.jsonl`, and `llm_metrics.json`.
+- `make llm-live` now auto-loads `.env` when present and writes `summary.json`, `score.json`, `trace.jsonl`, `llm_metrics.json`, and transcript artifacts under `_vei_out/llm_live/latest`.
 - Test and benchmark artifacts belong under `_vei_out/` or `.artifacts/`; they are local outputs, not committed fixtures.
 
 Run tests:

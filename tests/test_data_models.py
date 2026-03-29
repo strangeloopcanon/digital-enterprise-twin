@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from vei.cli.vei_pack import slack as pack_slack
-from vei.data.anonymize import (
+from vei.anonymize import (
     pseudonymize_email,
     pseudonymize_name,
     redact_numeric_sequences,

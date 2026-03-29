@@ -279,16 +279,17 @@ USE the bd tool instead of markdown for all new work. We only and always track w
 - Install: `uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev` (or `make setup`)
 - Run any CLI command: `uv run vei --help`
 - Repo validation: `make check && make test`
-- Run tests: `uv run pytest -q`
-- Transport smoke (no API key): `uv run vei smoke run --transport stdio --timeout-s 30`
-- LLM evaluation: `uv run vei llm-test --provider openai --model gpt-5 --artifacts ./_vei_out/llm_eval`
-- World inspection: `uv run vei world list --state-dir ./_vei_out/state`
-- Start SSE server (optional): `VEI_SEED=42042 uv run python -m vei.router.sse`
+- Run tests: `pytest -q`
+- Transport smoke (no API key): `vei smoke --transport stdio --timeout-s 30`
+- LLM evaluation: `vei llm-test run --provider openai --model gpt-5 --artifacts ./_vei_out/llm_eval`
+- World inspection: `vei world list --state-dir ./_vei_out/state`
+- Start SSE server (optional): `VEI_SEED=42042 python -m vei.router.sse`
 - Dataset/rollout pipeline:
-  - `uv run vei pack slack|mail|tickets|docs` to turn exports into canonical datasets.
-  - `uv run vei rollout procurement --episodes 5 --seed 42042 --output ./_vei_out/rollout.json` for scripted traces.
-  - `uv run vei train bc --dataset ./_vei_out/rollout.json --output ./_vei_out/bc_policy.json` to learn a BC policy.
-  - `uv run vei llm-test --dataset ./_vei_out/rollout.json --artifacts ./_vei_out/llm_eval` for LLM evals in replay context.
+  - `vei pack slack|mail|tickets|docs` to turn exports into canonical datasets.
+  - `vei rollout procurement --episodes 5 --seed 42042 --output ./_vei_out/rollout.json` for scripted traces.
+  - `vei train bc --dataset ./_vei_out/rollout.json --output ./_vei_out/bc_policy.json` to learn a BC policy.
+  - `vei eval benchmark --runner scripted --scenario multi_channel --artifacts-root ./_vei_out/benchmark` or `vei eval benchmark --runner bc --bc-model ... --scenario multi_channel --artifacts-root ./_vei_out/benchmark` to produce trace + score artifacts.
+  - `vei llm-test run --dataset ./_vei_out/rollout.json --artifacts ./_vei_out/llm_eval` for LLM evals in replay context.
 - Rich scenarios: set `VEI_SCENARIO=multi_channel` for docs/tickets/mail coverage during manual or LLM-driven evaluations.
 
 

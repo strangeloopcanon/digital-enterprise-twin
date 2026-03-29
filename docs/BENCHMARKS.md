@@ -1,5 +1,7 @@
 # VEI Benchmarks
 
+Use `README.md` for install/quickstart. Use this document for benchmark, demo, suite, frontier, and reporting commands plus the artifacts they emit.
+
 VEI supports two benchmark layers that now share the same kernel-backed pipeline.
 
 ## 1. Benchmark Families
@@ -25,7 +27,7 @@ These are the strategic north-star buckets for enterprise agent evaluation. They
 Run one family:
 
 ```bash
-vei-eval benchmark \
+vei eval benchmark \
   --runner workflow \
   --family security_containment \
   --artifacts-root _vei_out/benchmark \
@@ -35,7 +37,7 @@ vei-eval benchmark \
 Run a specific workflow variant:
 
 ```bash
-vei-eval benchmark \
+vei eval benchmark \
   --runner workflow \
   --scenario oauth_app_containment \
   --workflow-name security_containment \
@@ -47,7 +49,7 @@ vei-eval benchmark \
 Run the same family with a policy or LLM runner:
 
 ```bash
-vei-eval benchmark \
+vei eval benchmark \
   --runner scripted \
   --family security_containment \
   --artifacts-root _vei_out/benchmark \
@@ -200,15 +202,15 @@ vei export mission-run --root _vei_out/playable/harbor_point --run-id human_play
 The flagship mixed-stack demo is the revenue/ops primary variant:
 
 ```bash
-vei-blueprint asset \
+vei blueprint asset \
   --family revenue_incident_mitigation \
   --workflow-variant revenue_ops_flightdeck
 
-vei-blueprint compile \
+vei blueprint compile \
   --family revenue_incident_mitigation \
   --workflow-variant revenue_ops_flightdeck
 
-vei-eval demo \
+vei eval demo \
   --family revenue_incident_mitigation \
   --artifacts-root _vei_out/demo \
   --run-id revenue_ops_demo
@@ -232,22 +234,22 @@ That is the canonical “start here” path.
 The lower-level blueprint ladder is still useful as an expert/debug surface:
 
 ```bash
-vei-blueprint examples
+vei blueprint examples
 
-vei-blueprint bundle \
+vei blueprint bundle \
   --example acquired_user_cutover
 
-vei-blueprint asset \
+vei blueprint asset \
   --example acquired_user_cutover
 
-vei-blueprint compile \
+vei blueprint compile \
   --example acquired_user_cutover
 
-vei-blueprint observe \
+vei blueprint observe \
   --example acquired_user_cutover \
   --focus slack
 
-vei-blueprint orient \
+vei blueprint orient \
   --example acquired_user_cutover
 ```
 
@@ -265,7 +267,7 @@ Those commands render the shared capability graph and the agent-facing orientati
 Run the canonical multi-family workflow suite for CI or nightly jobs:
 
 ```bash
-vei-eval suite \
+vei eval suite \
   --artifacts-root _vei_out/suite \
   --run-id nightly_suite
 ```
@@ -302,19 +304,19 @@ List available frontier scenarios with `vei eval frontier-list`. Score an existi
 
 ## 3. Reports
 
-Any benchmark batch can be summarized with `vei-report`.
+Any benchmark batch can be summarized with `vei report`.
 
 ```bash
-vei-report generate \
+vei report generate \
   --root _vei_out/frontier_eval/<run-id> \
   --format markdown \
   --output LEADERBOARD.md
 ```
 
-When a run directory contains workflow-family results alongside scripted, BC, or LLM runs for the same family/scenario, `vei-report` now treats the family's primary workflow variant as the canonical baseline and emits delta reporting against it in markdown, CSV, and JSON output. That includes score, time, step-count, workflow-validation, and family-dimension deltas where they are available.
+When a run directory contains workflow-family results alongside scripted, BC, or LLM runs for the same family/scenario, `vei report` now treats the family's primary workflow variant as the canonical baseline and emits delta reporting against it in markdown, CSV, and JSON output. That includes score, time, step-count, workflow-validation, and family-dimension deltas where they are available.
 
 ```bash
-vei-report summary --root _vei_out/frontier_eval/<run-id>
+vei report summary --root _vei_out/frontier_eval/<run-id>
 ```
 
 ## 4. Artifacts

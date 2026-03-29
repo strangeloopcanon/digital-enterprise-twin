@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Protocol
 
-from vei.router.api import create_router
+from vei.router.api import RouterServerAPI, create_router
 from vei.capability_graph.models import (
     CapabilityGraphActionInput,
     CapabilityGraphActionResult,
@@ -76,6 +76,14 @@ class WorldSessionAPI(Protocol):
     def cancel_event(self, event_id: str) -> Dict[str, Any]: ...
 
 
+def ensure_world_session(router: RouterServerAPI) -> WorldSessionAPI:
+    session = getattr(router, "world_session", None)
+    if session is None:
+        session = WorldSession.attach_router(router)  # type: ignore[arg-type]
+        router.world_session = session
+    return session
+
+
 def create_world_session(
     *,
     seed: int = 42042,
@@ -93,9 +101,7 @@ def create_world_session(
         branch=branch,
         surface_fidelity=surface_fidelity,
     )
-    if getattr(router, "world_session", None) is None:
-        router.world_session = WorldSession.attach_router(router)  # type: ignore[attr-defined]
-    return router.world_session  # type: ignore[attr-defined,return-value]
+    return ensure_world_session(router)  # type: ignore[return-value]
 
 
 def observe(
@@ -196,6 +202,7 @@ __all__ = [
     "call_tool",
     "cancel_event",
     "create_world_session",
+    "ensure_world_session",
     "graph_action",
     "graph_plan",
     "get_catalog_scenario",

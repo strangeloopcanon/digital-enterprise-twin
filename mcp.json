@@ -3,7 +3,7 @@
     "vei": {
       "transport": {
         "type": "stdio",
-        "command": "python3",
+        "command": "./.venv/bin/python",
         "args": ["-m", "vei.router"],
         "env": {
           "VEI_SEED": "42042"

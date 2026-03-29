@@ -1,27 +1,18 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.8.0
+  - repo: local
     hooks:
       - id: black
+        name: black
+        entry: .venv/bin/python -m black
+        language: system
         files: ^(vei|tests)/.*\.py$
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.8
-    hooks:
       - id: ruff
-        args: ["--fix"]
+        name: ruff
+        entry: .venv/bin/python -m ruff check --fix
+        language: system
         files: ^(vei|tests)/.*\.py$
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
+      - id: mypy-targets
+        name: mypy
+        entry: .venv/bin/python scripts/run_mypy_targets.py
+        language: system
         pass_filenames: false
-        additional_dependencies:
-          - pydantic>=2.7.0
-        args:
-          - --follow-imports=skip
-          - vei/router/identity.py
-          - vei/router/tool_providers.py
-          - vei/identity
-          - vei/world/api.py
-          - vei/world/replay.py
-          - vei/router/api.py
