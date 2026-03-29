@@ -75,8 +75,16 @@ This repository is licensed under the Business Source License 1.1 in [LICENSE](L
 ### Install
 
 ```bash
-pip install -e ".[llm,sse,ui]"
+make setup
 ```
+
+Or directly with uv:
+
+```bash
+uv sync --extra llm --extra sse --extra ui --extra test --extra rl --extra dev
+```
+
+CLI examples below assume the repo environment is active. If you prefer not to activate it, use `.venv/bin/vei ...` or `uv run vei ...`.
 
 Add `.[browser]` if you want animated GIF export from `vei visualize export`.
 
@@ -95,7 +103,7 @@ make setup
 make check
 make test
 make llm-live
-vei smoke --transport stdio --timeout-s 30
+vei smoke run --transport stdio --timeout-s 30
 ```
 
 `make llm-live` auto-loads `.env` when present and writes `summary.json`, `score.json`, `trace.jsonl`, `llm_metrics.json`, and transcript artifacts under `_vei_out/llm_live/latest`.
@@ -392,7 +400,7 @@ pip install "git+https://github.com/strangeloopcanon/vei.git@main"
 For the full product workflow, including the local UI and live LLM runs:
 
 ```bash
-pip install -e ".[llm,sse,ui]"
+make setup
 ```
 
 SDK embedding:

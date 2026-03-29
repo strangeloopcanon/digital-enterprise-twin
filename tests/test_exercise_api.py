@@ -77,6 +77,66 @@ def test_activate_exercise_switches_variant_and_refreshes_manifest(
     )
 
 
+def test_default_contract_variant_returns_empty_string_without_variants(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        exercise_api,
+        "list_workspace_contract_variants",
+        lambda *_args, **_kwargs: [],
+    )
+
+    assert exercise_api._default_contract_variant(tmp_path) == ""
+
+
+def test_activate_exercise_skips_contract_activation_without_default_variant(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "exercise_no_contract"
+    root.mkdir()
+    contract_calls: list[tuple[Path, str]] = []
+    sentinel_status = object()
+
+    monkeypatch.setattr(
+        exercise_api,
+        "activate_workspace_scenario_variant",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(exercise_api, "_default_contract_variant", lambda *_args: "")
+    monkeypatch.setattr(
+        exercise_api,
+        "activate_workspace_contract_variant",
+        lambda workspace_root, variant: contract_calls.append(
+            (workspace_root, variant)
+        ),
+    )
+    monkeypatch.setattr(
+        exercise_api,
+        "_ensure_comparison_runs",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        exercise_api, "reset_pilot_gateway", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        exercise_api,
+        "_write_exercise_manifest",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        exercise_api,
+        "build_exercise_status",
+        lambda *_args, **_kwargs: sentinel_status,
+    )
+
+    status = exercise_api.activate_exercise(root, scenario_variant="default")
+
+    assert status is sentinel_status
+    assert contract_calls == []
+
+
 def _sample_pilot_status(root: Path) -> PilotStatus:
     manifest = PilotManifest(
         workspace_root=root,

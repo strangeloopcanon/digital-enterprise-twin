@@ -94,7 +94,8 @@ def activate_exercise(
         bootstrap_contract=True,
     )
     selected_contract = contract_variant or _default_contract_variant(workspace_root)
-    activate_workspace_contract_variant(workspace_root, selected_contract)
+    if selected_contract:
+        activate_workspace_contract_variant(workspace_root, selected_contract)
     _ensure_comparison_runs(workspace_root, force_new=True)
     try:
         reset_pilot_gateway(workspace_root)
@@ -417,5 +418,5 @@ def _comparison_summary(
 def _default_contract_variant(workspace_root: Path) -> str:
     variants = list_workspace_contract_variants(workspace_root)
     if not variants:
-        raise ValueError("no contract variants are available for this workspace")
+        return ""
     return str(variants[0].get("name") or "")
