@@ -3,9 +3,20 @@
 
 ![VEI Studio — Pinnacle Analytics](docs/assets/vei_studio_hero.png)
 
-VEI is a programmable replica of an entire company's operational software stack. You give it a company description — or connect it to real Slack, Gmail, Jira, and Teams data — and it builds a fully functioning simulated copy with working channels, email threads, ticket queues, CRM pipelines, document stores, and identity systems that an agent or a human can operate inside.
+VEI builds believable company worlds and lets you run a control layer on top of them.
 
-Pick a company, pick a crisis, define what success looks like, then play moves or let an agent play them — every tool, every person, every process reacts as one connected system.
+You can use it to turn a real or obfuscated company into a branchable enterprise twin, run policies and multi-step workflows against that twin, replay the same starting point with different rules, and show the outcome as a live demo, evaluation run, rollout, or training trace.
+
+In practice that means VEI sits in the middle of four jobs:
+
+- build a realistic company world
+- act on that world through a control layer
+- compare outcomes from the same starting point
+- export the result for demos, benchmarks, rollouts, and RL environments
+
+Pick a company, pick a crisis, define what success looks like, then play moves or let an agent play them. Every tool, every person, and every process reacts as one connected system.
+
+Today VEI is best thought of as the engine underneath a customer-facing control product: the repo contains the world model, policy and workflow runtime, replay and scoring loop, playable demo surfaces, and rollout or training hooks.
 
 **[Full overview: what this is, who it's for, and how to connect your own data →](docs/OVERVIEW.md)**
 
@@ -23,6 +34,7 @@ VEI simulates a complete enterprise environment — every software system, every
   - **Harbor Point Management** (Real Estate) — Flagship tenant opening with lease, vendor, and property-readiness pressure
   - **Northstar Growth** (Marketing Agency) — Campaign launch with approval, pacing, and reporting risk
   - **Atlas Storage Systems** (Storage/Logistics) — Strategic customer quote with fragmented capacity
+  - **Clearwater Field Services** (Service Operations) — VIP outage, technician no-show, and billing dispute colliding on the same account
 - **Time and state** — Virtual time, scheduled events, snapshots, branches, replay, and restore
 - **Policies and outcomes** — Success predicates, forbidden states, policy invariants, observation boundaries, deadlines, and contract-graded outcomes
 - **Long-horizon work** — Multi-step tasks that cross systems, have hidden state, require follow-through, and can fail midway
