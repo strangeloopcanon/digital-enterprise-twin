@@ -101,25 +101,28 @@ class ReplayConnectorAdapter(ConnectorAdapter):
 
 
 class LiveConnectorAdapter(ConnectorAdapter):
-    """Live adapter shell; delegates to sim behavior unless a real backend is added."""
+    """Live adapter shell with explicit cutover behavior."""
 
     def __init__(self, delegate: ConnectorAdapter) -> None:
         self.delegate = delegate
 
     def execute(self, request: ConnectorRequest) -> ConnectorResult:
+        started = time.perf_counter()
         live_result = _execute_live_backend(request)
         if live_result is None:
-            result = self.delegate.execute(request)
-            result.metadata = {
-                **result.metadata,
-                "adapter": "live",
-                "live_backend": "simulated",
-            }
-            result.raw = {
-                **result.raw,
-                "live_backend": "simulated",
-            }
-            return result
+            if request.operation_class == OperationClass.READ:
+                return _snapshot_live_result(self.delegate.execute(request))
+            return _failed_live_result(
+                request,
+                code=f"{request.service.value}.live_backend_unavailable",
+                message=(
+                    f"live {request.service.value} backend is not available; "
+                    "keep this workspace in sim mode or add a live adapter first"
+                ),
+                status_code=503,
+                latency_ms=started,
+                live_backend="unavailable",
+            )
 
         if live_result.ok and request.operation_class != OperationClass.READ:
             mirrored = self.delegate.execute(
@@ -360,6 +363,7 @@ def _execute_live_slack(request: ConnectorRequest) -> ConnectorResult | None:
             message="VEI_LIVE_SLACK_TOKEN is required for live Slack passthrough",
             status_code=503,
             latency_ms=started,
+            live_backend="unavailable",
         )
     base_url = os.environ.get(
         "VEI_LIVE_SLACK_BASE_URL", "https://slack.com/api"
@@ -589,6 +593,20 @@ def _success_live_result(
     )
 
 
+def _snapshot_live_result(result: ConnectorResult) -> ConnectorResult:
+    out = result.model_copy(deep=True)
+    out.metadata = {
+        **out.metadata,
+        "adapter": "live",
+        "live_backend": "snapshot",
+    }
+    out.raw = {
+        **out.raw,
+        "live_backend": "snapshot",
+    }
+    return out
+
+
 def _mirrored_state_request(
     request: ConnectorRequest,
     live_result: ConnectorResult,
@@ -617,14 +635,19 @@ def _failed_live_result(
     latency_ms: float,
     status_code: int = 400,
     retryable: bool = False,
+    live_backend: str = "slack_http",
 ) -> ConnectorResult:
     return ConnectorResult(
         ok=False,
         status_code=status_code,
         error=ConnectorError(code=code, message=message, retryable=retryable),
-        raw={"service": request.service.value, "operation": request.operation},
+        raw={
+            "service": request.service.value,
+            "operation": request.operation,
+            "live_backend": live_backend,
+        },
         latency_ms=int((time.perf_counter() - latency_ms) * 1000),
-        metadata={"adapter": "live", "live_backend": "slack_http"},
+        metadata={"adapter": "live", "live_backend": live_backend},
     )
 
 

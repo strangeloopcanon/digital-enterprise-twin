@@ -247,7 +247,7 @@ Mirror mode now has two practical entry paths:
 - **Demo mode** — use staged built-in agents and timed activity on a simulated world so the control plane feels live without real credentials
 - **Live alpha** — run the twin in `live` connector mode so Slack-shaped traffic can pass through VEI, be governed, and still update the twin
 
-Mirror mode treats **proxy** and **ingest** as peers. If you control the agent, point it at VEI's compatibility routes. If you do not, register the agent and send typed events into the same run history instead.
+Mirror mode treats **proxy** and **ingest** as peers. If you control the agent, point it at VEI's compatibility routes. If you do not, register the agent and send typed events into the same run history instead. In both cases, the agent must be registered first; VEI no longer auto-creates mirror agents from traffic.
 
 Try the demo-first path with the built-in service company:
 
@@ -281,7 +281,7 @@ vei twin build \
   --connector-mode live
 ```
 
-Today VEI is authoritative for actions it directly proxies or ingests. Everything else is still a last-known-good world until the next sync. That is an intentional alpha limit.
+Today VEI is authoritative for actions it directly proxies or ingests. For the Slack-first live alpha, unsupported surfaces still read from the last synced twin snapshot, but writes fail clearly until a real live adapter exists. That is an intentional alpha limit.
 
 The fastest way to inspect what was built is:
 

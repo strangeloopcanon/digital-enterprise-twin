@@ -259,6 +259,38 @@ def test_mirror_ingest_event_updates_history_and_slack_surface(
         )
 
 
+def test_mirror_ingest_requires_registered_agent(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_ingest_unknown_agent"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        ingest_response = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "unknown-bot",
+                "external_tool": "vendor.slack.message",
+                "focus_hint": "slack",
+                "target": "slack",
+                "payload": {
+                    "channel": "#clearwater-dispatch",
+                    "text": "This should be rejected.",
+                },
+            },
+        )
+        assert ingest_response.status_code == 400
+        assert ingest_response.json()["detail"]["code"] == "mirror.agent_not_registered"
+
+
 def test_workspace_mirror_state_reflects_live_activity(
     tmp_path: Path,
 ) -> None:
@@ -429,6 +461,40 @@ def test_registered_proxy_agent_updates_mirror_state_from_gateway_route(
         assert proxy_bot["last_action"] == "slack.chat.postMessage"
         assert proxy_bot["denied_count"] == 0
         assert workspace_mirror["recent_events"][-1]["handled_by"] == "dispatch"
+
+
+def test_unregistered_proxy_agent_is_rejected(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_proxy_unknown_agent"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as gateway_client:
+        proxy_headers = {
+            **auth_headers,
+            "x-vei-agent-id": "unknown-proxy",
+            "x-vei-agent-name": "Unknown Proxy",
+        }
+        response = gateway_client.post(
+            "/slack/api/chat.postMessage",
+            headers=proxy_headers,
+            json={
+                "channel": "#clearwater-dispatch",
+                "text": "This should not bypass registration.",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "ok": False,
+            "error": "mirror.agent_not_registered",
+        }
 
 
 def test_mirror_registration_does_not_deadlock_with_dispatch(

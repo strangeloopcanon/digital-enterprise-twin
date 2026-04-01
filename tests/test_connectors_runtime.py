@@ -42,29 +42,46 @@ def test_live_mode_blocks_risky_writes_by_default(
     monkeypatch.setenv("VEI_LIVE_ALLOW_WRITE_SAFE", "1")
     monkeypatch.delenv("VEI_LIVE_ALLOW_WRITE_RISKY", raising=False)
     router = Router(seed=456, artifacts_dir=None, connector_mode="live")
-    # Pre-create ticket in default world to transition.
-    created = router.call_and_step(
-        "tickets.create",
-        {"title": "Close me", "description": "generated"},
-    )
     with pytest.raises(MCPError) as exc:
         router.call_and_step(
             "tickets.transition",
-            {"ticket_id": created["ticket_id"], "status": "closed"},
+            {"ticket_id": "T-123", "status": "closed"},
         )
     assert exc.value.code == "policy.denied"
 
 
-def test_live_mode_safe_write_allowed_when_enabled(
+def test_live_mode_unsupported_reads_use_snapshot_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VEI_LIVE_ALLOW_WRITE_SAFE", "1")
     router = Router(seed=654, artifacts_dir=None, connector_mode="live")
-    result = router.call_and_step(
-        "mail.compose",
-        {"to": "sales@example.com", "subj": "Quote", "body_text": "Need quote"},
-    )
-    assert result["id"].startswith("m")
+    result = router.call_and_step("mail.list", {"folder": "INBOX"})
+
+    assert isinstance(result, list)
+    receipt = router.state_snapshot(include_state=False, tool_tail=1)["connectors"][
+        "last_receipt"
+    ]
+    assert receipt["ok"] is True
+    assert receipt["response_payload"]["live_backend"] == "snapshot"
+
+
+def test_live_mode_unsupported_safe_writes_fail_clearly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VEI_LIVE_ALLOW_WRITE_SAFE", "1")
+    router = Router(seed=654, artifacts_dir=None, connector_mode="live")
+
+    with pytest.raises(MCPError) as exc:
+        router.call_and_step(
+            "mail.compose",
+            {"to": "sales@example.com", "subj": "Quote", "body_text": "Need quote"},
+        )
+
+    assert exc.value.code == "mail.live_backend_unavailable"
+    receipt = router.state_snapshot(include_state=False, tool_tail=1)["connectors"][
+        "last_receipt"
+    ]
+    assert receipt["response_payload"]["live_backend"] == "unavailable"
 
 
 def test_live_slack_backend_forwards_and_keeps_local_state(
@@ -175,6 +192,7 @@ def test_live_slack_backend_requires_token_in_live_mode(
     ]
     assert receipt["ok"] is False
     assert receipt["status_code"] == 503
+    assert receipt["response_payload"]["live_backend"] == "unavailable"
 
 
 def test_live_http_json_rejects_non_http_urls() -> None:

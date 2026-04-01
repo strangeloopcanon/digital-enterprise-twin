@@ -245,7 +245,6 @@ class MirrorRuntime:
                 if existing is None
                 else existing.model_copy(update=payload.model_dump(exclude_unset=True))
             )
-        with self._lock:
             self._agents[payload.agent_id] = merged.model_copy(deep=True)
             stored = self._agents[payload.agent_id].model_copy(deep=True)
         self._target.register_mirror_agent(stored.model_copy(deep=True))
@@ -259,7 +258,7 @@ class MirrorRuntime:
             if isinstance(event, MirrorIngestEvent)
             else MirrorIngestEvent.model_validate(event)
         )
-        agent = self._ensure_agent(payload)
+        agent = self.require_agent(payload.agent_id)
         handled_by: MirrorHandleMode
         if payload.resolved_tool:
             result = self._target.dispatch_mirror_tool(event=payload, agent=agent)
@@ -343,22 +342,12 @@ class MirrorRuntime:
             self.register_agent(agent)
         self._demo_steps = default_service_ops_demo_steps()
 
-    def _ensure_agent(self, event: MirrorIngestEvent) -> MirrorAgentSpec:
+    def require_agent(self, agent_id: str) -> MirrorAgentSpec:
         with self._lock:
-            existing = self._agents.get(event.agent_id)
+            existing = self._agents.get(agent_id)
             if existing is not None:
                 return existing.model_copy(deep=True)
-        created = MirrorAgentSpec(
-            agent_id=event.agent_id,
-            name=event.agent_id.replace("-", " ").title(),
-            mode=event.source_mode,
-            status="registered",
-        )
-        with self._lock:
-            self._agents[created.agent_id] = created.model_copy(deep=True)
-            current = self._agents[created.agent_id].model_copy(deep=True)
-        self._target.register_mirror_agent(current.model_copy(deep=True))
-        return current
+        raise ValueError(f"mirror agent not registered: {agent_id}")
 
     def _autoplay_loop(self) -> None:
         interval_s = max(0.25, self.config.demo_interval_ms / 1000.0)

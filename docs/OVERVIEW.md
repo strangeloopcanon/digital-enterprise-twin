@@ -68,13 +68,13 @@ The twin gateway takes a `ContextSnapshot` plus a vertical archetype, merges the
 
 Mirror mode builds on that gateway in two parallel ways:
 
-- **Proxy path** — for agents you control, point them at VEI's compatibility routes and let VEI govern and record live-shaped traffic
+- **Proxy path** — for agents you control, register the agent, point it at VEI's compatibility routes, and let VEI govern and record live-shaped traffic
 - **Ingest path** — for third-party or already-deployed agents, register the agent and send typed external events into the same run history
 
 Today mirror mode ships in two maturity levels:
 
 - **Mirror demo mode** — built-in agent registry plus staged timed activity over simulated worlds, especially `service_ops`, so the control-plane story feels live without real credentials
-- **Mirror live alpha** — Slack-first live pass-through with policy gating and twin updates, while the rest of the company world remains last-known-good until the next sync
+- **Mirror live alpha** — Slack-first live pass-through with policy gating and twin updates; unsupported surfaces still serve reads from the last synced twin snapshot, and writes fail clearly until their live adapters exist
 
 That last point matters: VEI is authoritative for actions it directly proxies or ingests. Everything else is refreshed by capture or re-sync, not by claiming real-time convergence yet.
 

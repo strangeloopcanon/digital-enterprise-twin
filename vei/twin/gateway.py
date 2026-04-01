@@ -253,15 +253,15 @@ class TwinRuntime:
         focus_hint: str,
         agent: ExternalAgentIdentity,
     ) -> Any:
-        mirror_agent = self._mirror_agent(agent.agent_id)
-        if mirror_agent is None:
-            return self.dispatch(
-                external_tool=external_tool,
-                resolved_tool=resolved_tool,
-                args=args,
-                focus_hint=focus_hint,
-                agent=agent,
-            )
+        if self.mirror is None:
+            raise MCPError("mirror.unavailable", "mirror runtime unavailable")
+        try:
+            mirror_agent = self.mirror.require_agent(agent.agent_id or "")
+        except ValueError as exc:
+            raise MCPError(
+                "mirror.agent_not_registered",
+                str(exc),
+            ) from exc
         event = MirrorIngestEvent(
             agent_id=mirror_agent.agent_id,
             external_tool=external_tool,
@@ -271,15 +271,7 @@ class TwinRuntime:
             label=external_tool,
             source_mode="proxy",
         )
-        result = self.mirror.ingest_event(event) if self.mirror is not None else None
-        if result is None:
-            return self.dispatch(
-                external_tool=external_tool,
-                resolved_tool=resolved_tool,
-                args=args,
-                focus_hint=focus_hint,
-                agent=agent,
-            )
+        result = self.mirror.ingest_event(event)
         if result.handled_by == "denied":
             reason = str(result.result.get("reason", "mirror request denied"))
             raise MCPError("mirror.surface_denied", reason)
@@ -435,11 +427,6 @@ class TwinRuntime:
         metadata = dict(self.status.metadata)
         metadata["mirror"] = self._mirror_snapshot_payload()
         self.status.metadata = metadata
-
-    def _mirror_agent(self, agent_id: str | None) -> MirrorAgentSpec | None:
-        if self.mirror is None or not agent_id:
-            return None
-        return self.mirror.get_agent(agent_id)
 
     def sync_mirror_runtime_state(self) -> None:
         with self._lock:
@@ -635,7 +622,6 @@ class TwinRuntime:
             self._record_agent_identity(_identity_from_mirror_agent(agent))
             self._update_contract_status(contract_eval)
             self._write_contract_eval(contract_eval)
-            self._refresh_mirror_status()
             self._write_manifest(
                 status="running", success=None, error=None, completed_at=None
             )
@@ -679,7 +665,6 @@ class TwinRuntime:
             self._record_agent_identity(_identity_from_mirror_agent(agent))
             self._update_contract_status(contract_eval)
             self._write_contract_eval(contract_eval)
-            self._refresh_mirror_status()
             self._write_manifest(
                 status="running", success=None, error=None, completed_at=None
             )
@@ -796,8 +781,17 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         if runtime.mirror is None:
             raise HTTPException(status_code=503, detail="mirror runtime unavailable")
         body = await _request_payload(request)
-        result = runtime.mirror.ingest_event(MirrorIngestEvent.model_validate(body))
-        runtime._refresh_mirror_status()
+        event = MirrorIngestEvent.model_validate(body)
+        try:
+            result = runtime.mirror.ingest_event(event)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "mirror.agent_not_registered",
+                    "message": str(exc),
+                },
+            ) from exc
         return JSONResponse(result.model_dump(mode="json"), status_code=202)
 
     @app.post("/api/mirror/demo/tick")
@@ -806,7 +800,6 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         if runtime.mirror is None:
             raise HTTPException(status_code=503, detail="mirror runtime unavailable")
         result = runtime.mirror.demo_tick()
-        runtime._refresh_mirror_status()
         if result is None:
             return JSONResponse({"ok": True, "remaining_demo_steps": 0})
         return JSONResponse(result.model_dump(mode="json"))
