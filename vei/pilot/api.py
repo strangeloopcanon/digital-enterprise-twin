@@ -444,6 +444,7 @@ def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
     env_block = (
         f'export VEI_PILOT_BASE_URL="{manifest.gateway_url}"\n'
         f'export VEI_PILOT_TOKEN="{manifest.bearer_token}"\n'
+        'export VEI_AGENT_ID="starter-agent"\n'
         'export VEI_AGENT_NAME="starter-agent"\n'
         'export VEI_AGENT_ROLE="exercise-runner"'
     )
@@ -452,36 +453,61 @@ def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
         "from urllib.request import Request, urlopen\n\n"
         f'BASE_URL = "{manifest.gateway_url}"\n'
         f'TOKEN = "{manifest.bearer_token}"\n\n'
+        "register = Request(\n"
+        '    f"{BASE_URL}/api/mirror/agents",\n'
+        "    data=json.dumps({\n"
+        '        "agent_id": "starter-agent",\n'
+        '        "name": "starter-agent",\n'
+        '        "mode": "proxy",\n'
+        "    }).encode(),\n"
+        "    headers={\n"
+        '        "Authorization": f"Bearer {TOKEN}",\n'
+        '        "Content-Type": "application/json",\n'
+        "    },\n"
+        '    method="POST",\n'
+        ")\n"
+        "urlopen(register)\n\n"
         "req = Request(\n"
         '    f"{BASE_URL}/slack/api/conversations.list",\n'
         "    headers={\n"
         '        "Authorization": f"Bearer {TOKEN}",\n'
+        '        "X-VEI-Agent-Id": "starter-agent",\n'
         '        "X-VEI-Agent-Name": "starter-agent",\n'
         '        "X-VEI-Agent-Role": "exercise-runner",\n'
         "    },\n"
         ")\n"
         "print(json.loads(urlopen(req).read()))\n"
     )
+    register_curl = (
+        f"curl -X POST -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'Content-Type: application/json' "
+        f"'{manifest.gateway_url}/api/mirror/agents' "
+        "-d '{\"agent_id\":\"starter-agent\",\"name\":\"starter-agent\",\"mode\":\"proxy\"}'"
+    )
     slack_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Id: starter-agent' "
         "-H 'X-VEI-Agent-Name: starter-agent' "
         "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/slack/api/conversations.list'"
     )
     jira_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Id: starter-agent' "
         "-H 'X-VEI-Agent-Name: starter-agent' "
         "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/jira/rest/api/3/search'"
     )
     graph_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Id: starter-agent' "
         "-H 'X-VEI-Agent-Name: starter-agent' "
         "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/graph/v1.0/me/messages'"
     )
     salesforce_curl = (
         f"curl -H 'Authorization: Bearer {manifest.bearer_token}' "
+        "-H 'X-VEI-Agent-Id: starter-agent' "
         "-H 'X-VEI-Agent-Name: starter-agent' "
         "-H 'X-VEI-Agent-Role: exercise-runner' "
         f"'{manifest.gateway_url}/salesforce/services/data/v60.0/query?q=SELECT+Name+FROM+Opportunity'"
@@ -498,6 +524,12 @@ def _build_snippets(manifest: PilotManifest) -> list[PilotSnippet]:
             title="Python base URL usage",
             language="python",
             content=python_snippet,
+        ),
+        PilotSnippet(
+            name="register",
+            title="Register proxy agent",
+            language="bash",
+            content=register_curl,
         ),
         PilotSnippet(
             name="slack",

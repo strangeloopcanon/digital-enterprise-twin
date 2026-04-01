@@ -7,11 +7,15 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
+AGENT_ID = "starter-agent"
+
+
 def _get_json(base_url: str, path: str, token: str) -> Any:
     request = Request(
         f"{base_url.rstrip('/')}{path}",
         headers={
             "Authorization": f"Bearer {token}",
+            "X-VEI-Agent-Id": AGENT_ID,
             "X-VEI-Agent-Name": "starter-agent",
             "X-VEI-Agent-Role": "exercise-runner",
             "X-VEI-Agent-Team": "external",
@@ -30,6 +34,7 @@ def _post_json(base_url: str, path: str, token: str, payload: dict[str, Any]) ->
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
+            "X-VEI-Agent-Id": AGENT_ID,
             "X-VEI-Agent-Name": "starter-agent",
             "X-VEI-Agent-Role": "exercise-runner",
             "X-VEI-Agent-Team": "external",
@@ -40,6 +45,19 @@ def _post_json(base_url: str, path: str, token: str, payload: dict[str, Any]) ->
     )
     with urlopen(request, timeout=10) as response:  # noqa: S310
         return json.loads(response.read().decode("utf-8"))
+
+
+def _register_proxy_agent(base_url: str, token: str) -> None:
+    _post_json(
+        base_url,
+        "/api/mirror/agents",
+        token,
+        {
+            "agent_id": AGENT_ID,
+            "name": "starter-agent",
+            "mode": "proxy",
+        },
+    )
 
 
 def main() -> None:
@@ -54,6 +72,8 @@ def main() -> None:
         help="Optional Slack message to post into the first available channel",
     )
     args = parser.parse_args()
+
+    _register_proxy_agent(args.base_url, args.token)
 
     slack_channels = _get_json(
         args.base_url,

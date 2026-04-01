@@ -262,6 +262,9 @@ class TwinRuntime:
                 "mirror.agent_not_registered",
                 str(exc),
             ) from exc
+        merged_agent = _merge_mirror_agent_identity(mirror_agent, agent)
+        if merged_agent != mirror_agent:
+            mirror_agent = self.mirror.register_agent(merged_agent)
         event = MirrorIngestEvent(
             agent_id=mirror_agent.agent_id,
             external_tool=external_tool,
@@ -274,7 +277,8 @@ class TwinRuntime:
         result = self.mirror.ingest_event(event)
         if result.handled_by == "denied":
             reason = str(result.result.get("reason", "mirror request denied"))
-            raise MCPError("mirror.surface_denied", reason)
+            code = str(result.result.get("code", "mirror.surface_denied"))
+            raise MCPError(code, reason)
         return result.result.get("result")
 
     def peek(self, tool: str, args: dict[str, Any] | None = None) -> Any:
@@ -560,6 +564,19 @@ class TwinRuntime:
             },
         )
 
+    def record_mirror_denial(
+        self,
+        *,
+        event: MirrorIngestEvent,
+        agent: MirrorAgentSpec,
+        reason: str,
+    ) -> None:
+        with self._lock:
+            self._record_denial(event, agent, reason)
+            self._write_manifest(
+                status="running", success=None, error=None, completed_at=None
+            )
+
     def _current_time_ms(self) -> int:
         bus = getattr(getattr(self.session, "router", None), "bus", None)
         if bus is None:
@@ -576,7 +593,11 @@ class TwinRuntime:
         denial = self._check_surface_access(agent, tool_name)
         if denial is not None:
             self._record_denial(event, agent, denial)
-            return {"denied": True, "reason": denial}
+            return {
+                "denied": True,
+                "reason": denial,
+                "code": "mirror.surface_denied",
+            }
         result = self.dispatch(
             external_tool=event.external_tool,
             resolved_tool=str(event.resolved_tool or ""),
@@ -595,11 +616,14 @@ class TwinRuntime:
         target = str(event.target or "")
         if not target:
             raise ValueError("mirror inject events require a target")
-        surface = event.focus_hint or target
-        denial = self._check_surface_access(agent, surface)
+        denial = self._check_surface_access(agent, target)
         if denial is not None:
             self._record_denial(event, agent, denial)
-            return {"denied": True, "reason": denial}
+            return {
+                "denied": True,
+                "reason": denial,
+                "code": "mirror.surface_denied",
+            }
         with self._lock:
             injected = self.session.inject(
                 {
@@ -781,7 +805,9 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         if runtime.mirror is None:
             raise HTTPException(status_code=503, detail="mirror runtime unavailable")
         body = await _request_payload(request)
-        event = MirrorIngestEvent.model_validate(body)
+        event = MirrorIngestEvent.model_validate(body).model_copy(
+            update={"source_mode": "ingest"}
+        )
         try:
             result = runtime.mirror.ingest_event(event)
         except ValueError as exc:
@@ -1861,7 +1887,12 @@ def _dispatch_request(
     focus_hint: str,
 ) -> Any:
     agent = _request_agent_identity(request)
-    if agent is not None and agent.agent_id:
+    if runtime.mirror is not None:
+        if agent is None or not agent.agent_id:
+            raise MCPError(
+                "mirror.agent_id_required",
+                "proxy requests must include X-VEI-Agent-Id",
+            )
         return runtime.dispatch_proxy_request(
             external_tool=external_tool,
             resolved_tool=resolved_tool,
@@ -1903,6 +1934,20 @@ def _identity_from_mirror_agent(agent: MirrorAgentSpec) -> ExternalAgentIdentity
         team=agent.team,
         source=agent.source,
     )
+
+
+def _merge_mirror_agent_identity(
+    mirror_agent: MirrorAgentSpec,
+    request_agent: ExternalAgentIdentity,
+) -> MirrorAgentSpec:
+    updates = {
+        field: value
+        for field in ("name", "role", "team", "source")
+        if (value := getattr(request_agent, field))
+    }
+    if not updates:
+        return mirror_agent
+    return mirror_agent.model_copy(update=updates, deep=True)
 
 
 def _iso_now() -> str:

@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 class MirrorTarget(Protocol):
     def register_mirror_agent(self, agent: MirrorAgentSpec) -> None: ...
 
+    def record_mirror_denial(
+        self,
+        *,
+        event: MirrorIngestEvent,
+        agent: MirrorAgentSpec,
+        reason: str,
+    ) -> None: ...
+
     def sync_mirror_runtime_state(self) -> None: ...
 
     def dispatch_mirror_tool(
@@ -261,13 +269,28 @@ class MirrorRuntime:
         )
         agent = self.require_agent(payload.agent_id)
         handled_by: MirrorHandleMode
-        if payload.resolved_tool:
+        denial = _mirror_mode_denial_reason(agent, payload)
+        if denial is not None:
+            self._target.record_mirror_denial(
+                event=payload,
+                agent=agent,
+                reason=denial,
+            )
+            result = {
+                "denied": True,
+                "reason": denial,
+                "code": "mirror.agent_mode_denied",
+            }
+            handled_by = "denied"
+        elif payload.resolved_tool:
             result = self._target.dispatch_mirror_tool(event=payload, agent=agent)
             handled_by = "denied" if result.get("denied") else "dispatch"
         elif payload.target:
             result = self._target.inject_mirror_event(event=payload, agent=agent)
             handled_by = "denied" if result.get("denied") else "inject"
         else:
+            # Intentionally bypasses surface-access checks: record_only is passive
+            # observation so telemetry/logging agents can report without policy gating.
             result = self._target.record_mirror_event(event=payload, agent=agent)
             handled_by = "record_only"
         action_label = payload.label or payload.external_tool
@@ -376,3 +399,22 @@ class MirrorRuntime:
 
 def _iso_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _mirror_mode_denial_reason(
+    agent: MirrorAgentSpec,
+    event: MirrorIngestEvent,
+) -> str | None:
+    if event.source_mode == "proxy":
+        if agent.mode in {"proxy", "demo"}:
+            return None
+        return (
+            f"agent '{agent.agent_id}' is registered for {agent.mode} mode and "
+            "cannot use proxy compatibility routes"
+        )
+    if agent.mode in {"ingest", "demo"}:
+        return None
+    return (
+        f"agent '{agent.agent_id}' is registered for {agent.mode} mode and "
+        "cannot use mirror ingest events"
+    )

@@ -86,6 +86,34 @@ def _request(headers: dict[str, str] | None = None) -> Request:
     )
 
 
+def _register_proxy_agent(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    agent_id: str = "scout-proxy",
+    allowed_surfaces: list[str] | None = None,
+) -> dict[str, str]:
+    response = client.post(
+        "/api/mirror/agents",
+        headers=auth_headers,
+        json={
+            "agent_id": agent_id,
+            "name": "Scout",
+            "mode": "proxy",
+            "allowed_surfaces": allowed_surfaces or [],
+        },
+    )
+    assert response.status_code == 201
+    return {
+        **auth_headers,
+        "X-VEI-Agent-Id": agent_id,
+        "X-VEI-Agent-Name": "Scout",
+        "X-VEI-Agent-Role": "operator",
+        "X-VEI-Agent-Team": "revops",
+        "User-Agent": "pytest-suite",
+    }
+
+
 def _sample_snapshot() -> ContextSnapshot:
     return ContextSnapshot(
         organization_name="Acme Cloud",
@@ -847,12 +875,6 @@ def test_twin_gateway_exposes_additional_provider_routes(
         organization_domain="acme.ai",
     )
     auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
-    agent_headers = {
-        **auth_headers,
-        "X-VEI-Agent-Name": "Scout",
-        "X-VEI-Agent-Role": "operator",
-        "User-Agent": "pytest-suite",
-    }
 
     original_dispatch = gateway._dispatch_request
 
@@ -867,6 +889,7 @@ def test_twin_gateway_exposes_additional_provider_routes(
     monkeypatch.setattr(gateway, "_dispatch_request", patched_dispatch)
 
     with TestClient(gateway.create_twin_gateway_app(root)) as client:
+        agent_headers = _register_proxy_agent(client, auth_headers)
         assert client.get("/").json()["status_path"] == "/api/twin"
         assert client.get("/healthz").json()["ok"] is True
         assert client.get("/slack/api/users.list").json()["error"] == "invalid_auth"
@@ -907,30 +930,30 @@ def test_twin_gateway_exposes_additional_provider_routes(
         ]
 
         project_payload = client.get(
-            "/jira/rest/api/3/project", headers=auth_headers
+            "/jira/rest/api/3/project", headers=agent_headers
         ).json()
         assert project_payload[0]["name"] == "Acme Cloud"
         jira_search = client.get(
             "/jira/rest/api/3/search",
-            headers=auth_headers,
+            headers=agent_headers,
             params={"jql": "status = open", "maxResults": 1},
         ).json()
         assert jira_search["issues"]
         issue_id = jira_search["issues"][0]["id"]
         assert (
             client.get(
-                f"/jira/rest/api/3/issue/{issue_id}", headers=auth_headers
+                f"/jira/rest/api/3/issue/{issue_id}", headers=agent_headers
             ).json()["id"]
             == issue_id
         )
         assert client.get(
             f"/jira/rest/api/3/issue/{issue_id}/transitions",
-            headers=auth_headers,
+            headers=agent_headers,
         ).json()["transitions"]
         assert (
             client.post(
                 f"/jira/rest/api/3/issue/{issue_id}/comment",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={"body": "We have an owner and next step."},
             ).status_code
             == 201
@@ -938,14 +961,14 @@ def test_twin_gateway_exposes_additional_provider_routes(
         assert (
             client.post(
                 f"/jira/rest/api/3/issue/{issue_id}/transitions",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={"transition": {"id": "in_progress"}},
             ).status_code
             == 204
         )
         created_issue = client.post(
             "/jira/rest/api/3/issue",
-            headers=auth_headers,
+            headers=agent_headers,
             json={
                 "fields": {
                     "summary": "Document the customer-safe plan",
@@ -958,27 +981,27 @@ def test_twin_gateway_exposes_additional_provider_routes(
         assert (
             client.put(
                 f"/jira/rest/api/3/issue/{created_issue.json()['id']}",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={"fields": {"summary": "Updated summary"}},
             ).status_code
             == 204
         )
 
-        messages = client.get("/graph/v1.0/me/messages", headers=auth_headers).json()[
+        messages = client.get("/graph/v1.0/me/messages", headers=agent_headers).json()[
             "value"
         ]
         assert messages
         assert (
             client.get(
                 f"/graph/v1.0/me/messages/{messages[0]['id']}",
-                headers=auth_headers,
+                headers=agent_headers,
             ).status_code
             == 200
         )
         assert (
             client.post(
                 "/graph/v1.0/me/sendMail",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={
                     "message": {
                         "toRecipients": [
@@ -991,12 +1014,12 @@ def test_twin_gateway_exposes_additional_provider_routes(
             ).status_code
             == 202
         )
-        events_response = client.get("/graph/v1.0/me/events", headers=auth_headers)
+        events_response = client.get("/graph/v1.0/me/events", headers=agent_headers)
         assert events_response.status_code == 200
         assert "value" in events_response.json()
         created_event = client.post(
             "/graph/v1.0/me/events",
-            headers=auth_headers,
+            headers=agent_headers,
             json={
                 "subject": "Renewal standup",
                 "start": {"dateTime": "2026-03-25T10:00:00Z"},
@@ -1011,7 +1034,7 @@ def test_twin_gateway_exposes_additional_provider_routes(
 
         opp_query = client.get(
             "/salesforce/services/data/v60.0/query",
-            headers=auth_headers,
+            headers=agent_headers,
             params={"q": "SELECT Id, Name FROM Opportunity LIMIT 1"},
         ).json()
         assert opp_query["records"]
@@ -1019,20 +1042,20 @@ def test_twin_gateway_exposes_additional_provider_routes(
         assert (
             client.get(
                 f"/salesforce/services/data/v60.0/sobjects/Opportunity/{opp_id}",
-                headers=auth_headers,
+                headers=agent_headers,
             ).status_code
             == 200
         )
         created_opp = client.post(
             "/salesforce/services/data/v60.0/sobjects/Opportunity",
-            headers=auth_headers,
+            headers=agent_headers,
             json={"Name": "Expansion", "Amount": 12000, "StageName": "Qualification"},
         )
         assert created_opp.status_code == 201
         assert (
             client.patch(
                 f"/salesforce/services/data/v60.0/sobjects/Opportunity/{opp_id}",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={"StageName": "Closed Won", "Amount": 13000},
             ).status_code
             == 204
@@ -1040,7 +1063,7 @@ def test_twin_gateway_exposes_additional_provider_routes(
         assert (
             client.post(
                 "/salesforce/services/data/v60.0/sobjects/Task",
-                headers=auth_headers,
+                headers=agent_headers,
                 json={"WhatId": opp_id, "Description": "Customer follow-up logged."},
             ).status_code
             == 201
@@ -1048,25 +1071,25 @@ def test_twin_gateway_exposes_additional_provider_routes(
 
         contact_id = client.get(
             "/salesforce/services/data/v60.0/query",
-            headers=auth_headers,
+            headers=agent_headers,
             params={"q": "SELECT Id, Email FROM Contact LIMIT 1"},
         ).json()["records"][0]["Id"]
         account_id = client.get(
             "/salesforce/services/data/v60.0/query",
-            headers=auth_headers,
+            headers=agent_headers,
             params={"q": "SELECT Id, Name FROM Account LIMIT 1"},
         ).json()["records"][0]["Id"]
         assert (
             client.get(
                 f"/salesforce/services/data/v60.0/sobjects/Contact/{contact_id}",
-                headers=auth_headers,
+                headers=agent_headers,
             ).status_code
             == 200
         )
         assert (
             client.get(
                 f"/salesforce/services/data/v60.0/sobjects/Account/{account_id}",
-                headers=auth_headers,
+                headers=agent_headers,
             ).status_code
             == 200
         )

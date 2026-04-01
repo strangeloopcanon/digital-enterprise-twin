@@ -15,6 +15,31 @@ from vei.ui.api import create_ui_app
 from vei.workspace.api import load_workspace, load_workspace_blueprint_asset
 
 
+def _register_proxy_agent(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    *,
+    agent_id: str = "proxy-agent",
+    allowed_surfaces: list[str] | None = None,
+) -> dict[str, str]:
+    response = client.post(
+        "/api/mirror/agents",
+        headers=auth_headers,
+        json={
+            "agent_id": agent_id,
+            "name": agent_id.replace("-", " ").title(),
+            "mode": "proxy",
+            "allowed_surfaces": allowed_surfaces or [],
+        },
+    )
+    assert response.status_code == 201
+    return {
+        **auth_headers,
+        "x-vei-agent-id": agent_id,
+        "x-vei-agent-name": response.json()["name"],
+    }
+
+
 def test_build_customer_twin_creates_workspace_and_preserves_external_context(
     tmp_path: Path,
 ) -> None:
@@ -76,6 +101,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
     auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
 
     with TestClient(create_twin_gateway_app(root)) as client:
+        proxy_headers = _register_proxy_agent(client, auth_headers)
         status_response = client.get("/api/twin")
         assert status_response.status_code == 200
         status_payload = status_response.json()
@@ -84,7 +110,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
 
         slack_response = client.get(
             "/slack/api/conversations.list",
-            headers=auth_headers,
+            headers=proxy_headers,
         )
         assert slack_response.status_code == 200
         slack_payload = slack_response.json()
@@ -93,7 +119,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
 
         post_response = client.post(
             "/slack/api/chat.postMessage",
-            headers=auth_headers,
+            headers=proxy_headers,
             json={
                 "channel": channel_id,
                 "text": "Engineering hotfix is approved. Send the customer note now.",
@@ -104,7 +130,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
 
         jira_response = client.get(
             "/jira/rest/api/3/search",
-            headers=auth_headers,
+            headers=proxy_headers,
             params={"jql": "status = open", "maxResults": 2},
         )
         assert jira_response.status_code == 200
@@ -112,7 +138,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
 
         messages_response = client.get(
             "/graph/v1.0/me/messages",
-            headers=auth_headers,
+            headers=proxy_headers,
         )
         assert messages_response.status_code == 200
         messages_payload = messages_response.json()
@@ -122,7 +148,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
         message_id = messages_payload["value"][0]["id"]
         message_response = client.get(
             f"/graph/v1.0/me/messages/{message_id}",
-            headers=auth_headers,
+            headers=proxy_headers,
         )
         assert message_response.status_code == 200
         after_count = client.get("/api/twin").json()["runtime"]["request_count"]
@@ -130,7 +156,7 @@ def test_twin_gateway_routes_expose_company_state_and_record_external_actions(
 
         crm_response = client.get(
             "/salesforce/services/data/v60.0/query",
-            headers=auth_headers,
+            headers=proxy_headers,
             params={"q": "SELECT Id, Name FROM Opportunity LIMIT 2"},
         )
         assert crm_response.status_code == 200
@@ -201,6 +227,28 @@ def test_service_ops_twin_mirror_demo_exposes_agents_and_generates_activity(
         assert runtime_payload["runtime"]["request_count"] >= 1
 
 
+def test_proxy_requests_require_registered_agent_id(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "customer_twin_require_id"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="acme.ai",
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        response = client.post(
+            "/slack/api/chat.postMessage",
+            headers=auth_headers,
+            json={"channel": "#revops-war-room", "text": "No agent id should fail."},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": False, "error": "mirror.agent_id_required"}
+
+
 def test_workspace_mirror_marks_autoplay_stopped_after_demo_finishes(
     tmp_path: Path,
 ) -> None:
@@ -225,7 +273,10 @@ def test_workspace_mirror_marks_autoplay_stopped_after_demo_finishes(
     ):
         for _ in range(20):
             mirror = gateway_client.get("/api/mirror", headers=auth_headers).json()
-            if mirror["pending_demo_steps"] == 0:
+            if (
+                mirror["pending_demo_steps"] == 0
+                and mirror["autoplay_running"] is False
+            ):
                 break
             sleep(0.2)
 
@@ -501,6 +552,58 @@ def test_registered_proxy_agent_updates_mirror_state_from_gateway_route(
         assert workspace_mirror["recent_events"][-1]["handled_by"] == "dispatch"
 
 
+def test_ingest_mode_agent_cannot_use_proxy_routes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_proxy_mode_denied"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        register_response = client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "ingest-only",
+                "name": "Ingest Only",
+                "mode": "ingest",
+                "allowed_surfaces": ["slack"],
+            },
+        )
+        assert register_response.status_code == 201
+
+        proxy_headers = {
+            **auth_headers,
+            "x-vei-agent-id": "ingest-only",
+            "x-vei-agent-name": "Ingest Only",
+        }
+        response = client.post(
+            "/slack/api/chat.postMessage",
+            headers=proxy_headers,
+            json={
+                "channel": "#clearwater-dispatch",
+                "text": "This should be denied by mode.",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"ok": False, "error": "mirror.agent_mode_denied"}
+
+        mirror = client.get("/api/mirror", headers=auth_headers).json()
+        ingest_only = next(
+            agent for agent in mirror["agents"] if agent["agent_id"] == "ingest-only"
+        )
+        assert mirror["event_count"] == 1
+        assert ingest_only["denied_count"] == 1
+        assert mirror["recent_events"][-1]["handled_by"] == "denied"
+
+
 def test_unregistered_proxy_agent_is_rejected(
     tmp_path: Path,
 ) -> None:
@@ -747,6 +850,63 @@ def test_registered_proxy_agent_cannot_bypass_surface_restrictions(
         assert denial_events[-1]["payload"]["agent_id"] == "slack-only"
 
 
+def test_proxy_mode_agent_cannot_use_ingest_events(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_ingest_mode_denied"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        register_response = client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "proxy-only",
+                "name": "Proxy Only",
+                "mode": "proxy",
+                "allowed_surfaces": ["slack"],
+            },
+        )
+        assert register_response.status_code == 201
+
+        response = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "proxy-only",
+                "external_tool": "slack.chat.postMessage",
+                "resolved_tool": "slack.send_message",
+                "focus_hint": "slack",
+                "args": {
+                    "channel": "#clearwater-dispatch",
+                    "text": "This should be denied by mode.",
+                },
+            },
+        )
+
+        assert response.status_code == 202
+        assert response.json()["handled_by"] == "denied"
+        assert response.json()["ok"] is False
+        assert response.json()["result"]["reason"].startswith(
+            "agent 'proxy-only' is registered for proxy mode"
+        )
+
+        mirror = client.get("/api/mirror", headers=auth_headers).json()
+        proxy_only = next(
+            agent for agent in mirror["agents"] if agent["agent_id"] == "proxy-only"
+        )
+        assert mirror["event_count"] == 1
+        assert proxy_only["denied_count"] == 1
+        assert mirror["recent_events"][-1]["handled_by"] == "denied"
+
+
 def test_mirror_unrestricted_agent_can_dispatch_any_surface(
     tmp_path: Path,
 ) -> None:
@@ -826,7 +986,7 @@ def test_mirror_inject_denial_for_restricted_surface(
             json={
                 "agent_id": "slack-only-bot",
                 "external_tool": "vendor.ticket.inject",
-                "focus_hint": "tickets",
+                "focus_hint": "slack",
                 "target": "tickets",
                 "payload": {"text": "should be blocked"},
             },
