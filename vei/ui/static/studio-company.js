@@ -174,7 +174,7 @@ function renderSituationRoom() {
     </div>
     <div class="sit-room-cell ${policyClass}">
       <span class="sit-label">Policy</span>
-      <span class="sit-value">${policyStatus}</span>
+      <span class="sit-value">${escapeHtml(humanize(policyStatus))}</span>
       <span class="sit-detail">${policyStatus === "sound" ? "no overrides" : policyStatus === "drifting" ? "rules changed" : ""}</span>
     </div>
     <div class="sit-room-cell ${approvalClass}">
@@ -184,12 +184,12 @@ function renderSituationRoom() {
     </div>
     <div class="sit-room-cell ${deadlineClass}">
       <span class="sit-label">Deadline</span>
-      <span class="sit-value">${deadlineStatus}</span>
+      <span class="sit-value">${escapeHtml(humanize(deadlineStatus))}</span>
       <span class="sit-detail">${sc ? `budget: ${sc.action_budget_remaining}` : ""}</span>
     </div>
     <div class="sit-room-cell ${riskClass}">
       <span class="sit-label">Risk</span>
-      <span class="sit-value">${riskLevel}</span>
+      <span class="sit-value">${escapeHtml(humanize(riskLevel))}</span>
       <span class="sit-detail">${sc ? `score: ${sc.overall_score}` : ""}</span>
     </div>
   `;
@@ -526,7 +526,7 @@ function renderSurfaceWall() {
               <h3>${escapeHtml(surfacePanel.title)}</h3>
             </div>
             <div class="surface-panel-meta">
-              ${surfacePanel.status ? chip(surfacePanel.status, statusClass(surfacePanel.status)) : ""}
+              ${surfacePanel.status ? chip(displayStatusTitle(surfacePanel.status), statusClass(surfacePanel.status)) : ""}
               ${changed ? `<span class="surface-updated-tag">updated</span>` : ""}
             </div>
           </header>
@@ -549,11 +549,11 @@ function renderSurfaceItem(surfacePanel, item, changedRefs) {
     <div class="surface-item ${changed ? "surface-item-changed" : ""}">
       <div class="surface-item-topline">
         <strong>${escapeHtml(item.title || item.item_id)}</strong>
-        ${item.status ? `<span class="surface-item-status ${statusClass(item.status)}">${escapeHtml(item.status)}</span>` : ""}
+        ${item.status ? `<span class="surface-item-status ${statusClass(item.status)}">${escapeHtml(displayStatusTitle(item.status))}</span>` : ""}
       </div>
       ${item.subtitle ? `<div class="surface-item-subtitle">${escapeHtml(item.subtitle)}</div>` : ""}
       ${item.body ? `<p class="surface-item-body">${escapeHtml(item.body)}</p>` : ""}
-      ${badges.length ? `<div class="chip-row">${badges.map((badgeValue) => chip(badgeValue)).join("")}</div>` : ""}
+      ${badges.length ? `<div class="chip-row">${badges.map((badgeValue) => chip(humanize(badgeValue))).join("")}</div>` : ""}
     </div>
   `;
 }
@@ -592,8 +592,8 @@ function renderLivingCompanyRail() {
       <p class="eyebrow">Situation</p>
       <h3>${escapeHtml(currentCrisisTitle())}</h3>
       <div class="detail-grid">
-        ${detailTile("Success criteria", objective)}
-        ${detailTile("Branch", state.activeRun?.branch || missionState?.branch_name || "base")}
+        ${detailTile("Success criteria", displayContractVariantTitle(objective, objective))}
+        ${detailTile("Branch", displayBranchTitle(state.activeRun?.branch || missionState?.branch_name || "base"))}
       </div>
       ${currentFailureImpact() ? `<p class="metric-detail">${escapeHtml(currentFailureImpact())}</p>` : ""}
     </div>
@@ -637,7 +637,7 @@ function renderLivingCompanyRail() {
         ? `
           <div class="story-card">
             <p class="eyebrow">Latest tool</p>
-            <h3>${escapeHtml(latestToolEvent.resolved_tool || "waiting")}</h3>
+            <h3>${escapeHtml(humanize(latestToolEvent.resolved_tool || "waiting"))}</h3>
             <p class="metric-detail">${escapeHtml(latestToolEvent.summary || "The latest action is recorded in the run trail.")}</p>
           </div>
         `
@@ -825,11 +825,11 @@ function renderMissionPlay() {
       </div>
       <div class="score-pill ${riskClass}">
         <span class="metric-label">Risk</span>
-        <strong>${escapeHtml(score.business_risk || "moderate")}</strong>
+        <strong>${escapeHtml(humanize(score.business_risk || "moderate"))}</strong>
       </div>
       <div class="score-pill ${pressureClass}">
         <span class="metric-label">Deadline</span>
-        <strong>${escapeHtml(score.deadline_pressure || "stable")}</strong>
+        <strong>${escapeHtml(humanize(score.deadline_pressure || "stable"))}</strong>
       </div>
       ${scorePill("Policy", score.policy_correctness || "sound")}
     </div>
@@ -839,14 +839,14 @@ function renderMissionPlay() {
         <h3>${escapeHtml(score.summary || "Mission active.")}</h3>
         <div class="detail-grid">
           ${detailTile("Moves used", String(score.move_count || 0))}
-          ${detailTile("Assertions", `${score.success_assertions_passed || 0}/${score.success_assertions_total || 0}`)}
+          ${detailTile("Success checks", `${score.success_assertions_passed || 0}/${score.success_assertions_total || 0}`)}
           ${detailTile("Issues", String(score.contract_issue_count || 0))}
           ${detailTile("Run id", missionState.run_id)}
         </div>
       </div>
       <div class="story-card">
         <p class="eyebrow">Branch labels</p>
-        <div class="chip-row">${(missionState.mission?.branch_labels || []).map((item) => chip(item)).join("")}</div>
+        <div class="chip-row">${(missionState.mission?.branch_labels || []).map((item) => chip(displayBranchTitle(item))).join("")}</div>
       </div>
     </div>
   `;
@@ -1039,8 +1039,8 @@ function renderImportSummary() {
       (scenario) => `
         <div class="run-item">
           <div class="chip-row">
-            ${chip(scenario.workflow_name)}
-            ${chip(scenario.workflow_variant || "default")}
+            ${chip(displayWorkflowTitle(scenario.workflow_name, "Workflow"))}
+            ${chip(displayWorkflowTitle(scenario.workflow_variant || "default", "Default"))}
             ${scenario.metadata?.priority ? chip(`priority:${scenario.metadata.priority}`, statusClass(scenario.metadata.priority === "high" ? "ok" : "")) : ""}
           </div>
           <h3>${escapeHtml(scenario.title)}</h3>
@@ -1260,8 +1260,8 @@ function renderScenarioBriefing() {
       <h3>${escapeHtml(activeScenarioVariant?.title || scenario.title || "Current situation")}</h3>
       <p class="metric-detail">${escapeHtml(activeScenarioVariant?.description || scenario.description || state.story?.situation_briefing || "")}</p>
       <div class="chip-row">
-        ${chip(activeScenarioVariant?.name || preview.active_scenario_variant || "default")}
-        ${chip(compiled.workflow_name || contract.workflow_name || "workflow")}
+        ${chip(displayScenarioVariantTitle(activeScenarioVariant?.name || preview.active_scenario_variant, "Current situation"))}
+        ${chip(displayWorkflowTitle(compiled.workflow_name || contract.workflow_name || "workflow", "Workflow"))}
         ${chip(String((compiled.facades || []).length) + " surfaces")}
       </div>
     </div>
@@ -1280,7 +1280,7 @@ function renderScenarioBriefing() {
       whatIfBranches.length
         ? `<div class="story-card">
             <p class="eyebrow">What-if paths</p>
-            <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
+            <div class="chip-row">${whatIfBranches.map((item) => chip(displayBranchTitle(item))).join("")}</div>
             <p class="metric-detail">Each path begins from the same company and pressure, then diverges from there.</p>
           </div>`
         : ""
@@ -1303,15 +1303,16 @@ function renderRuns() {
     card.className = `run-item ${state.activeRunId === run.run_id ? "active" : ""}`;
     card.innerHTML = `
       <div class="chip-row">
-        ${chip(run.runner)}
-        ${chip(run.status, statusClass(run.status))}
-        ${run.success === null ? "" : chip(`success=${run.success}`, statusClass(run.success))}
+        ${chip(displayRunnerTitle(run.runner))}
+        ${chip(displayStatusTitle(run.status), statusClass(run.status))}
+        ${run.success === null ? "" : chip(run.success ? "Succeeded" : "Needs work", statusClass(run.success))}
       </div>
-      <h3>${escapeHtml(run.run_id)}</h3>
-      <p class="metric-detail">${escapeHtml(run.scenario_name)} · ${escapeHtml(run.workflow_variant || run.workflow_name || "no workflow")}</p>
+      <h3>${escapeHtml(displayScenarioVariantTitle(run.scenario_name, run.scenario_name || "Run"))}</h3>
+      <p class="metric-detail">${escapeHtml(displayWorkflowTitle(run.workflow_variant || run.workflow_name || "no workflow", "Workflow"))} · ${escapeHtml(displayRunnerTitle(run.runner))}</p>
       <div class="detail-grid">
         ${detailTile("Steps", compactNumber(run.diagnostics?.workflow_step_count || run.metrics?.actions || 0))}
-        ${detailTile("Contract", run.contract?.ok === null ? "pending" : run.contract?.ok ? "pass" : "fail")}
+        ${detailTile("Contract", displayContractHealth(run.contract?.ok))}
+        ${detailTile("Run id", run.run_id)}
       </div>
     `;
     const button = document.createElement("button");
@@ -1407,4 +1408,3 @@ function renderObjectiveBriefing(contractVariants = [], activeContractVariant = 
     });
   });
 }
-

@@ -193,6 +193,8 @@ body {
   font-size: clamp(1.9rem, 3vw, 3rem);
   letter-spacing: -0.05em;
   line-height: 0.94;
+  overflow-wrap: break-word;
+  word-break: break-word;
   color: #fff;
 }
 
@@ -268,6 +270,14 @@ body {
 .toolbar-menu-actions-panel {
   display: grid;
   gap: 8px;
+}
+
+.toolbar-menu-group {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(244, 248, 251, 0.54);
 }
 
 .toolbar-menu-actions-panel .ghost-button {
@@ -3966,6 +3976,8 @@ body.timeline-mode .timeline-toggle {
   font-size: clamp(2.3rem, 4vw, 4.2rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
+  overflow-wrap: break-word;
+  word-break: break-word;
   color: var(--ink);
 }
 
@@ -4115,6 +4127,30 @@ body.timeline-mode .timeline-toggle {
 
 .pilot-note-card {
   box-shadow: 0 12px 28px rgba(17, 34, 53, 0.04);
+}
+
+.pilot-connection-details {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.48);
+  border: 1px solid rgba(17, 34, 53, 0.08);
+}
+
+.pilot-connection-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pilot-connection-details[open] summary {
+  margin-bottom: 14px;
+}
+
+.pilot-connection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
 
 .pilot-bullets {

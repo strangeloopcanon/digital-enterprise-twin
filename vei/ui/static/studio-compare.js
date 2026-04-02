@@ -14,7 +14,7 @@ async function onCompareDiffClick() {
     container.innerHTML = `<p class="metric-detail">Select two runs to diff.</p>`;
     return;
   }
-  container.innerHTML = `<p class="metric-detail">Loading diff...</p>`;
+  container.innerHTML = `<p class="metric-detail">Loading snapshot differences...</p>`;
   try {
     const [snapsA, snapsB] = await Promise.all([ensureRunSnapshots(runA), ensureRunSnapshots(runB)]);
     const snapA = state.compareSnapshotA ?? (snapsA.length ? snapsA[snapsA.length - 1].snapshot_id : null);
@@ -35,10 +35,10 @@ function _humanizeKey(key) {
     .replaceAll("components.", "")
     .replaceAll("audit_state.state.", "")
     .split(".")
-    .map((part) => part.replaceAll("_", " "));
+    .map((part) => humanize(part));
   const last = parts[parts.length - 1];
   const context = parts.length > 1 ? parts.slice(0, -1).join(" > ") : "";
-  const readable = last.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+  const readable = humanize(last);
   return { readable, context };
 }
 
@@ -64,9 +64,9 @@ function renderCrossRunDiff(container, diff, runA, runB) {
   const changedCount = Object.keys(diff.changed || {}).length;
   const addedCount = Object.keys(diff.added || {}).length;
   const removedCount = Object.keys(diff.removed || {}).length;
-  const nameA = runA.runner || runA.run_id?.split("_").slice(0, 2).join("_") || "A";
-  const nameB = runB.runner || runB.run_id?.split("_").slice(0, 2).join("_") || "B";
-  let html = `<div class="compare-diff-header"><strong>World State Diff</strong> <span class="metric-detail">${escapeHtml(nameA)} vs ${escapeHtml(nameB)}</span></div>`;
+  const nameA = displayRunnerTitle(runA.runner || runA.run_id?.split("_").slice(0, 2).join("_"), "Path A");
+  const nameB = displayRunnerTitle(runB.runner || runB.run_id?.split("_").slice(0, 2).join("_"), "Path B");
+  let html = `<div class="compare-diff-header"><strong>What changed between snapshots</strong> <span class="metric-detail">${escapeHtml(nameA)} vs ${escapeHtml(nameB)}</span></div>`;
   html += `<div class="detail-grid">`;
   html += detailTile("Changed", String(changedCount));
   html += detailTile("Added", String(addedCount));
@@ -87,13 +87,15 @@ function renderCrossRunDiff(container, diff, runA, runB) {
     }
     const groups = _groupDiffEntries(allEntries);
     const groupKeys = Object.keys(groups).sort();
+    html += `<p class="metric-detail">${changedCount} changed, ${addedCount} added, and ${removedCount} removed across ${groupKeys.length} system${groupKeys.length === 1 ? "" : "s"}.</p>`;
     html += `<div class="diff-groups">`;
     for (const groupKey of groupKeys) {
       const items = groups[groupKey];
       const groupLabel = groupKey
         .replaceAll("components.", "")
-        .replace(/_/g, " ")
-        .replace(/\./g, " > ");
+        .split(".")
+        .map((part) => humanize(part))
+        .join(" > ");
       html += `<div class="diff-group">`;
       html += `<div class="diff-group-label">${escapeHtml(groupLabel)}</div>`;
       for (const item of items.slice(0, 40)) {
@@ -124,8 +126,8 @@ function renderCompareTimelines() {
   const a = state.compareRunA;
   const b = state.compareRunB;
   if (!a || !b) return `<div class="tl-compare-empty">Need at least 2 recorded paths to compare.</div>`;
-  const nameA = a.runner || a.run_id?.split("_").slice(0, 2).join("_") || "Path A";
-  const nameB = b.runner || b.run_id?.split("_").slice(0, 2).join("_") || "Path B";
+  const nameA = displayRunnerTitle(a.runner || a.run_id?.split("_").slice(0, 2).join("_"), "Path A");
+  const nameB = displayRunnerTitle(b.runner || b.run_id?.split("_").slice(0, 2).join("_"), "Path B");
   const hitsA = timelineSurfaceHits(state.compareTimelineA);
   const hitsB = timelineSurfaceHits(state.compareTimelineB);
   const allSurfaces = [...new Set([...Object.keys(hitsA), ...Object.keys(hitsB)])];
@@ -145,20 +147,20 @@ function renderCompareTimelines() {
   let html = `<div class="compare-narrative">`;
 
   if (branchLabels.length >= 2 || (cA && cB)) {
-    html += `<div class="compare-narrative-header"><h3>Path Comparison</h3></div>`;
+    html += `<div class="compare-narrative-header"><h3>How these paths differ</h3></div>`;
 
     if (branchLabels.length >= 2) {
       html += `<div class="compare-branches">`;
-      html += `<div class="compare-branch compare-branch-a"><span class="compare-branch-dot dot-a"></span><span>${escapeHtml(branchLabels[0])}</span></div>`;
-      html += `<div class="compare-branch compare-branch-b"><span class="compare-branch-dot dot-b"></span><span>${escapeHtml(branchLabels[1])}</span></div>`;
+      html += `<div class="compare-branch compare-branch-a"><span class="compare-branch-dot dot-a"></span><span>${escapeHtml(displayBranchTitle(branchLabels[0]))}</span></div>`;
+      html += `<div class="compare-branch compare-branch-b"><span class="compare-branch-dot dot-b"></span><span>${escapeHtml(displayBranchTitle(branchLabels[1]))}</span></div>`;
       html += `</div>`;
     }
 
     if ((mA && mB) || (cA && cB)) {
       const scorecardA = mA?.scorecard || null;
       const scorecardB = mB?.scorecard || null;
-      const objectiveA = mA?.objective_variant || "";
-      const objectiveB = mB?.objective_variant || "";
+      const objectiveA = displayContractVariantTitle(mA?.objective_variant || "", "");
+      const objectiveB = displayContractVariantTitle(mB?.objective_variant || "", "");
       const overallScoreA = scorecardA?.overall_score;
       const overallScoreB = scorecardB?.overall_score;
       const assertionsA = cA ? `${cA.success_predicates_passed || 0}/${cA.success_predicate_count || 0}` : "—";
@@ -170,11 +172,11 @@ function renderCompareTimelines() {
         : (cA?.success_predicates_passed || 0) - (cB?.success_predicates_passed || 0);
       const deltaLabel = (typeof overallScoreA === "number" && typeof overallScoreB === "number")
         ? `${delta > 0 ? "+" : ""}${delta} score`
-        : `${delta > 0 ? "+" : ""}${delta} assertions`;
+        : `${delta > 0 ? "+" : ""}${delta} success checks`;
       const scoreLabelA = typeof overallScoreA === "number" ? String(overallScoreA) : assertionsA;
       const scoreLabelB = typeof overallScoreB === "number" ? String(overallScoreB) : assertionsB;
-      const scoreCaptionA = typeof overallScoreA === "number" ? "overall score" : "assertions";
-      const scoreCaptionB = typeof overallScoreB === "number" ? "overall score" : "assertions";
+      const scoreCaptionA = typeof overallScoreA === "number" ? "overall score" : "success checks";
+      const scoreCaptionB = typeof overallScoreB === "number" ? "overall score" : "success checks";
 
       html += `<div class="compare-scores">`;
       html += `<div class="compare-score-cell ${okA ? "compare-pass" : "compare-fail"}">
@@ -182,8 +184,8 @@ function renderCompareTimelines() {
         <span class="compare-score-value">${escapeHtml(scoreLabelA)}</span>
         <span class="compare-score-caption">${escapeHtml(scoreCaptionA)}</span>
         ${objectiveA ? `<span class="compare-score-objective">${escapeHtml(objectiveA)}</span>` : ""}
-        ${cA ? `<span class="compare-score-assertions">${escapeHtml(assertionsA)} assertions</span>` : ""}
-        <span class="compare-score-verdict">${okA ? "contract passed" : "contract failed"}</span>
+        ${cA ? `<span class="compare-score-assertions">${escapeHtml(assertionsA)} success checks</span>` : ""}
+        <span class="compare-score-verdict">${okA ? "On target" : "Needs more work"}</span>
       </div>`;
       html += `<div class="compare-score-delta ${delta > 0 ? "delta-pos" : delta < 0 ? "delta-neg" : ""}">
         ${escapeHtml(deltaLabel)}
@@ -193,8 +195,8 @@ function renderCompareTimelines() {
         <span class="compare-score-value">${escapeHtml(scoreLabelB)}</span>
         <span class="compare-score-caption">${escapeHtml(scoreCaptionB)}</span>
         ${objectiveB ? `<span class="compare-score-objective">${escapeHtml(objectiveB)}</span>` : ""}
-        ${cB ? `<span class="compare-score-assertions">${escapeHtml(assertionsB)} assertions</span>` : ""}
-        <span class="compare-score-verdict">${okB ? "contract passed" : "contract failed"}</span>
+        ${cB ? `<span class="compare-score-assertions">${escapeHtml(assertionsB)} success checks</span>` : ""}
+        <span class="compare-score-verdict">${okB ? "On target" : "Needs more work"}</span>
       </div>`;
       html += `</div>`;
 
@@ -207,20 +209,20 @@ function renderCompareTimelines() {
 
       if (onlyFailedInA.length || onlyFailedInB.length) {
         html += `<div class="compare-divergence">`;
-        html += `<p class="eyebrow">Key divergence</p>`;
+        html += `<p class="eyebrow">Where they separate</p>`;
         if (onlyFailedInA.length) {
-          html += `<div class="compare-div-group"><span class="compare-div-label">${escapeHtml(nameA)} missed:</span>`;
+          html += `<div class="compare-div-group"><span class="compare-div-label">${escapeHtml(nameA)} still needs:</span>`;
           html += onlyFailedInA.map((n) => {
             const issue = issuesA.find((i) => i.predicate_name === n);
-            return `<span class="compare-div-item">${escapeHtml(issue?.message || n)}</span>`;
+            return `<span class="compare-div-item">${escapeHtml(issue?.message || humanize(n))}</span>`;
           }).join("");
           html += `</div>`;
         }
         if (onlyFailedInB.length) {
-          html += `<div class="compare-div-group"><span class="compare-div-label">${escapeHtml(nameB)} missed:</span>`;
+          html += `<div class="compare-div-group"><span class="compare-div-label">${escapeHtml(nameB)} still needs:</span>`;
           html += onlyFailedInB.map((n) => {
             const issue = issuesB.find((i) => i.predicate_name === n);
-            return `<span class="compare-div-item">${escapeHtml(issue?.message || n)}</span>`;
+            return `<span class="compare-div-item">${escapeHtml(issue?.message || humanize(n))}</span>`;
           }).join("");
           html += `</div>`;
         }
@@ -232,8 +234,8 @@ function renderCompareTimelines() {
 
   const allRuns = state.runs || [];
   const runOptions = allRuns.map((r) => {
-    const label = r.runner || r.run_id?.split("_").slice(0, 2).join("_") || r.run_id;
-    const status = r.status ? ` [${r.status}]` : "";
+    const label = displayRunnerTitle(r.runner || r.run_id?.split("_").slice(0, 2).join("_"), r.run_id);
+    const status = r.status ? ` [${displayStatusTitle(r.status)}]` : "";
     return `<option value="${escapeHtml(r.run_id)}">${escapeHtml(label)}${escapeHtml(status)}</option>`;
   }).join("");
   const snapshotOptionsA = (a.snapshots || []).map((snapshot) =>
@@ -247,7 +249,7 @@ function renderCompareTimelines() {
   html += `<div class="compare-picker-stack"><select id="compare-picker-a" class="compare-run-picker">${runOptions}</select><select id="compare-snapshot-a" class="compare-run-picker compare-snapshot-picker">${snapshotOptionsA}</select></div>`;
   html += `<span class="tl-compare-vs">vs</span>`;
   html += `<div class="compare-picker-stack"><select id="compare-picker-b" class="compare-run-picker">${runOptions}</select><select id="compare-snapshot-b" class="compare-run-picker compare-snapshot-picker">${snapshotOptionsB}</select></div>`;
-  html += `<button id="compare-diff-btn" class="compare-diff-btn">Diff world state</button>`;
+  html += `<button id="compare-diff-btn" class="compare-diff-btn">Compare snapshots</button>`;
   html += `</div>`;
   html += `<div id="compare-diff-result" class="compare-diff-result"></div>`;
   html += `<div class="tl-compare-grid">`;
@@ -268,4 +270,3 @@ function renderCompareTimelines() {
   html += `</div></div>`;
   return html;
 }
-
