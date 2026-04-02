@@ -421,15 +421,23 @@ The import UI now shows:
 ## Architecture
 
 ```text
-Agent ──MCP──► VEI Router
-                  └─ transport + tool dispatch
-                            │
-                            ▼
-                      WorldSession Kernel
+Agent ──MCP──► VEI Router                       External Agent ──HTTP──► Twin Gateway (:3012)
+                  └─ transport + tool dispatch                              ├─ Slack / Jira / Graph / SFDC compat routes
+                            │                                               ├─ mirror agent registry
+                            ▼                                               ├─ surface-access enforcement
+                      WorldSession Kernel ◄─────────────────────────────────┘
                   ├─ unified world state
                   ├─ snapshots / branch / replay / inject
                   ├─ actor state + receipts
-                  └─ enterprise twins and control planes
+                  ├─ enterprise twins (15+ surfaces)
+                  └─ mirror runtime (agent fleet, denial tracking, event feed)
+                            │
+                            ▼
+                      Studio UI (:3011)
+                  ├─ Living Company View + mode indicator
+                  ├─ Control Plane panel (agents + activity log)
+                  ├─ Mission play + sandbox forking
+                  └─ Path comparison + world-state diff
 ```
 
 ## Next Phase
@@ -508,9 +516,13 @@ VEI_LLM_LIVE_BYPASS=1 make llm-live
 ## Supported CLI Surface
 
 - Start here
+  - `vei quickstart run` — one-command demo with Studio + Twin Gateway
   - `vei project|contract|scenario|run|inspect|showcase|ui`
   - `vei ui serve`
   - `vei studio play` (mission-driven playable mode)
+- Twin and mirror
+  - `vei twin build|serve|status` — build and serve customer-shaped twins
+  - `vei pilot up|status|down|reset|finalize` — operator sidecar for agent exercises
 - Context and synthesis
   - `vei context capture|hydrate|diff`
   - `vei synthesize runbook|training-set|agent-config`
@@ -813,8 +825,8 @@ This creates a workspace from a built-in vertical, starts both the Studio UI
 immediately see events flowing, and prints connection details including mock
 API URLs and an auth token. Press Ctrl-C to stop.
 
-Options: `--world digital_marketing_agency`, `--studio-port`, `--gateway-port`,
-`--seed`, `--no-baseline`.
+Options: `--world service_ops`, `--mirror-demo`, `--connector-mode live`,
+`--studio-port`, `--gateway-port`, `--seed`, `--no-baseline`.
 
 ## Test Your Agent Against VEI
 
@@ -847,6 +859,7 @@ For MCP-native agents, connect directly:
 - `examples/sdk_playground_min.py`
 - `examples/mcp_client_stdio_min.py`
 - `examples/rl_train.py`
+- `examples/pilot_client.py`
 
 ## Docs
 

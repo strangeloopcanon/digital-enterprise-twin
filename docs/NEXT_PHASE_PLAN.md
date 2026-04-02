@@ -14,11 +14,24 @@ VEI is now a real semantic environment builder:
 
 That is a real product shape.
 
+### What has shipped since this plan was written
+
+Several of the capabilities described below as future work are now implemented:
+
+- **Mirror / Control plane** — `vei.mirror` package with `MirrorRuntime`, per-agent `MirrorAgentSpec` (denied_count, last_action, allowed_surfaces), bounded recent-event feed, and `MirrorRuntimeSnapshot`. The twin gateway (`vei.twin.gateway`) enforces surface-access checks and records `mirror_denied` events in the run timeline.
+- **Studio control plane UI** — mode indicator banner, two-column Control Plane panel (agent cards + activity log with denial badges), always visible in mirror mode.
+- **Sandbox / What-if** — `diff_cross_run_snapshots()` in `vei.run.api` for cross-run world-state comparison. Fork from any snapshot via `branch_workspace_mission_run(..., snapshot_id=...)` in `vei.playable.api`. Studio exposes Compare Paths, run pickers, fork-from-here buttons, and grouped world-state diff.
+- **Canonical run spine** — `vei.run` is now the canonical execution spine with append-only event streams, unified manifests across runner types, and the UI reading from the same event source for live and post-run playback. (Workstream 1 is largely satisfied.)
+
+The remaining work below is still relevant, especially around import resilience, policy/contract compilation, and scenario generation from partial environments.
+
+---
+
 The next moat is not "more facades." It is making VEI excellent at turning messy enterprise inputs into runnable, inspectable, contract-graded worlds, while tightening the runtime so there is one canonical execution and event spine beneath everything.
 
 The next phase should therefore focus on two linked outcomes:
 
-1. make `vei.run` and the event model the one true execution spine
+1. make `vei.run` and the event model the one true execution spine *(largely done)*
 2. make grounded import and graph-native world compilation strong enough for messy real-company data
 
 This is the shortest path from "good internal platform" to "serious product for enterprise agent testing, training, and red-teaming."
@@ -140,7 +153,7 @@ This wedge still gives the strongest combination of:
 
 ## Workstreams
 
-## Workstream 1: Canonical Run Spine
+## Workstream 1: Canonical Run Spine *(largely shipped)*
 
 ### Objective
 
@@ -182,6 +195,8 @@ Right now, runs are good enough for product use, but the internal execution stor
 - One event timeline format across runner types.
 - UI live playback and post-run playback render from the same event stream.
 - Replay and branch metadata are visible in the same event sequence instead of as disconnected artifacts.
+
+**Status:** The run spine, event stream, manifest format, and UI playback are now unified. The `mirror_denied` event kind was added for the mirror control plane. Cross-run snapshot diffing and fork-from-snapshot branching work through the same event spine.
 
 ## Workstream 2: Capability Graph Authority
 

@@ -78,15 +78,25 @@ Today mirror mode ships in two maturity levels:
 
 That last point matters: VEI is authoritative for actions it directly proxies or ingests. Everything else is refreshed by capture or re-sync, not by claiming real-time convergence yet.
 
+#### Mirror runtime internals
+
+The `vei.mirror` package provides the runtime that makes mirror mode work:
+
+- **`MirrorRuntime`** — manages the agent registry, event ingest, demo autoplay, and snapshot generation. Each registered agent is a `MirrorAgentSpec` with typed fields for role, team, allowed surfaces, policy profile, status, `last_action`, and `denied_count`.
+- **Surface-access enforcement** — when an agent attempts to act on a surface not in its `allowed_surfaces` list, the twin gateway blocks the action, records a `mirror_denied` event in the run timeline, increments the agent's denial count, and returns a denied result. The `record_only` path intentionally bypasses enforcement so passive observation agents can report without policy gating.
+- **Bounded recent-event feed** — the runtime maintains a small ring buffer of recent mirror events (`MirrorRecentEvent`), each recording the agent, tool, handling mode (dispatch / inject / denied / record_only), and timestamp. This feeds the Studio control plane panel without rescanning full history.
+- **`MirrorRuntimeSnapshot`** — a typed snapshot of the mirror fleet state including all agents, their denial counts, last actions, config, and the recent event feed.
+
 ## The UI
 
-A single-page Studio interface with three views:
+A single-page Studio interface with three main views:
 
-- **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted.
-- **Timeline view** — A swim-lane causality grid showing how events propagate through enterprise surfaces (Slack, Email, Tickets, Docs, Approvals, Business Core) over time. Each column is a move/turn, each row is a surface. Click any event node for detailed payload inspection. Move column headers highlight to isolate causal chains. Compare mode stacks two run timelines for side-by-side analysis.
+- **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted. When mirror mode is active, a **mode indicator banner** appears ("Mirror Mode — agents governed by control plane") and the **Control Plane panel** shows registered agents in a two-column layout: agent cards (name, role, surfaces, status, last action, denial badge) on the left and a live activity log on the right.
+- **Crisis view** — Structured analysis of what went wrong and why it matters, with crisis description, impact assessment, and failure consequences.
+- **Outcome view** — Contract evaluation (pass/fail, assertions, policy failures), decision audit trail, and a **Compare Paths** button that opens side-by-side path comparison with assertion-level divergence. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **"Diff world state"** button compares two runs and displays changes grouped by domain with humanized keys.
 - **Connect panel** — Shows which live data sources are configured with status indicators and one-click capture.
 
-A developer mode toggle exposes run forms, raw JSON, orientation data, capability graphs, snapshots, and timeline events.
+Run pickers for path comparison are always visible. Fork-from-here and snapshot inspection are accessible to all users, not gated behind a developer toggle.
 
 ### Pilot Console
 

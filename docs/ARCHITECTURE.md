@@ -27,6 +27,15 @@ VEI is a deterministic, MCP-native enterprise simulator built around one stable 
 - `Snapshot`
   - branchable world-state checkpoint over the kernel
 
+## One Kernel, Four Modes
+
+VEI is one kernel with four operating modes sharing the same world session, connector layer, event spine, replay model, and contract scoring:
+
+- **Test / Eval** — run a fixed company world, score an agent, compare scripted vs LLM vs workflow runners
+- **Mirror / Control** — place VEI between agents and enterprise systems; govern, record, and replay what happened
+- **Sandbox / What-if** — fork the same world, change policy or actions, compare alternate futures with world-state diffs
+- **Train / Data** — turn traces and trajectories into rollouts, demonstrations, and RL-friendly data
+
 ## Runtime Shape
 
 ```text
@@ -35,20 +44,25 @@ Workspace / CLI / UI / SDK / Agent
                 ▼
          Project + Run surfaces
                 │
-                ▼
-         Router transport layer
-                │
+        ┌───────┴───────┐
+        ▼               ▼
+  Router (MCP)    Twin Gateway (HTTP)
+                  ├─ provider-shaped compat routes
+                  ├─ mirror agent registry
+                  └─ surface-access enforcement
+        │               │
+        └───────┬───────┘
                 ▼
           WorldSession kernel
           ├─ world state
           ├─ event queue
-          ├─ actor state
-          ├─ receipts
+          ├─ actor state + receipts
           ├─ snapshots / branch / restore
-          └─ replay / injection
+          ├─ replay / injection
+          └─ mirror runtime (agent fleet, denial tracking, event feed)
 ```
 
-The router is a transport and tool-dispatch adapter. Mutable enterprise state belongs to the kernel, not to transport wrappers.
+The router is a transport and tool-dispatch adapter. The twin gateway is an HTTP adapter that exposes provider-shaped compatibility routes and manages mirror agents. Mutable enterprise state belongs to the kernel, not to transport wrappers.
 
 ## Product Workflow Layer
 
@@ -63,8 +77,11 @@ VEI now has a product-shaped layer above the kernel:
   - local FastAPI + SSE playback/debug app over workspace and run APIs
   - control-room style playback surface for launch, timeline, contract, graph, and snapshot inspection
   - Living Company View that turns the latest run snapshot into a normalized software wall for chat, mail, work tracking, documents, approvals, and the vertical heartbeat
+  - Mirror mode indicator banner and Control Plane panel (agent cards + activity log with denial badges)
+  - Sandbox features: fork-from-here on snapshots, Compare Paths button, cross-run world-state diff grouped by domain, always-visible run pickers
 - `vei.playable`
   - mission catalog, move model, scorecards, branch helpers, export previews, and playable release bundles
+  - fork from any snapshot with move-history rewind via optional `snapshot_id` parameter
 - `vei.fidelity`
   - twin-fidelity validation harness for the surfaces that make playable worlds credible
 - `vei.visualization`
@@ -91,6 +108,42 @@ Imported identity workspaces now add an earlier preparation ladder:
 9. inspect diagnostics, event playback, and provenance in the same workspace/UI flow
 
 For the canonical product demo, `vei project identity-demo` wraps that ladder into one opinionated identity/access-governance flow and optionally launches the baseline plus scripted comparison runs for the active generated scenario.
+
+## Mirror / Control Plane Layer
+
+- `vei.mirror`
+  - `MirrorRuntime` — agent registry, event ingest, demo autoplay, snapshot generation
+  - `MirrorAgentSpec` — typed model for registered agents with role, team, allowed surfaces, policy profile, status, `last_action`, and `denied_count`
+  - `MirrorRecentEvent` — bounded ring buffer entries for the recent-event feed
+  - `MirrorRuntimeSnapshot` — typed fleet snapshot including agents, denial counts, config, and recent events
+- `vei.twin`
+  - `CustomerTwinBundle` — builds a customer-shaped twin from a context snapshot and vertical archetype
+  - `TwinRuntime` (in `gateway.py`) — FastAPI application exposing provider-shaped compatibility routes (Slack, Jira, Graph, SFDC) and mirror endpoints
+  - Surface-access enforcement: `_check_surface_access` blocks agents from unauthorized surfaces; denials are recorded as `mirror_denied` events in the run timeline
+- `vei.pilot`
+  - higher-level flow for local agent demos: starts twin gateway, Studio, and Pilot Console sidecar
+  - writes launch manifest, handoff guide, and runtime state
+
+## Sandbox / What-if Layer
+
+- `vei.run.api`
+  - `diff_cross_run_snapshots()` — compare world states between two snapshots from different runs, stripping branch-local metadata and returning added/removed/changed fields
+- `vei.playable.api`
+  - `branch_workspace_mission_run(..., snapshot_id=...)` — fork a playable mission from any historical snapshot, rewinding move history to that point
+- `vei.ui.api`
+  - `GET /api/runs/diff-cross` — HTTP endpoint for cross-run snapshot comparison
+  - `POST /api/missions/{run_id}/branch` with optional `snapshot_id` — fork from any snapshot via the UI
+
+## Context and Synthesis Layer
+
+- `vei.context`
+  - context capture from live enterprise APIs (Slack, Gmail, Teams, Jira, Google, Okta)
+  - `ContextSnapshot` — structured record of a company's current state
+- `vei.synthesis`
+  - extract runbooks, training data, and agent configs from completed world runs
+- `vei.connectors`
+  - adapter layer routing tool calls through simulated, replay, or live backends
+  - policy gates classifying operations as READ, WRITE_SAFE, or WRITE_RISKY
 
 ## Stable Python Surfaces
 
@@ -143,6 +196,8 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - launch runs from a workspace
   - canonical per-run manifest, append-only event stream, derived timeline helpers, and snapshot APIs
   - graph-native workflow execution now records requested graph intent, resolved underlying tool, and affected object refs in the same event spine
+  - cross-run snapshot diffing (`diff_cross_run_snapshots`) for comparing world states between any two runs
+  - `mirror_denied` event kind for surface-access enforcement denials
 - `vei.ui`
   - local playback/debug server for workspace runs
   - now also exposes VEI Studio mode, which presents the same kernel through Presentation, Company, Mission, Objective, Play, Results, and Exports
@@ -163,9 +218,13 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - agent-facing discoverability tools now include `vei.orientation`, `vei.capability_graphs`, `vei.graph_plan`, and `vei.graph_action`
 - `python -m vei.router.sse`
   - SSE MCP transport
+- Twin Gateway (FastAPI, default `:3012`)
+  - provider-shaped HTTP routes (Slack Web API, Jira REST v3, MS Graph, Salesforce REST)
+  - mirror agent registration, event ingest, surface-access enforcement
+  - launched by `vei quickstart run`, `vei twin serve`, or `vei pilot up`
 - `vei`
   - unified CLI — all subcommands are now under `vei <group> <command>`
-  - `project`, `quickstart`, `contract`, `scenario`, `scenarios`, `run`, `inspect`, `showcase`, `studio`, `export`, `ui`, `world`, `blueprint`, `bench`, `eval`, `llm-test`, `pack`, `pilot`, `rollout`, `train`, `score`, `smoke`, `demo`, `det`, `context`, `synthesize`, `release`, `report`, `visualize`
+  - `project`, `quickstart`, `contract`, `scenario`, `scenarios`, `run`, `inspect`, `showcase`, `studio`, `export`, `ui`, `world`, `blueprint`, `bench`, `eval`, `llm-test`, `pack`, `twin`, `pilot`, `rollout`, `train`, `score`, `smoke`, `demo`, `det`, `context`, `synthesize`, `release`, `report`, `visualize`
 
 ## Software Twins
 
