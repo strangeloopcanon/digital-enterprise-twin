@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from time import sleep
+from time import monotonic, sleep
 from threading import Event, Thread
 
 from fastapi.testclient import TestClient
@@ -21,6 +21,7 @@ def _register_proxy_agent(
     *,
     agent_id: str = "proxy-agent",
     allowed_surfaces: list[str] | None = None,
+    policy_profile_id: str | None = None,
 ) -> dict[str, str]:
     response = client.post(
         "/api/mirror/agents",
@@ -30,6 +31,7 @@ def _register_proxy_agent(
             "name": agent_id.replace("-", " ").title(),
             "mode": "proxy",
             "allowed_surfaces": allowed_surfaces or [],
+            "policy_profile_id": policy_profile_id,
         },
     )
     assert response.status_code == 201
@@ -206,12 +208,14 @@ def test_service_ops_twin_mirror_demo_exposes_agents_and_generates_activity(
         assert mirror_response.status_code == 200
         mirror_payload = mirror_response.json()
         assert mirror_payload["config"]["demo_mode"] is True
-        assert mirror_payload["pending_demo_steps"] >= 4
+        assert mirror_payload["pending_demo_steps"] >= 8
+        assert mirror_payload["connector_status"]
+        assert mirror_payload["policy_profiles"]
 
         agents_response = client.get("/api/mirror/agents", headers=auth_headers)
         assert agents_response.status_code == 200
         agent_ids = {item["agent_id"] for item in agents_response.json()["agents"]}
-        assert {"dispatch-bot", "billing-bot"} <= agent_ids
+        assert {"dispatch-bot", "billing-bot", "control-lead"} <= agent_ids
 
         tick_response = client.post("/api/mirror/demo/tick", headers=auth_headers)
         assert tick_response.status_code == 200
@@ -225,6 +229,248 @@ def test_service_ops_twin_mirror_demo_exposes_agents_and_generates_activity(
 
         runtime_payload = client.get("/api/twin").json()
         assert runtime_payload["runtime"]["request_count"] >= 1
+
+
+def test_mirror_policy_profiles_hold_or_deny_as_expected(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_policy_profiles"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        observer = client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "observer-bot",
+                "name": "Observer Bot",
+                "mode": "ingest",
+                "allowed_surfaces": ["slack"],
+                "policy_profile_id": "observer",
+            },
+        )
+        assert observer.status_code == 201
+
+        denied = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "observer-bot",
+                "external_tool": "slack.chat.postMessage",
+                "resolved_tool": "slack.send_message",
+                "focus_hint": "slack",
+                "args": {
+                    "channel": "#clearwater-dispatch",
+                    "text": "Observer should not be able to write.",
+                },
+            },
+        )
+        assert denied.status_code == 202
+        assert denied.json()["handled_by"] == "denied"
+        assert denied.json()["result"]["code"] == "mirror.profile_denied"
+
+        operator = client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "operator-bot",
+                "name": "Operator Bot",
+                "mode": "ingest",
+                "allowed_surfaces": ["service_ops"],
+                "policy_profile_id": "operator",
+            },
+        )
+        assert operator.status_code == 201
+
+        held = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "operator-bot",
+                "external_tool": "service_ops.update_policy",
+                "resolved_tool": "service_ops.update_policy",
+                "focus_hint": "service_ops",
+                "args": {
+                    "billing_hold_on_dispute": False,
+                    "approval_threshold_usd": 2500,
+                    "reason": "Need review before changing the policy.",
+                },
+            },
+        )
+        assert held.status_code == 202
+        assert held.json()["handled_by"] == "pending_approval"
+        assert held.json()["result"]["approval_required"] is True
+
+        mirror = client.get("/api/mirror", headers=auth_headers).json()
+        assert len(mirror["pending_approvals"]) == 1
+        operator_snapshot = next(
+            item for item in mirror["agents"] if item["agent_id"] == "operator-bot"
+        )
+        assert operator_snapshot["resolved_policy_profile"]["profile_id"] == "operator"
+
+
+def test_mirror_approval_resolution_executes_held_action(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_policy_approval"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "operator-bot",
+                "name": "Operator Bot",
+                "mode": "ingest",
+                "allowed_surfaces": ["service_ops"],
+                "policy_profile_id": "operator",
+            },
+        )
+        client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "control-lead",
+                "name": "Control Lead",
+                "mode": "ingest",
+                "allowed_surfaces": ["service_ops"],
+                "policy_profile_id": "approver",
+            },
+        )
+
+        held = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "operator-bot",
+                "external_tool": "service_ops.update_policy",
+                "resolved_tool": "service_ops.update_policy",
+                "focus_hint": "service_ops",
+                "args": {
+                    "billing_hold_on_dispute": False,
+                    "approval_threshold_usd": 2500,
+                    "reason": "Approval flow test.",
+                },
+            },
+        ).json()
+        approval_id = held["result"]["approval_id"]
+
+        approval = client.post(
+            f"/api/mirror/approvals/{approval_id}/approve",
+            headers=auth_headers,
+            json={"resolver_agent_id": "control-lead"},
+        )
+        assert approval.status_code == 200
+        assert approval.json()["status"] == "executed"
+
+        surfaces = client.get("/api/twin/surfaces").json()
+        vertical = next(
+            panel
+            for panel in surfaces["panels"]
+            if panel["surface"] == "vertical_heartbeat"
+        )
+        assert vertical["policy"]["billing_hold_on_dispute"] is False
+        assert vertical["policy"]["approval_threshold_usd"] == 2500.0
+
+
+def test_proxy_risky_action_returns_approval_required(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_proxy_approval"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        proxy_headers = _register_proxy_agent(
+            client,
+            auth_headers,
+            agent_id="jira-operator",
+            allowed_surfaces=["jira"],
+            policy_profile_id="operator",
+        )
+
+        response = client.post(
+            "/jira/rest/api/3/issue/ACME-101/transitions",
+            headers=proxy_headers,
+            json={"transition": {"id": "closed"}},
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "mirror.approval_required"
+
+
+def test_mirror_rate_limit_denial_tracks_throttled_count(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_rate_limit"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "rate-bot",
+                "name": "Rate Bot",
+                "mode": "ingest",
+                "allowed_surfaces": ["slack"],
+                "policy_profile_id": "admin",
+            },
+        )
+        mirror_runtime = client.app.state.runtime.mirror
+        assert mirror_runtime is not None
+        mirror_runtime._total_action_windows["rate-bot"] = [monotonic()] * 60
+
+        response = client.post(
+            "/api/mirror/events",
+            headers=auth_headers,
+            json={
+                "agent_id": "rate-bot",
+                "external_tool": "slack.chat.postMessage",
+                "resolved_tool": "slack.send_message",
+                "focus_hint": "slack",
+                "args": {
+                    "channel": "#clearwater-dispatch",
+                    "text": "This one should hit the rate limiter.",
+                },
+            },
+        )
+        assert response.status_code == 202
+        assert response.json()["result"]["code"] == "mirror.rate_limited"
+
+        mirror = client.get("/api/mirror", headers=auth_headers).json()
+        agent = next(
+            item for item in mirror["agents"] if item["agent_id"] == "rate-bot"
+        )
+        assert mirror["throttled_event_count"] == 1
+        assert agent["throttled_count"] == 1
 
 
 def test_proxy_requests_require_registered_agent_id(
@@ -593,7 +839,7 @@ def test_ingest_mode_agent_cannot_use_proxy_routes(
         )
 
         assert response.status_code == 200
-        assert response.json() == {"ok": False, "error": "mirror.agent_mode_denied"}
+        assert response.json() == {"ok": False, "error": "mirror.mode_denied"}
 
         mirror = client.get("/api/mirror", headers=auth_headers).json()
         ingest_only = next(
@@ -710,6 +956,50 @@ def test_mirror_registration_does_not_deadlock_with_dispatch(
     assert not dispatch_thread.is_alive()
     assert not register_thread.is_alive()
     assert errors == []
+
+
+def test_mirror_agent_removal_deletes_from_registry(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_removal"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(hero_world="service_ops"),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        client.post(
+            "/api/mirror/agents",
+            headers=auth_headers,
+            json={
+                "agent_id": "ephemeral-bot",
+                "name": "Ephemeral Bot",
+                "mode": "ingest",
+                "allowed_surfaces": ["slack"],
+            },
+        )
+        listed = client.get("/api/mirror/agents", headers=auth_headers).json()
+        ids_before = {a["agent_id"] for a in listed["agents"]}
+        assert "ephemeral-bot" in ids_before
+
+        delete_resp = client.delete(
+            "/api/mirror/agents/ephemeral-bot", headers=auth_headers
+        )
+        assert delete_resp.status_code == 200
+        assert delete_resp.json()["agent_id"] == "ephemeral-bot"
+
+        listed_after = client.get("/api/mirror/agents", headers=auth_headers).json()
+        ids_after = {a["agent_id"] for a in listed_after["agents"]}
+        assert "ephemeral-bot" not in ids_after
+
+        not_found = client.delete(
+            "/api/mirror/agents/ephemeral-bot", headers=auth_headers
+        )
+        assert not_found.status_code == 404
 
 
 def test_mirror_surface_access_enforcement_denies_unauthorized_surfaces(
@@ -833,7 +1123,7 @@ def test_registered_proxy_agent_cannot_bypass_surface_restrictions(
             headers=proxy_headers,
             json={"fields": {"summary": "This should be blocked."}},
         )
-        assert denied_response.status_code == 400
+        assert denied_response.status_code == 403
         assert denied_response.json()["detail"]["code"] == "mirror.surface_denied"
 
         mirror = client.get("/api/mirror", headers=auth_headers).json()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import http.client
 import json
 from pathlib import Path
 from threading import Thread
@@ -24,6 +25,8 @@ from vei.playable import (
     list_workspace_playable_missions,
     load_workspace_mission_state,
     load_workspace_playable_bundle,
+    get_service_ops_policy_bundle,
+    replay_service_ops_with_policy_delta,
     start_workspace_mission_run,
 )
 from vei.pilot import (
@@ -48,6 +51,7 @@ from vei.run.api import (
     load_run_manifest,
     normalize_runner,
 )
+from vei.twin import load_customer_twin
 from vei import __version__ as vei_version
 from vei.verticals import (
     load_workspace_exports_preview,
@@ -112,6 +116,24 @@ class MissionStartRequest(BaseModel):
 class MissionBranchRequest(BaseModel):
     branch_name: str | None = None
     snapshot_id: int | None = None
+
+
+class MirrorAgentUpdateRequest(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    team: str | None = None
+    mode: str | None = None
+    allowed_surfaces: list[str] | None = None
+    policy_profile_id: str | None = None
+    status: str | None = None
+
+
+class MirrorApprovalResolveRequest(BaseModel):
+    resolver_agent_id: str
+
+
+class ServiceOpsPolicyReplayRequest(BaseModel):
+    policy_delta: dict[str, Any]
 
 
 class ContextCaptureRequest(BaseModel):
@@ -194,6 +216,51 @@ def _load_workspace_mirror_payload(root: Path) -> dict[str, Any]:
     return completed_mirror if completed_mirror is not None else fallback
 
 
+def _gateway_json_request(
+    root: Path,
+    *,
+    path: str,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+) -> Any:
+    try:
+        bundle = load_customer_twin(root)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=404, detail="twin gateway is not configured"
+        ) from exc
+
+    body = None
+    headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    connection = http.client.HTTPConnection(
+        bundle.gateway.host,
+        bundle.gateway.port,
+        timeout=5,
+    )
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        raw = response.read().decode("utf-8")
+        if 200 <= response.status < 300:
+            return json.loads(raw) if raw else {}
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            parsed = raw or response.reason
+        raise HTTPException(status_code=response.status, detail=parsed)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="twin gateway is not reachable right now",
+        ) from exc
+    finally:
+        connection.close()
+
+
 def create_ui_app(workspace_root: str | Path) -> FastAPI:
     root = Path(workspace_root).expanduser().resolve()
     static_dir = Path(__file__).with_name("static")
@@ -220,6 +287,71 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
     @app.get("/api/workspace/mirror")
     def api_workspace_mirror() -> JSONResponse:
         return JSONResponse(_load_workspace_mirror_payload(root))
+
+    @app.post("/api/workspace/mirror/agents")
+    def api_workspace_mirror_register_agent(
+        request: MirrorAgentUpdateRequest,
+    ) -> JSONResponse:
+        payload = _gateway_json_request(
+            root,
+            path="/api/mirror/agents",
+            method="POST",
+            payload=request.model_dump(exclude_none=True),
+        )
+        return JSONResponse(payload, status_code=201)
+
+    @app.patch("/api/workspace/mirror/agents/{agent_id}")
+    def api_workspace_mirror_update_agent(
+        agent_id: str,
+        request: MirrorAgentUpdateRequest,
+    ) -> JSONResponse:
+        payload = _gateway_json_request(
+            root,
+            path=f"/api/mirror/agents/{agent_id}",
+            method="PATCH",
+            payload=request.model_dump(exclude_none=True),
+        )
+        return JSONResponse(payload)
+
+    @app.delete("/api/workspace/mirror/agents/{agent_id}")
+    def api_workspace_mirror_remove_agent(agent_id: str) -> JSONResponse:
+        payload = _gateway_json_request(
+            root,
+            path=f"/api/mirror/agents/{agent_id}",
+            method="DELETE",
+        )
+        return JSONResponse(payload)
+
+    @app.get("/api/workspace/mirror/approvals")
+    def api_workspace_mirror_approvals() -> JSONResponse:
+        payload = _gateway_json_request(root, path="/api/mirror/approvals")
+        return JSONResponse(payload)
+
+    @app.post("/api/workspace/mirror/approvals/{approval_id}/approve")
+    def api_workspace_mirror_approve(
+        approval_id: str,
+        request: MirrorApprovalResolveRequest,
+    ) -> JSONResponse:
+        payload = _gateway_json_request(
+            root,
+            path=f"/api/mirror/approvals/{approval_id}/approve",
+            method="POST",
+            payload=request.model_dump(),
+        )
+        return JSONResponse(payload)
+
+    @app.post("/api/workspace/mirror/approvals/{approval_id}/reject")
+    def api_workspace_mirror_reject(
+        approval_id: str,
+        request: MirrorApprovalResolveRequest,
+    ) -> JSONResponse:
+        payload = _gateway_json_request(
+            root,
+            path=f"/api/mirror/approvals/{approval_id}/reject",
+            method="POST",
+            payload=request.model_dump(),
+        )
+        return JSONResponse(payload)
 
     @app.get("/api/story")
     def api_story() -> JSONResponse:
@@ -379,6 +511,29 @@ def create_ui_app(workspace_root: str | Path) -> FastAPI:
                 snapshot_id=request.snapshot_id,
             )
         except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.get("/api/runs/{run_id}/policy-knobs")
+    def api_service_ops_policy_knobs(run_id: str) -> JSONResponse:
+        try:
+            payload = get_service_ops_policy_bundle(root, run_id=run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/runs/{run_id}/replay-with-policy")
+    def api_service_ops_policy_replay(
+        run_id: str,
+        request: ServiceOpsPolicyReplayRequest,
+    ) -> JSONResponse:
+        try:
+            payload = replay_service_ops_with_policy_delta(
+                root,
+                run_id=run_id,
+                policy_delta=request.policy_delta,
+            )
+        except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload.model_dump(mode="json"))
 

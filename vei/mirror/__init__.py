@@ -1,15 +1,21 @@
 from .api import (
     MirrorRuntime,
     default_mirror_workspace_config,
+    mirror_policy_profiles,
+    resolve_mirror_policy_profile,
     default_service_ops_demo_agents,
     default_service_ops_demo_steps,
     load_mirror_workspace_config,
     mirror_metadata_payload,
 )
 from .models import (
+    MirrorActionPlan,
     MirrorAgentSpec,
+    MirrorConnectorStatus,
     MirrorEventResult,
     MirrorIngestEvent,
+    MirrorPendingApproval,
+    MirrorPolicyProfile,
     MirrorRecentEvent,
     MirrorRuntimeSnapshot,
     MirrorWorkspaceConfig,
@@ -17,8 +23,12 @@ from .models import (
 
 __all__ = [
     "MirrorAgentSpec",
+    "MirrorActionPlan",
+    "MirrorConnectorStatus",
     "MirrorEventResult",
     "MirrorIngestEvent",
+    "MirrorPendingApproval",
+    "MirrorPolicyProfile",
     "MirrorRecentEvent",
     "MirrorRuntime",
     "MirrorRuntimeSnapshot",
@@ -28,4 +38,6 @@ __all__ = [
     "default_service_ops_demo_steps",
     "load_mirror_workspace_config",
     "mirror_metadata_payload",
+    "mirror_policy_profiles",
+    "resolve_mirror_policy_profile",
 ]

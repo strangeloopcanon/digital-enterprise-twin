@@ -900,8 +900,40 @@ def _flatten_json(prefix: str, value: Any, out: Dict[str, Any]) -> None:
 
 
 def _remove_cross_run_metadata(payload: Dict[str, Any]) -> None:
-    for key in ("branch", "audit_state.state.meta.branch"):
-        payload.pop(key, None)
+    for key in list(payload):
+        if key in {
+            "branch",
+            "clock_ms",
+            "rng_state",
+            "receipts",
+            "trace_entries",
+            "audit_state.state_head",
+            "audit_state.state.tool_calls",
+        }:
+            payload.pop(key, None)
+            continue
+        if key.endswith(".clock_ms"):
+            payload.pop(key, None)
+            continue
+        if key.startswith("audit_state.state.meta.") and key.endswith(
+            (
+                "branch",
+                "snapshot_id",
+                "trace_id",
+                "timeline_cursor",
+                "run_id",
+            )
+        ):
+            payload.pop(key, None)
+            continue
+        if key.startswith("actors.") and key.endswith((".cursor", ".mode")):
+            payload.pop(key, None)
+            continue
+        if key.startswith("connector_runtime."):
+            payload.pop(key, None)
+            continue
+        if key.startswith("components.mirror."):
+            payload.pop(key, None)
 
 
 def _contract_summary(

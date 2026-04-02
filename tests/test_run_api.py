@@ -248,3 +248,43 @@ def test_diff_cross_run_snapshots_ignores_run_local_branch_metadata(
     assert "branch" not in diff["changed"]
     assert "audit_state.state.meta.branch" not in diff["changed"]
     assert diff["changed"] == {}
+
+
+def test_remove_cross_run_metadata_strips_runtime_noise() -> None:
+    payload = {
+        "branch": "branch-a",
+        "clock_ms": 12345,
+        "components.tickets.clock_ms": 1700000200010,
+        "audit_state.state.meta.branch": "branch-a",
+        "audit_state.state.meta.snapshot_id": 9,
+        "audit_state.state.meta.trace_id": "trace-1",
+        "audit_state.state_head": 7,
+        "audit_state.state.tool_calls": [{"tool": "service_ops.update_policy"}],
+        "actors.dispatch.cursor": 3,
+        "actors.dispatch.mode": "scripted",
+        "connector_runtime.request_seq": 1,
+        "receipts": [{"tool": "service_ops.update_policy"}],
+        "trace_entries": [{"tool": "service_ops.update_policy"}],
+        "rng_state": 123456,
+        "components.mirror.recent_events.0.label": "held action",
+        "components.service_ops.policy.approval_threshold_usd": 1000.0,
+    }
+
+    run_api._remove_cross_run_metadata(payload)
+
+    assert "branch" not in payload
+    assert "clock_ms" not in payload
+    assert "components.tickets.clock_ms" not in payload
+    assert "audit_state.state.meta.branch" not in payload
+    assert "audit_state.state.meta.snapshot_id" not in payload
+    assert "audit_state.state.meta.trace_id" not in payload
+    assert "audit_state.state_head" not in payload
+    assert "audit_state.state.tool_calls" not in payload
+    assert "actors.dispatch.cursor" not in payload
+    assert "actors.dispatch.mode" not in payload
+    assert "connector_runtime.request_seq" not in payload
+    assert "receipts" not in payload
+    assert "trace_entries" not in payload
+    assert "rng_state" not in payload
+    assert "components.mirror.recent_events.0.label" not in payload
+    assert payload["components.service_ops.policy.approval_threshold_usd"] == 1000.0

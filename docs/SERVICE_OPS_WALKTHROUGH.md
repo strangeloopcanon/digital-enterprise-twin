@@ -1,263 +1,249 @@
-# VEI Service Operations Pack — Visual Walkthrough
+# VEI Service Operations Pack — Control Plane and What-If Walkthrough
 
-**Clearwater Field Services** — a simulated field service company where a VIP outage, technician no-show, and billing dispute all collide on the same service account before 9 AM.
+**Clearwater Field Services** is the strongest built-in demo for VEI's current product story: a VIP outage, technician no-show, and billing dispute all collide before 9 AM, while mirror-governed agents and a human operator respond through the same control surface.
 
-This walkthrough captures the live Studio UI running the `service_ops` vertical pack with mirror mode enabled: mode indicator, control plane panel, situation room, policy change ceremony, governance UX, weighted scoring, sandbox forking, path comparison, and world-state diffing.
+This walkthrough describes the current Studio experience for the `service_ops` pack with mirror mode enabled. It focuses on the two demo moments the product now supports well:
+
+1. **Control plane** — governed agent activity with visible denials, approval holds, connector status, and operator controls.
+2. **What-if replay** — change a small set of service-ops policy knobs, replay from the same starting point, and compare the new outcome side by side.
 
 ---
 
 ## 1. Entering the World
 
-The Studio opens with the company identity front and center. Three controls configure the simulation:
+The Studio opens on the **Living Company** view. The top of the screen still centers the company identity and mission controls:
 
 - **Company**: Clearwater Field Services
-- **Crisis**: Service Day Collision, Technician No-Show, or Billing Dispute Reopened
-- **Success means**: Protect SLA, Protect Revenue, or Protect Customer Trust
+- **Crisis**: one of the built-in service-ops crisis variants
+- **Success means**: an objective variant such as Protect SLA, Protect Revenue, or Protect Customer Trust
 
-Each objective weights assertions differently — Protect SLA values dispatch recovery 3x, Protect Revenue values billing holds 3x, and Protect Customer Trust values communication artifacts 3x. Same moves, different scores.
-
-When mirror mode is active, a **mode indicator** appears below the company context: a blue banner with a pulsing dot reading "Mirror Mode — agents governed by control plane." This tells the operator immediately that autonomous agents are flowing through VEI's governance layer.
+Below that header, mirror-enabled runs show a persistent **mode indicator** so the operator can immediately tell they are looking at governed agent traffic rather than an unguided simulation.
 
 ![Header, controls, and mirror mode indicator](assets/service_ops/01_header_and_controls.png)
 
 ---
 
-## 2. Situation Room Strip — Monday Morning at a Glance
+## 2. Situation Room Strip
 
-Below the company context, a **situation room strip** shows the operator the full picture in 3 seconds:
+The situation room remains the fastest summary of business state. It shows six cells:
 
-| Cell | Value | Detail |
-|------|-------|--------|
-| Systems | 6 | 1 critical |
-| Exceptions | 1 | high severity |
-| Policy | sound | no overrides |
-| Approvals | 3 | pending |
-| Deadline | stable | budget: 4 |
-| Risk | high | score: 60 |
+- **Systems** — how many major surfaces are in play and whether one is in trouble
+- **Exceptions** — active operational exceptions
+- **Policy** — whether the run is still on the default rules or has drifted
+- **Approvals** — pending approvals visible to the operator
+- **Deadline** — time or action-budget pressure
+- **Risk** — overall mission risk level
 
-Color-coded borders (green/amber/red) indicate which cells need attention. This strip updates after every move.
+This strip updates after both human moves and mirror-governed agent activity, so the operator sees operational state and governance state move together.
 
 ![Situation room strip](assets/service_ops/02_situation_room_strip.png)
 
 ---
 
-## 3. Control Plane — Mirror Mode in Action
+## 3. Control Plane — The Main Mirror Story
 
-Directly below the situation room, the **Control Plane** panel shows which autonomous agents are operating in this workspace. In mirror-demo mode, two agents are pre-seeded:
+The **Control Plane** panel is the main mirror-mode surface in the Company view.
 
-| Agent | Role | Surfaces | Status |
-|-------|------|----------|--------|
-| Dispatch Bot | dispatch orchestrator | slack, service_ops | active |
-| Billing Bot | billing coordinator | slack, service_ops, mail | active |
+In the built-in service-ops demo, three mirror agents are pre-registered:
 
-The panel uses a two-column layout:
+| Agent | Profile | Main surfaces | Role in demo |
+|---|---|---|---|
+| Dispatch Bot | `operator` | slack, service_ops | posts updates and reroutes work |
+| Billing Bot | `observer` | slack, service_ops | can read and surface context but cannot make risky changes |
+| Control Lead | `approver` | slack, service_ops, jira | resolves approval holds |
 
-- **Left column — Agent cards**: Each card shows the agent name, role, allowed surfaces, status, last action performed, and a denial badge if any actions were blocked by surface-access enforcement. Cards with denials are highlighted with a red-tinted border.
-- **Right column — Activity log**: A live feed of recent mirror events showing which agent acted, what they did, and how VEI handled it (dispatch, inject, denied). Denied events are called out with a "blocked" tag.
+The panel now does more than show raw activity:
 
-The header shows:
-- **Mode badge**: "demo" (blue) for staged demonstrations, "live" (green) for real agent traffic
-- **Denied count**: Total blocked actions (red pill) if any agent has been denied
-- **Event counter**: Total events processed by the mirror runtime
+- **Agent cards** show the agent name, role, current status, allowed surfaces, last action, blocked count, throttled count, and a clear policy badge.
+- **Connector strip** shows Slack, Jira, Graph, and Salesforce with readable status such as simulated interactive, live interactive, live read-only, or unsupported.
+- **Approval queue** shows held actions waiting on an approver.
+- **Activity log** shows allowed actions, blocked actions, held actions, and throttled actions in plain English.
+- **Inline operator controls** let the human add an agent, change profile, update allowed surfaces, and set status without leaving Studio.
 
-This is the control plane — the human operator sees their agent fleet, enforcement decisions, and activity log at all times alongside system health.
+This is the current control-plane moment: you can explain who is acting, what VEI allowed, what VEI blocked, and why.
 
 ![Control Plane panel with agent cards and activity log](assets/service_ops/03_mirror_fleet_panel.png)
 
 ---
 
-## 4. Live Operating State — Six Interconnected Systems
+## 4. The Governed Demo Beats
 
-The Company view shows the full surface wall with all enterprise work surfaces:
+The built-in mirror demo is no longer just ambient activity. It stages a clear governance story:
 
-- **Slack** (5 channels, 12+ messages) — CFO, COO, dispatch lead, technicians, billing ops
-- **Email** (4 threads, 3 unread) — Urgent rooftop unit failure, billing dispute, technician sick call
-- **Work Tracker** (5 active tickets) — VIP outage command, tech roster, backup dispatch, billing dispute
-- **Documents** (5 artifacts) — VIP Account Brief, Response Runbook, Field-To-Billing Handoff, Dispatch Board, Billing Notes
-- **Approvals** (4 routed requests) — VIP emergency dispatch, billing hold, customer comms, overtime
-- **Service Loop** (Business Core) — Work orders, appointments, billing cases, exceptions
+1. Dispatch Bot posts an allowed Slack update.
+2. Dispatch Bot performs an allowed dispatch reassignment.
+3. Billing Bot performs an allowed service-ops billing hold.
+4. Dispatch Bot posts a follow-up Slack update.
+5. Billing Bot attempts an action on an unallowed surface and is blocked.
+6. A risky `service_ops.update_policy` action is held for approval.
+7. Control Lead approves the held action from the control plane.
+8. A follow-up action proceeds after approval.
+9. A read on Jira/tickets shows broader surface visibility without pretending every surface is fully live-write capable.
 
-Mirror-initiated events appear as regular entries in these surfaces — when the Dispatch Bot posts to Slack or the Billing Bot holds a billing case, those actions show up here alongside human moves.
+These actions appear both in the Control Plane activity log and in the run timeline, so operators can see governance and business consequences in one place.
+
+---
+
+## 5. The Living Company View
+
+The rest of the Company view still shows the full business wall:
+
+- **Slack** for dispatch and leadership coordination
+- **Email** for customer and internal communication
+- **Work tracker** for tickets and operational tasks
+- **Documents** for runbooks and account context
+- **Approvals** for business-side requests
+- **Service loop** for the domain-specific service-ops state
+
+Mirror-governed actions show up here as normal business activity. That is the key product trick: the control plane is not a side dashboard disconnected from the company simulation. It governs actions that visibly change the company world.
 
 ![Full company view with all surfaces](assets/service_ops/04_living_company_full.png)
 
 ---
 
-## 5. Mission Control — Scoring and Moves
+## 6. Mission Play Still Matters
 
-The mission control panel tracks the current state:
+The mission controls still let a human play the scenario directly:
 
-| Metric | Value |
-|--------|-------|
-| Score | 60 |
-| Mission | in play |
-| Budget left | 4 |
-| Risk | high |
-| Deadline | stable |
-| Policy | sound |
+- move cards remain categorized by availability and risk
+- the score, budget, and objective progress update after each move
+- risky human moves still use the explicit policy-override ceremony
 
-Move cards are categorized by availability:
-- **Blocked/Used** — Already played on this branch
-- **Recommended** — Resolve the finance exception, Update the handoff document
-- **Available** — Write recovery note, Post ops summary
-- **Risky** — Raise the hold threshold (amber chip, governance-gated)
+That means the `service_ops` pack can still demo both halves of VEI:
+
+- **human-in-the-loop mission play**
+- **governed agent activity through mirror mode**
 
 ![Mission control and moves](assets/service_ops/05_mission_control_moves.png)
 
----
-
-## 6. Policy Change Ceremony
-
-Clicking "Take risky move" opens a **policy override modal** — the operator must acknowledge the change before it fires:
-
-- **"POLICY OVERRIDE"** amber badge
-- **Move title**: "Raise the hold threshold and leave billing live"
-- **Consequence preview**: "The dispatch path may still recover, but the account relationship gets much harder to protect."
-- **Policy diff table**:
-  - approval threshold usd: ~~1000~~ → **2500**
-  - billing hold on dispute: ~~true~~ → **false**
-  - reason: → "Forced risky policy change."
-- **Cancel / Confirm override** buttons
-
-This creates real friction — the operator explicitly acknowledges the policy change before it executes.
-
 ![Policy change ceremony modal](assets/service_ops/06_policy_change_modal.png)
 
----
-
-## 7. After Policy Override
-
-After confirming the override, the UI updates to reflect the new state. The risky move is now marked as "blocked / used." The budget decreases, and the policy change is recorded.
-
-The situation room strip, control plane panel, and surface wall all update in real time. The operator sees both their own actions and the agents' reactions in one unified view.
-
 ![After policy override](assets/service_ops/07_after_policy_override.png)
-
----
-
-## 8. Updated Mission Score
-
-After a move, the mission scorecard updates with the new score, remaining budget, and risk level. The assertions panel shows which objectives have been met and which remain.
 
 ![Updated mission score](assets/service_ops/08_updated_mission_score.png)
 
 ---
 
-## 9. Crisis Tab
+## 7. Crisis and Outcome Views
 
-The Crisis tab provides structured analysis of what went wrong and why it matters:
+The **Crisis** tab still explains the business problem and why it matters.
 
-- **Current Crisis**: Service Day Collision
-- **Why This Matters**: "This is the pressure point most likely to decide whether the company stabilizes or scrambles."
-- **Failure Impact**: Miss the SLA, aggravate the dispute, churn risk
+The **Outcome** tab is where the second major product moment now lives:
+
+- contract evaluation and assertion results
+- decision audit trail
+- snapshot cards with **Fork from here**
+- side-by-side **Compare Paths**
+- snapshot pickers for both comparison paths
+- cross-run world-state diff grouped by domain
+- **Try Different Policy** for replayable `service_ops` runs
 
 ![Crisis view](assets/service_ops/09_crisis_view.png)
-
----
-
-## 10. Outcome Tab — Contract Evaluation and Compare
-
-The Outcome tab evaluates the full run against the contract:
-
-- **Contract**: fail/pass based on assertions
-- **Assertions**: Checked against the selected objective variant
-- **Compare Paths** button: Opens side-by-side comparison of alternate paths
-- **Branch comparison**: Directly compare the human path against the scripted baseline
-
-The Outcome tab also shows the **Snapshots** card — no longer hidden behind a developer toggle. Every snapshot in the run is displayed with its label, timestamp, and a **"Fork from here"** button that lets the operator branch a new playable mission from any historical world state.
 
 ![Outcome view with Compare Paths and Fork buttons](assets/service_ops/10_outcome_view.png)
 
 ---
 
-## 11. Decision Audit Trail and Snapshots
+## 8. What-If Replay
 
-The decision log shows every action taken during the mission, including policy overrides flagged with amber banners. Next to it, the snapshots card displays every world-state checkpoint with fork-from-here buttons and a within-run diff showing changed, added, and removed state fields.
+For `service_ops`, the Outcome view now supports a focused replay flow rather than a generic “change anything” editor.
+
+Click **Try Different Policy** and Studio opens a compact form for exactly four supported policy knobs taken from the run's initial snapshot:
+
+- `approval_threshold_usd`
+- `vip_priority_override`
+- `billing_hold_on_dispute`
+- `max_auto_reschedules`
+
+When the operator submits the form, VEI:
+
+1. branches from the same starting snapshot
+2. applies the named policy change
+3. replays the baseline path against that modified world
+4. opens compare mode with the original run on one side and the replayed run on the other
+
+This is intentionally narrow and believable. The feature is saying, “change a few important business rules and see the new outcome,” not “edit the whole world.”
+
+---
+
+## 9. Snapshots, Forking, and Compare
+
+Snapshot and compare behavior is broader now than the original demo:
+
+- **Fork from here** works from any run snapshot, not just the currently active mission
+- **Compare Paths** uses explicit run pickers and snapshot pickers for both sides
+- **Diff world state** compares the selected snapshot pair rather than always using the latest snapshot
+
+This makes the sandbox story easier to explain:
+
+- one branch can be the baseline
+- one branch can be a human alternative
+- one branch can be a policy replay
 
 ![Decision log and snapshots with fork buttons](assets/service_ops/11_decision_log.png)
 
----
-
-## 12. Outcome Context
-
-The outcome context cards show the base world, chosen situation, chosen objective, and branch labels — giving full context for understanding why a particular run scored the way it did.
-
 ![Outcome context cards](assets/service_ops/12_move_log.png)
 
----
-
-## 13. Snapshots, Fork, and World-State Diff
-
-The snapshots panel gives operators full control over branching and comparison:
-
-- **Snapshot cards**: Each checkpoint shows the run, label, snapshot ID, and elapsed time
-- **Fork from here**: Branch a new playable mission from any snapshot, rewinding the move history to that point
-- **Within-run diff**: Select a "From" and "To" snapshot and see exactly what changed — the number of changed, added, and removed fields, plus a JSON diff of the state delta
-
 ![Snapshots with fork buttons and within-run diff](assets/service_ops/13_snapshots_and_fork.png)
-
----
-
-## 14. Path Comparison — Alternate Futures
-
-The Compare Paths view shows two alternate futures side by side:
-
-- **Path summaries**: Each path's label and strategy description
-- **Assertion comparison**: How many assertions each path passed, with the difference highlighted
-- **Key divergence**: Which specific assertions one path missed that the other passed
-- **Run pickers**: Select which runs to compare (always visible, not gated behind run count)
-- **Diff world state** button: Opens the cross-run world-state diff
 
 ![Path comparison with assertion diff and run pickers](assets/service_ops/14_compare_paths.png)
 
 ---
 
-## 15. Cross-Run World State Diff
+## 10. Cross-Run World-State Diff
 
-Clicking "Diff world state" performs a cross-run snapshot comparison and displays the results grouped by domain:
+The cross-run diff is now cleaner and more business-readable:
 
-- **Summary counts**: Changed, Added, Removed fields
-- **Grouped entries**: State differences organized by top-level domain (Actor States, Audit State, Components, etc.)
-- **Humanized keys**: Field paths are cleaned up and displayed with readable labels
-- **Changed values**: Shown as `from → to` with the old value dimmed and new value bold
+- branch-local runtime noise is stripped out
+- mirror runtime internals do not dominate the diff
+- field paths are humanized
+- booleans are rendered as toggles
+- numeric values are shown as deltas where useful
 
-This lets the operator see exactly how two different strategies diverged at the world-state level — which agents were registered, which billing cases were modified, which Slack channels received different messages.
+The point is not to dump raw JSON. The point is to show how two strategies produced meaningfully different company states.
 
 ![Cross-run world state diff grouped by domain](assets/service_ops/15_world_state_diff.png)
 
 ---
 
-## Summary — The Control Plane with Mirror Mode
+## Demo Script
 
-This walkthrough demonstrates the integrated control plane with mirror mode:
+### Demo 1 — Control Plane
 
-1. **Mirror mode indicator** — A persistent banner tells the operator that agents are governed by the control plane. The pulsing dot makes active governance immediately visible.
+Use this moment to show that VEI is governing real-looking work, not just visualizing it:
 
-2. **Control Plane panel** — The operator sees their autonomous agents (Dispatch Bot, Billing Bot) in a two-column layout: agent cards with last action, denial badges, and allowed surfaces on the left; a live activity log on the right. Surface-access enforcement blocks agents from touching unauthorized surfaces, and denials appear in both the activity log and the run timeline.
+1. Start `service_ops` with `--mirror-demo`.
+2. Show the mode banner and the situation room.
+3. Point out the three mirror agents and their policy badges.
+4. Explain the connector strip: Slack is the live-first story, the other surfaces are still governed but may be read-only or unsupported for live writes.
+5. Let the staged actions play until you can show:
+   - one allowed action
+   - one blocked action
+   - one approval-held action
+6. Approve the held action from the approval queue.
 
-3. **Weighted scoring by objective** — Protect SLA vs Protect Revenue vs Protect Customer Trust produce different scores for the same actions, because each objective weights assertion categories differently.
+### Demo 2 — What-If Replay
 
-4. **Situation room strip** — A 6-cell band gives system health, exceptions, policy posture, approvals, deadline pressure, and risk in one glance.
+Use this moment to show that VEI can replay the same company from the same start with different rules:
 
-5. **Policy change ceremony** — Risky moves open a modal with a policy diff table, consequence preview, and explicit Confirm/Cancel.
+1. Open the Outcome tab on a completed `service_ops` run.
+2. Click **Try Different Policy**.
+3. Change `billing_hold_on_dispute` and `approval_threshold_usd`.
+4. Replay the path.
+5. Compare the original and replayed runs side by side.
+6. Open the world-state diff and explain how the business outcome changed.
 
-6. **Governance UX** — Amber chip for risky moves, decision audit trail, policy override callouts, and move log history.
+---
 
-7. **Sandbox forking** — Fork a new playable mission from any historical snapshot. The fork rewinds move history to that point and lets the operator explore an alternate future.
-
-8. **Path comparison** — Compare any two runs side by side, see assertion differences, and drill into the world-state diff to understand exactly how strategies diverged.
-
-### Running It
+## Running It
 
 ```bash
 # Standard mode (no mirror agents)
 vei quickstart run --world service_ops
 
-# With mirror mode demo agents
+# Mirror demo with staged governed agents
 vei quickstart run --world service_ops --mirror-demo
 
-# With live connectors (requires VEI_LIVE_SLACK_TOKEN)
+# Slack-first live alpha
 vei quickstart run --world service_ops --connector-mode live
 ```
-
-The Studio UI runs on `http://127.0.0.1:3011` and the Twin Gateway on `http://127.0.0.1:3012`.

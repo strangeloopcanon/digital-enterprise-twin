@@ -10,8 +10,8 @@ You can use it to turn a real or obfuscated company into a branchable enterprise
 The cleanest way to think about VEI is: **one kernel, four modes**.
 
 - **Test / Eval** — prove an agent works before it touches a real company. Run deterministic benchmarks, grade outcomes against typed contracts, and compare scripted vs LLM vs workflow runners over the same starting state.
-- **Mirror / Control** — watch real or demo agents act through VEI and govern risky writes. A control plane panel shows each agent's status, last action, and denial history. Surface-access enforcement blocks agents from unauthorized surfaces, and denied actions appear in the run timeline. A mode indicator makes governance visible at all times.
-- **Sandbox / What-if** — branch the same company world and compare alternate outcomes. Fork a playable mission from any historical snapshot, compare two paths side by side with assertion diffs, and drill into a cross-run world-state diff grouped by domain to see exactly how strategies diverged.
+- **Mirror / Control** — watch real or demo agents act through VEI and govern risky writes. The control plane shows each agent's status, policy profile, approval holds, connector status, blocked actions, and recent activity. Surface-access checks, approval-required writes, and live-surface limits are visible in both the UI and the run timeline.
+- **Sandbox / What-if** — branch the same company world and compare alternate outcomes. Fork a playable mission from any historical snapshot, compare two paths side by side with assertion diffs, and for `service_ops` runs replay the same start state with a small set of named policy changes.
 - **Train / Data** — generate rollouts, traces, and datasets for cloning or RL-style updates. Export completed runs as trajectory data for behavioral cloning or reinforcement learning.
 
 Pick a company, pick a crisis, define what success looks like, then play moves or let an agent play them. Every tool, every person, and every process reacts as one connected system.
@@ -249,7 +249,21 @@ Mirror mode now has two practical entry paths:
 
 Mirror mode treats **proxy** and **ingest** as peers. If you control the agent, point it at VEI's compatibility routes. If you do not, register the agent and send typed events into the same run history instead. In both cases, the agent must be registered first; VEI no longer auto-creates mirror agents from traffic.
 
-**Surface-access enforcement**: Each registered agent declares its `allowed_surfaces`. When an agent attempts to act on an unauthorized surface, VEI blocks the action, records a `mirror_denied` event in the run timeline, increments the agent's denial count, and returns a clear denied result. The control plane panel shows denial badges on agent cards and highlights blocked events in the activity log. The `record_only` path intentionally bypasses enforcement — passive observation agents can report telemetry without policy gating.
+Each registered agent now carries a fixed built-in policy profile:
+
+- `observer` — read only
+- `operator` — reads plus safe writes, risky writes held for approval
+- `approver` — operator access plus approval resolution
+- `admin` — full access inside surface allowlists and connector safety rules
+
+VEI applies mirror decisions in a fixed order: agent registration, mode, allowed surfaces, policy profile, live connector safety, then rate limit. Denied actions and approval holds are recorded in the run timeline and shown in the control plane activity log.
+
+**Control plane behavior**:
+
+- **Surface allowlists** still block agents from unauthorized surfaces
+- **Approval queue** holds risky actions until an approver resolves them
+- **Connector status** shows which surfaces are simulated, live, read-only, degraded, or unsupported
+- **Rate limiting** throttles governed traffic per agent and surface without affecting passive `record_only` telemetry
 
 Try the demo-first path with the built-in service company:
 
@@ -283,7 +297,7 @@ vei twin build \
   --connector-mode live
 ```
 
-Today VEI is authoritative for actions it directly proxies or ingests. For the Slack-first live alpha, unsupported surfaces still read from the last synced twin snapshot, but writes fail clearly until a real live adapter exists. That is an intentional alpha limit.
+Today VEI is authoritative for actions it directly proxies or ingests. For the Slack-first live alpha, Slack is the only live-first interactive surface. Jira, Graph, and Salesforce remain visible and governed in the control plane, but live writes stay read-only or unsupported until their adapters are ready. That is an intentional alpha limit.
 
 The fastest way to inspect what was built is:
 
@@ -415,7 +429,7 @@ The import UI now shows:
 - Variant-aware workspace activation so previews, run manifests, showcase bundles, and the UI all explain which scenario overlay and contract overlay are active on top of the base world
 - VEI Studio narrative mode, so the same kernel can be shown as a world studio for enterprises with company briefings, situation/objective selection, branch/outcome explanation, and export previews for future RL/eval/agent-ops layers
 - Mission-driven playable Studio mode, where the same kernel now acts like a work-game runtime with human moves, scorecards, branch points, and twin-fidelity checks
-- Mirror control plane with surface-access enforcement, per-agent denial tracking, bounded recent-event feed, and a two-column agent/activity panel in the Studio UI
+- Mirror control plane with policy profiles, surface and connector enforcement, approval holds, per-agent denial and throttle tracking, and a Studio dashboard for agents, approvals, and recent activity
 - Sandbox forking from any historical snapshot with move-history rewind, cross-run world-state diffing grouped by domain, and side-by-side path comparison with assertion-level divergence
 
 ## Architecture
@@ -424,7 +438,8 @@ The import UI now shows:
 Agent ──MCP──► VEI Router                       External Agent ──HTTP──► Twin Gateway (:3012)
                   └─ transport + tool dispatch                              ├─ Slack / Jira / Graph / SFDC compat routes
                             │                                               ├─ mirror agent registry
-                            ▼                                               ├─ surface-access enforcement
+                            ▼                                               ├─ policy profiles + approval queue
+                                                                            ├─ surface / connector enforcement
                       WorldSession Kernel ◄─────────────────────────────────┘
                   ├─ unified world state
                   ├─ snapshots / branch / replay / inject
@@ -435,16 +450,14 @@ Agent ──MCP──► VEI Router                       External Agent ──H
                             ▼
                       Studio UI (:3011)
                   ├─ Living Company View + mode indicator
-                  ├─ Control Plane panel (agents + activity log)
+                  ├─ Control Plane panel (agents, approvals, connector strip)
                   ├─ Mission play + sandbox forking
-                  └─ Path comparison + world-state diff
+                  └─ Path comparison + policy replay + world-state diff
 ```
 
-## Next Phase
+## Historical Note
 
-The current execution-ready roadmap lives in [docs/NEXT_PHASE_PLAN.md](docs/NEXT_PHASE_PLAN.md).
-
-In one line: the next phase is about making `vei.run` the canonical execution spine and making VEI much stronger at turning messy enterprise exports into runnable, inspectable, contract-graded identity environments.
+The original forward-looking roadmap now lives as a short historical note in [docs/NEXT_PHASE_PLAN.md](docs/NEXT_PHASE_PLAN.md). Current product behavior is documented in this README plus [docs/OVERVIEW.md](docs/OVERVIEW.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and [docs/SERVICE_OPS_WALKTHROUGH.md](docs/SERVICE_OPS_WALKTHROUGH.md).
 
 ## Use It As A Library
 
@@ -587,7 +600,7 @@ Run playback is now driven by the canonical append-only event spine, so live and
 
 The Studio front door is the Living Company view: Slack, email, tickets, docs, approvals, and the vertical business system displayed side by side as a software wall. Moves land visibly across all surfaces. The three-tab navigation (Company, Crisis, Outcome) keeps the audience focused.
 
-When mirror mode is active, a mode indicator banner appears at the top of the Company view and the control plane panel shows agent cards with denial badges alongside a live activity log. The Outcome tab exposes a "Compare Paths" button, always-visible run pickers, snapshot cards with "Fork from here" buttons, and a world-state diff view that groups changes by domain with humanized keys.
+When mirror mode is active, a mode indicator banner appears at the top of the Company view and the control plane panel shows agent cards with policy badges, inline surface/profile controls, an approval queue, a connector-status strip, and a readable activity log for allowed, blocked, held, and throttled actions. The Outcome tab exposes a "Compare Paths" button, snapshot pickers for both paths, snapshot cards with "Fork from here" buttons, a `Try Different Policy` flow for `service_ops` runs, and a world-state diff view that groups changes by domain with humanized keys.
 
 Imported workspaces add a grounded-intake layer on top of that same UI: source-package health, normalization diagnostics, scenario candidates, imported/derived/simulated object counts, and provenance drilldown from timeline events to raw-source lineage.
 
@@ -866,7 +879,7 @@ For MCP-native agents, connect directly:
 - `docs/OVERVIEW.md` — What VEI is, who it's for, how to connect your data, and strategic context
 - `docs/ARCHITECTURE.md` — Module structure and data flow
 - `docs/BENCHMARKS.md` — Benchmark families, difficulty tiers, and evaluation
-- `docs/SERVICE_OPS_WALKTHROUGH.md` — Visual walkthrough of the service ops control plane: mirror mode, surface-access enforcement, sandbox forking, path comparison, and world-state diff
+- `docs/SERVICE_OPS_WALKTHROUGH.md` — Visual walkthrough of the service ops control plane, approval queue, connector status, policy replay, and path comparison flow
 
 ## Contributor Notes
 

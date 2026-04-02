@@ -12,9 +12,11 @@ from .api import (
     load_workspace_mission_state,
     load_workspace_playable_bundle,
     prepare_playable_workspace,
+    replay_service_ops_with_policy_delta,
     render_playable_overview,
     run_playable_showcase,
     start_workspace_mission_run,
+    get_service_ops_policy_bundle,
 )
 from .models import (
     MissionCatalog,
@@ -27,6 +29,9 @@ from .models import (
     PlayerMoveResult,
     PlayableMissionMoveSpec,
     PlayableMissionSpec,
+    ServiceOpsPolicyBundle,
+    ServiceOpsPolicyKnob,
+    ServiceOpsPolicyReplayResult,
 )
 
 __all__ = [
@@ -43,9 +48,11 @@ __all__ = [
     "load_workspace_mission_state",
     "load_workspace_playable_bundle",
     "prepare_playable_workspace",
+    "replay_service_ops_with_policy_delta",
     "render_playable_overview",
     "run_playable_showcase",
     "start_workspace_mission_run",
+    "get_service_ops_policy_bundle",
     "MissionCatalog",
     "MissionExportBundle",
     "MissionMoveState",
@@ -56,4 +63,7 @@ __all__ = [
     "PlayerMoveResult",
     "PlayableMissionMoveSpec",
     "PlayableMissionSpec",
+    "ServiceOpsPolicyBundle",
+    "ServiceOpsPolicyKnob",
+    "ServiceOpsPolicyReplayResult",
 ]
