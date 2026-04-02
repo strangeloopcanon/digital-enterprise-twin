@@ -1496,6 +1496,24 @@ async function onCompareDiffClick() {
   }
 }
 
+function _humanizeKey(key) {
+  const parts = key.split(".");
+  const last = parts[parts.length - 1];
+  const context = parts.length > 1 ? parts.slice(0, -1).join(" > ") : "";
+  const readable = last.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+  return { readable, context };
+}
+
+function _groupDiffEntries(entries) {
+  const groups = {};
+  for (const entry of entries) {
+    const prefix = entry.key.split(".").slice(0, 2).join(".");
+    if (!groups[prefix]) groups[prefix] = [];
+    groups[prefix].push(entry);
+  }
+  return groups;
+}
+
 function renderCrossRunDiff(container, diff, runA, runB) {
   const changedCount = Object.keys(diff.changed || {}).length;
   const addedCount = Object.keys(diff.added || {}).length;
@@ -1511,18 +1529,38 @@ function renderCrossRunDiff(container, diff, runA, runB) {
   if (changedCount + addedCount + removedCount === 0) {
     html += `<p class="metric-detail">World states are identical.</p>`;
   } else {
-    const entries = [];
+    const allEntries = [];
     for (const [key, val] of Object.entries(diff.changed || {})) {
-      entries.push(`<div class="diff-entry diff-changed"><span class="diff-key">${escapeHtml(key)}</span><span class="diff-val">${escapeHtml(String(val.from))} → ${escapeHtml(String(val.to))}</span></div>`);
+      allEntries.push({ key, type: "changed", from: val.from, to: val.to });
     }
     for (const [key, val] of Object.entries(diff.added || {})) {
-      entries.push(`<div class="diff-entry diff-added"><span class="diff-key">+ ${escapeHtml(key)}</span><span class="diff-val">${escapeHtml(String(val))}</span></div>`);
+      allEntries.push({ key, type: "added", value: val });
     }
     for (const [key, val] of Object.entries(diff.removed || {})) {
-      entries.push(`<div class="diff-entry diff-removed"><span class="diff-key">- ${escapeHtml(key)}</span><span class="diff-val">${escapeHtml(String(val))}</span></div>`);
+      allEntries.push({ key, type: "removed", value: val });
     }
-    html += `<div class="diff-entries">${entries.slice(0, 50).join("")}</div>`;
-    if (entries.length > 50) html += `<p class="metric-detail">${entries.length - 50} more entries...</p>`;
+    const groups = _groupDiffEntries(allEntries);
+    const groupKeys = Object.keys(groups).sort();
+    html += `<div class="diff-groups">`;
+    for (const groupKey of groupKeys) {
+      const items = groups[groupKey];
+      const groupLabel = groupKey.replace(/_/g, " ").replace(/\./g, " > ");
+      html += `<div class="diff-group">`;
+      html += `<div class="diff-group-label">${escapeHtml(groupLabel)}</div>`;
+      for (const item of items.slice(0, 20)) {
+        const h = _humanizeKey(item.key);
+        const cls = `diff-entry diff-${item.type}`;
+        if (item.type === "changed") {
+          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${escapeHtml(h.readable)}</span><span class="diff-val"><span class="diff-from">${escapeHtml(String(item.from))}</span> <span class="diff-arrow">&rarr;</span> <span class="diff-to">${escapeHtml(String(item.to))}</span></span></div>`;
+        } else {
+          const prefix = item.type === "added" ? "+" : "-";
+          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${prefix} ${escapeHtml(h.readable)}</span><span class="diff-val">${escapeHtml(String(item.value))}</span></div>`;
+        }
+      }
+      if (items.length > 20) html += `<p class="metric-detail">${items.length - 20} more in this group...</p>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
   }
   container.innerHTML = html;
 }
@@ -1645,15 +1683,9 @@ function renderCompareTimelines() {
   }).join("");
 
   html += `<div class="tl-compare-header">`;
-  if (allRuns.length > 2) {
-    html += `<select id="compare-picker-a" class="compare-run-picker">${runOptions}</select>`;
-    html += `<span class="tl-compare-vs">vs</span>`;
-    html += `<select id="compare-picker-b" class="compare-run-picker">${runOptions}</select>`;
-  } else {
-    html += `<span class="tl-compare-pill tl-pill-a">${escapeHtml(nameA)} (${stepsA} steps)</span>`;
-    html += `<span class="tl-compare-vs">vs</span>`;
-    html += `<span class="tl-compare-pill tl-pill-b">${escapeHtml(nameB)} (${stepsB} steps)</span>`;
-  }
+  html += `<select id="compare-picker-a" class="compare-run-picker">${runOptions}</select>`;
+  html += `<span class="tl-compare-vs">vs</span>`;
+  html += `<select id="compare-picker-b" class="compare-run-picker">${runOptions}</select>`;
   html += `<button id="compare-diff-btn" class="compare-diff-btn">Diff world state</button>`;
   html += `</div>`;
   html += `<div id="compare-diff-result" class="compare-diff-result"></div>`;
@@ -1706,7 +1738,14 @@ function renderLivingCompanyContext() {
   const crisisLine = crisisTitle
     ? `<strong>${escapeHtml(crisisTitle)}</strong>: ${escapeHtml(briefing)}`
     : "";
+  const mirror = state.mirrorStatus;
+  const mirrorActive = mirror && mirror.config && (Array.isArray(mirror.agents) ? mirror.agents.length > 0 : false || mirror.config.demo_mode);
+  const modeBanner = mirrorActive
+    ? `<div class="context-mode-banner"><span class="context-mode-dot"></span>Mirror Mode &mdash; agents governed by control plane</div>`
+    : "";
+
   panel.innerHTML = `
+    ${modeBanner}
     <div class="context-strip">
       <div class="context-strip-company">
         <strong>${escapeHtml(companyName)}</strong> &mdash; ${escapeHtml(briefing)}
@@ -1887,6 +1926,7 @@ function renderMirrorFleetPanel() {
     ? "fleet-badge-live"
     : (mode === "demo" ? "fleet-badge-demo" : "fleet-badge-sim");
   const eventCount = mirror.event_count || 0;
+  const totalDenied = agents.reduce((sum, a) => sum + (a.denied_count || 0), 0);
   const pending = mirror.pending_demo_steps || 0;
   const autoplay = mirror.autoplay_running ? "autoplay" : "manual";
 
@@ -1895,12 +1935,16 @@ function renderMirrorFleetPanel() {
     const role = agent.role ? agent.role.replace(/_/g, " ") : agent.mode || "agent";
     const surfaces = Array.isArray(agent.allowed_surfaces) ? agent.allowed_surfaces.join(", ") : "";
     const lastAction = agent.last_action ? `<span class="agent-last-action">${escapeHtml(agent.last_action)}</span>` : "";
-    const deniedBadge = (agent.denied_count || 0) > 0
-      ? `<span class="agent-denied-badge">${agent.denied_count} denied</span>`
+    const denied = agent.denied_count || 0;
+    const deniedBadge = denied > 0
+      ? `<span class="agent-denied-badge">${denied} denied</span>`
       : "";
     return `
-      <div class="mirror-agent-card">
-        <span class="agent-name">${escapeHtml(agent.name || agent.agent_id)}${deniedBadge}</span>
+      <div class="mirror-agent-card${denied > 0 ? " mirror-agent-has-denials" : ""}">
+        <div class="agent-card-top">
+          <span class="agent-name">${escapeHtml(agent.name || agent.agent_id)}</span>
+          ${deniedBadge}
+        </div>
         <span class="agent-role">${escapeHtml(role)}${surfaces ? " · " + escapeHtml(surfaces) : ""}</span>
         <span class="agent-status ${statusClass}">${agent.status || "registered"}</span>
         ${lastAction}
@@ -1915,28 +1959,34 @@ function renderMirrorFleetPanel() {
       const denied = evt.handled_by === "denied";
       const cls = denied ? "mirror-feed-item mirror-feed-denied" : "mirror-feed-item";
       const label = evt.label || evt.tool || "event";
-      return `<div class="${cls}"><span class="feed-agent">${escapeHtml(evt.agent_id)}</span><span class="feed-label">${escapeHtml(label)}</span>${denied ? '<span class="feed-denied-tag">denied</span>' : ""}</div>`;
+      const handledTag = denied
+        ? '<span class="feed-denied-tag">blocked</span>'
+        : `<span class="feed-handled-tag">${escapeHtml(evt.handled_by || "ok")}</span>`;
+      return `<div class="${cls}"><span class="feed-agent">${escapeHtml(evt.agent_id)}</span><span class="feed-label">${escapeHtml(label)}</span>${handledTag}</div>`;
     }).join("");
     eventFeedHtml = `
-      <details class="mirror-event-feed">
-        <summary class="mirror-feed-toggle">Mirror Activity (${recentEvents.length})</summary>
+      <div class="mirror-event-feed">
+        <div class="mirror-feed-header">Activity Log</div>
         <div class="mirror-feed-list">${feedItems}</div>
-      </details>
+      </div>
     `;
   }
 
+  const deniedIndicator = totalDenied > 0
+    ? `<span class="fleet-denied-indicator">${totalDenied} blocked</span>`
+    : "";
+
   el.innerHTML = `
     <div class="mirror-fleet-header">
-      <span class="fleet-label">Agent Fleet</span>
-      <span class="fleet-badge ${badgeClass}">${mode} mode</span>
+      <span class="fleet-label">Control Plane</span>
+      <span class="fleet-badge ${badgeClass}">${mode}</span>
+      ${deniedIndicator}
+      <span class="fleet-stat">${eventCount} events${pending ? " · " + pending + " queued" : ""}</span>
     </div>
-    ${agentCards}
-    <div class="mirror-fleet-stats">
-      <span class="stat-label">Events</span>
-      <span class="stat-value">${eventCount}</span>
-      <span class="stat-detail">${pending ? pending + " queued" : autoplay}</span>
+    <div class="mirror-fleet-body">
+      <div class="mirror-agents-grid">${agentCards}</div>
+      ${eventFeedHtml}
     </div>
-    ${eventFeedHtml}
   `;
 }
 
@@ -4069,6 +4119,7 @@ function bindControls() {
   document.getElementById("cinema-toggle").addEventListener("click", toggleCinemaMode);
   document.getElementById("timeline-toggle").addEventListener("click", toggleTimelineMode);
   document.getElementById("compare-toggle").addEventListener("click", toggleCompareMode);
+  document.getElementById("outcome-compare-btn")?.addEventListener("click", toggleCompareMode);
   document.getElementById("connect-toggle").addEventListener("click", toggleConnectPanel);
   document.getElementById("scenario-select").addEventListener("change", (event) => {
     void loadScenario(event.target.value);

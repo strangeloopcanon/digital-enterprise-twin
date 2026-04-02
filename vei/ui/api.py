@@ -180,14 +180,18 @@ def _load_workspace_mirror_payload(root: Path) -> dict[str, Any]:
             data = {}
         fallback = dict(data.get("metadata", {}).get("mirror", {}) or {})
 
+    completed_mirror: dict[str, Any] | None = None
     for manifest in list_run_manifests(root):
-        if manifest.runner != "external" or manifest.status != "running":
+        if manifest.runner != "external":
             continue
         mirror = manifest.metadata.get("mirror", {})
-        if isinstance(mirror, dict):
+        if not isinstance(mirror, dict):
+            continue
+        if manifest.status == "running":
             return dict(mirror)
-        return fallback
-    return fallback
+        if completed_mirror is None and manifest.status == "completed":
+            completed_mirror = dict(mirror)
+    return completed_mirror if completed_mirror is not None else fallback
 
 
 def create_ui_app(workspace_root: str | Path) -> FastAPI:
