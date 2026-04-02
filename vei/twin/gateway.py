@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -14,9 +15,12 @@ from fastapi.responses import JSONResponse
 
 from vei.benchmark.models import BenchmarkMetrics
 from vei.blueprint.api import create_world_session_from_blueprint
+from vei.connectors import TOOL_ROUTES
 from vei.contract.models import ContractEvaluationResult
 from vei.mirror import (
+    MirrorActionPlan,
     MirrorAgentSpec,
+    MirrorConnectorStatus,
     MirrorIngestEvent,
     MirrorRuntime,
     load_mirror_workspace_config,
@@ -52,6 +56,62 @@ from vei.world.api import ActorState, WorldSessionAPI
 
 from .api import load_customer_twin
 from .models import CustomerTwinBundle, ExternalAgentIdentity, TwinRuntimeStatus
+
+_MIRROR_OPERATION_CLASS_BY_TOOL: dict[str, str] = {
+    "service_ops.list_overview": "read",
+    "service_ops.assign_dispatch": "write_safe",
+    "service_ops.reschedule_dispatch": "write_safe",
+    "service_ops.hold_billing": "write_safe",
+    "service_ops.clear_exception": "write_safe",
+    "service_ops.update_policy": "write_risky",
+    "jira.list_issues": "read",
+    "jira.get_issue": "read",
+    "jira.create_issue": "write_safe",
+    "jira.update_issue": "write_safe",
+    "jira.add_comment": "write_safe",
+    "jira.transition_issue": "write_risky",
+    "salesforce.opportunity.list": "read",
+    "salesforce.opportunity.get": "read",
+    "salesforce.opportunity.create": "write_safe",
+    "salesforce.opportunity.update": "write_safe",
+    "salesforce.contact.get": "read",
+    "salesforce.contact.list": "read",
+    "salesforce.account.get": "read",
+    "salesforce.account.list": "read",
+    "salesforce.activity.log": "write_safe",
+}
+
+_SURFACE_ALIASES: dict[str, set[str]] = {
+    "slack": {"slack"},
+    "mail": {"mail", "graph"},
+    "calendar": {"calendar", "graph"},
+    "tickets": {"tickets", "jira"},
+    "crm": {"crm", "salesforce"},
+    "service_ops": {"service_ops"},
+}
+
+_PROFILE_ACTIONS = {
+    "observer": {
+        "read": "allow",
+        "write_safe": "deny",
+        "write_risky": "deny",
+    },
+    "operator": {
+        "read": "allow",
+        "write_safe": "allow",
+        "write_risky": "require_approval",
+    },
+    "approver": {
+        "read": "allow",
+        "write_safe": "allow",
+        "write_risky": "require_approval",
+    },
+    "admin": {
+        "read": "allow",
+        "write_safe": "allow",
+        "write_risky": "allow",
+    },
+}
 
 
 class TwinRuntime:
@@ -275,9 +335,18 @@ class TwinRuntime:
             source_mode="proxy",
         )
         result = self.mirror.ingest_event(event)
-        if result.handled_by == "denied":
+        if result.handled_by in {"denied", "pending_approval"}:
             reason = str(result.result.get("reason", "mirror request denied"))
-            code = str(result.result.get("code", "mirror.surface_denied"))
+            code = str(
+                result.result.get(
+                    "code",
+                    (
+                        "mirror.approval_required"
+                        if result.handled_by == "pending_approval"
+                        else "mirror.surface_denied"
+                    ),
+                )
+            )
             raise MCPError(code, reason)
         return result.result.get("result")
 
@@ -516,7 +585,7 @@ class TwinRuntime:
                 "role": agent.role,
                 "team": agent.team,
                 "allowed_surfaces": list(agent.allowed_surfaces),
-                "policy_profile": agent.policy_profile,
+                "policy_profile_id": agent.policy_profile_id,
                 "source": agent.source,
             },
         )
@@ -528,18 +597,286 @@ class TwinRuntime:
                 status="running", success=None, error=None, completed_at=None
             )
 
+    def plan_mirror_action(
+        self,
+        *,
+        event: MirrorIngestEvent,
+        agent: MirrorAgentSpec,
+        approval_granted: bool = False,
+    ) -> MirrorActionPlan:
+        action = "dispatch" if event.resolved_tool else "inject"
+        tool_name = str(event.resolved_tool or event.external_tool or "")
+        surface = _event_surface(event)
+        operation_class = _mirror_operation_class(tool_name)
+        if operation_class is None and action == "inject":
+            operation_class = "write_safe"
+        if operation_class is None:
+            return MirrorActionPlan(
+                action=action,
+                surface=surface,
+                resolved_tool=tool_name,
+                operation_class="read",
+                decision="deny",
+                reason_code="mirror.unknown_operation_class",
+                reason=(
+                    f"mirror does not have an operation class for '{tool_name}' yet"
+                ),
+            )
+
+        surface_denial = self._check_surface_access(agent, surface)
+        if surface_denial is not None:
+            return MirrorActionPlan(
+                action=action,
+                surface=surface,
+                resolved_tool=tool_name,
+                operation_class=operation_class,
+                decision="deny",
+                reason_code="mirror.surface_denied",
+                reason=surface_denial,
+            )
+
+        profile_decision = self._check_policy_profile(
+            agent=agent,
+            operation_class=operation_class,
+            approval_granted=approval_granted,
+        )
+        if profile_decision is not None:
+            return MirrorActionPlan(
+                action=action,
+                surface=surface,
+                resolved_tool=tool_name,
+                operation_class=operation_class,
+                decision=profile_decision["decision"],
+                reason_code=profile_decision["code"],
+                reason=profile_decision["reason"],
+            )
+
+        connector_decision = self._check_connector_safety(
+            tool_name=tool_name,
+            surface=surface,
+            operation_class=operation_class,
+            approval_granted=approval_granted,
+        )
+        if connector_decision is not None:
+            return MirrorActionPlan(
+                action=action,
+                surface=surface,
+                resolved_tool=tool_name,
+                operation_class=operation_class,
+                decision=connector_decision["decision"],
+                reason_code=connector_decision["code"],
+                reason=connector_decision["reason"],
+            )
+
+        return MirrorActionPlan(
+            action=action,
+            surface=surface,
+            resolved_tool=tool_name,
+            operation_class=operation_class,
+        )
+
+    def execute_mirror_action(
+        self,
+        *,
+        plan: MirrorActionPlan,
+        event: MirrorIngestEvent,
+        agent: MirrorAgentSpec,
+        approval_granted: bool = False,
+    ) -> dict[str, Any]:
+        if plan.action == "inject":
+            return self._execute_mirror_inject(
+                event=event,
+                agent=agent,
+            )
+        return self._execute_mirror_dispatch(
+            event=event,
+            agent=agent,
+            operation_class=plan.operation_class,
+            approval_granted=approval_granted,
+        )
+
+    def mirror_connector_status(self) -> list[MirrorConnectorStatus]:
+        mode = self.mirror_config.connector_mode
+        checked_at = _iso_now()
+        if mode != "live":
+            return [
+                MirrorConnectorStatus(
+                    surface="slack",
+                    source_mode="sim",
+                    availability="healthy",
+                    write_capability="interactive",
+                    reason="Simulated Slack surface is interactive.",
+                    last_checked_at=checked_at,
+                ),
+                MirrorConnectorStatus(
+                    surface="jira",
+                    source_mode="sim",
+                    availability="healthy",
+                    write_capability="interactive",
+                    reason="Simulated Jira surface is interactive.",
+                    last_checked_at=checked_at,
+                ),
+                MirrorConnectorStatus(
+                    surface="graph",
+                    source_mode="sim",
+                    availability="healthy",
+                    write_capability="interactive",
+                    reason="Simulated Graph surface is interactive.",
+                    last_checked_at=checked_at,
+                ),
+                MirrorConnectorStatus(
+                    surface="salesforce",
+                    source_mode="sim",
+                    availability="healthy",
+                    write_capability="interactive",
+                    reason="Simulated Salesforce surface is interactive.",
+                    last_checked_at=checked_at,
+                ),
+            ]
+
+        slack_token = os.environ.get("VEI_LIVE_SLACK_TOKEN", "").strip()
+        slack_status = MirrorConnectorStatus(
+            surface="slack",
+            source_mode="live",
+            availability="healthy" if slack_token else "degraded",
+            write_capability="interactive" if slack_token else "unsupported",
+            reason=(
+                "Live Slack passthrough is available."
+                if slack_token
+                else "Set VEI_LIVE_SLACK_TOKEN to enable live Slack passthrough."
+            ),
+            last_checked_at=checked_at,
+        )
+        return [
+            slack_status,
+            MirrorConnectorStatus(
+                surface="jira",
+                source_mode="live",
+                availability="healthy",
+                write_capability="read_only",
+                reason="Live Jira compatibility stays read-only in this milestone.",
+                last_checked_at=checked_at,
+            ),
+            MirrorConnectorStatus(
+                surface="graph",
+                source_mode="live",
+                availability="healthy",
+                write_capability="read_only",
+                reason="Live Graph compatibility stays read-only in this milestone.",
+                last_checked_at=checked_at,
+            ),
+            MirrorConnectorStatus(
+                surface="salesforce",
+                source_mode="live",
+                availability="healthy",
+                write_capability="read_only",
+                reason=(
+                    "Live Salesforce compatibility stays read-only in this milestone."
+                ),
+                last_checked_at=checked_at,
+            ),
+        ]
+
     def _check_surface_access(
-        self, agent: MirrorAgentSpec, tool_or_target: str
+        self,
+        agent: MirrorAgentSpec,
+        surface: str,
     ) -> str | None:
         if not agent.allowed_surfaces:
             return None
-        surface = tool_or_target.split(".")[0] if tool_or_target else ""
-        if surface in agent.allowed_surfaces:
-            return None
+        normalized = _normalize_surface(surface)
+        for allowed_surface in agent.allowed_surfaces:
+            if normalized in _surface_alias_set(allowed_surface):
+                return None
         return (
             f"agent '{agent.agent_id}' denied access to surface '{surface}' "
             f"(allowed: {', '.join(agent.allowed_surfaces)})"
         )
+
+    def _check_policy_profile(
+        self,
+        *,
+        agent: MirrorAgentSpec,
+        operation_class: str,
+        approval_granted: bool,
+    ) -> dict[str, str] | None:
+        if approval_granted:
+            return None
+        profile_id = str(agent.policy_profile_id or "admin").strip().lower() or "admin"
+        profile_rules = _PROFILE_ACTIONS.get(profile_id, _PROFILE_ACTIONS["admin"])
+        action = profile_rules.get(operation_class, "deny")
+        if action == "allow":
+            return None
+        if action == "require_approval":
+            return {
+                "decision": "approval_required",
+                "code": "mirror.approval_required",
+                "reason": (
+                    f"policy profile '{profile_id}' requires approval for "
+                    f"{operation_class.replace('_', ' ')} actions"
+                ),
+            }
+        return {
+            "decision": "deny",
+            "code": "mirror.profile_denied",
+            "reason": (
+                f"policy profile '{profile_id}' does not allow "
+                f"{operation_class.replace('_', ' ')} actions"
+            ),
+        }
+
+    def _check_connector_safety(
+        self,
+        *,
+        tool_name: str,
+        surface: str,
+        operation_class: str,
+        approval_granted: bool,
+    ) -> dict[str, str] | None:
+        if self.mirror_config.connector_mode != "live":
+            return None
+        if surface == "service_ops":
+            return None
+        if surface == "slack":
+            if not os.environ.get("VEI_LIVE_SLACK_TOKEN", "").strip():
+                return {
+                    "decision": "deny",
+                    "code": "mirror.connector_degraded",
+                    "reason": "Live Slack passthrough is not configured in this environment.",
+                }
+            blocked = _blocked_live_operations()
+            if tool_name in blocked:
+                return {
+                    "decision": "deny",
+                    "code": "mirror.unsupported_live_write",
+                    "reason": f"Live policy blocks the operation '{tool_name}'.",
+                }
+            if operation_class == "read":
+                return None
+            if operation_class == "write_safe":
+                if approval_granted or _env_bool("VEI_LIVE_ALLOW_WRITE_SAFE"):
+                    return None
+                return {
+                    "decision": "approval_required",
+                    "code": "mirror.approval_required",
+                    "reason": "Live safe-write requires approval in this workspace.",
+                }
+            if _env_bool("VEI_LIVE_ALLOW_WRITE_RISKY"):
+                return None
+            return {
+                "decision": "deny",
+                "code": "mirror.unsupported_live_write",
+                "reason": "Live risky writes are blocked in this workspace.",
+            }
+        if operation_class == "read":
+            return None
+        return {
+            "decision": "deny",
+            "code": "mirror.unsupported_live_write",
+            "reason": (
+                f"Live writes are not enabled for the '{surface}' surface in this workspace."
+            ),
+        }
 
     def _record_denial(
         self,
@@ -583,31 +920,29 @@ class TwinRuntime:
             return 0
         return int(getattr(bus, "clock_ms", 0) or 0)
 
-    def dispatch_mirror_tool(
+    def _execute_mirror_dispatch(
         self,
         *,
         event: MirrorIngestEvent,
         agent: MirrorAgentSpec,
+        operation_class: str,
+        approval_granted: bool,
     ) -> dict[str, Any]:
-        tool_name = str(event.resolved_tool or event.external_tool)
-        denial = self._check_surface_access(agent, tool_name)
-        if denial is not None:
-            self._record_denial(event, agent, denial)
-            return {
-                "denied": True,
-                "reason": denial,
-                "code": "mirror.surface_denied",
-            }
-        result = self.dispatch(
-            external_tool=event.external_tool,
-            resolved_tool=str(event.resolved_tool or ""),
-            args=dict(event.args),
-            focus_hint=str(event.focus_hint or "browser"),
-            agent=_identity_from_mirror_agent(agent),
-        )
+        with self._approval_override(
+            tool_name=str(event.resolved_tool or event.external_tool),
+            operation_class=operation_class,
+            approval_granted=approval_granted,
+        ):
+            result = self.dispatch(
+                external_tool=event.external_tool,
+                resolved_tool=str(event.resolved_tool or ""),
+                args=dict(event.args),
+                focus_hint=str(event.focus_hint or "browser"),
+                agent=_identity_from_mirror_agent(agent),
+            )
         return {"result": result}
 
-    def inject_mirror_event(
+    def _execute_mirror_inject(
         self,
         *,
         event: MirrorIngestEvent,
@@ -616,14 +951,6 @@ class TwinRuntime:
         target = str(event.target or "")
         if not target:
             raise ValueError("mirror inject events require a target")
-        denial = self._check_surface_access(agent, target)
-        if denial is not None:
-            self._record_denial(event, agent, denial)
-            return {
-                "denied": True,
-                "reason": denial,
-                "code": "mirror.surface_denied",
-            }
         with self._lock:
             injected = self.session.inject(
                 {
@@ -671,6 +998,40 @@ class TwinRuntime:
             )
             self._append_contract_event(contract_eval, snapshot.time_ms)
             return {"inject": injected, "tick": ticked}
+
+    @contextmanager
+    def _approval_override(
+        self,
+        *,
+        tool_name: str,
+        operation_class: str,
+        approval_granted: bool,
+    ):
+        if not approval_granted or self.mirror_config.connector_mode != "live":
+            yield
+            return
+        route = TOOL_ROUTES.get(tool_name)
+        connector_runtime = getattr(
+            getattr(self.session, "router", None), "connector_runtime", None
+        )
+        policy_gate = getattr(connector_runtime, "policy_gate", None)
+        if route is None or policy_gate is None:
+            yield
+            return
+
+        safe_before = getattr(policy_gate, "live_allow_write_safe", None)
+        risky_before = getattr(policy_gate, "live_allow_write_risky", None)
+        try:
+            if operation_class == "write_safe" and safe_before is not None:
+                policy_gate.live_allow_write_safe = True
+            if operation_class == "write_risky" and risky_before is not None:
+                policy_gate.live_allow_write_risky = True
+            yield
+        finally:
+            if safe_before is not None:
+                policy_gate.live_allow_write_safe = safe_before
+            if risky_before is not None:
+                policy_gate.live_allow_write_risky = risky_before
 
     def record_mirror_event(
         self,
@@ -799,6 +1160,79 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
         agent = runtime.mirror.register_agent(MirrorAgentSpec.model_validate(body))
         return JSONResponse(agent.model_dump(mode="json"), status_code=201)
 
+    @app.patch("/api/mirror/agents/{agent_id}")
+    async def api_mirror_update_agent(agent_id: str, request: Request) -> JSONResponse:
+        _require_bearer(request, bundle.gateway.auth_token)
+        if runtime.mirror is None:
+            raise HTTPException(status_code=503, detail="mirror runtime unavailable")
+        body = await _request_payload(request)
+        try:
+            agent = runtime.mirror.update_agent(agent_id, dict(body))
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return JSONResponse(agent.model_dump(mode="json"))
+
+    @app.get("/api/mirror/approvals")
+    def api_mirror_approvals(request: Request) -> JSONResponse:
+        _require_bearer(request, bundle.gateway.auth_token)
+        if runtime.mirror is None:
+            return JSONResponse({"approvals": []})
+        approvals = [
+            item.model_dump(mode="json")
+            for item in runtime.mirror.list_pending_approvals()
+        ]
+        return JSONResponse({"approvals": approvals})
+
+    @app.post("/api/mirror/approvals/{approval_id}/approve")
+    async def api_mirror_approve(
+        approval_id: str,
+        request: Request,
+    ) -> JSONResponse:
+        _require_bearer(request, bundle.gateway.auth_token)
+        if runtime.mirror is None:
+            raise HTTPException(status_code=503, detail="mirror runtime unavailable")
+        body = await _request_payload(request)
+        resolver_agent_id = str(body.get("resolver_agent_id") or "").strip()
+        if not resolver_agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="resolver_agent_id is required to approve mirror actions",
+            )
+        try:
+            approval = runtime.mirror.resolve_approval(
+                approval_id=approval_id,
+                resolver_agent_id=resolver_agent_id,
+                action="approve",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(approval.model_dump(mode="json"))
+
+    @app.post("/api/mirror/approvals/{approval_id}/reject")
+    async def api_mirror_reject(
+        approval_id: str,
+        request: Request,
+    ) -> JSONResponse:
+        _require_bearer(request, bundle.gateway.auth_token)
+        if runtime.mirror is None:
+            raise HTTPException(status_code=503, detail="mirror runtime unavailable")
+        body = await _request_payload(request)
+        resolver_agent_id = str(body.get("resolver_agent_id") or "").strip()
+        if not resolver_agent_id:
+            raise HTTPException(
+                status_code=400,
+                detail="resolver_agent_id is required to reject mirror actions",
+            )
+        try:
+            approval = runtime.mirror.resolve_approval(
+                approval_id=approval_id,
+                resolver_agent_id=resolver_agent_id,
+                action="reject",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(approval.model_dump(mode="json"))
+
     @app.post("/api/mirror/events")
     async def api_mirror_ingest_event(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
@@ -862,7 +1296,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         channels = payload if isinstance(payload, list) else payload.get("channels", [])
         return JSONResponse(
             {"ok": True, "channels": [_slack_channel(channel) for channel in channels]}
@@ -884,7 +1318,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         messages = payload.get("messages", []) if isinstance(payload, dict) else []
         return JSONResponse(
             {
@@ -914,7 +1348,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         messages = payload.get("messages", []) if isinstance(payload, dict) else []
         return JSONResponse(
             {
@@ -948,7 +1382,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         ts = str(payload.get("ts", ""))
         return JSONResponse(
             {
@@ -1063,14 +1497,17 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     @app.get("/graph/v1.0/me/messages")
     async def graph_messages(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
-        payload = _dispatch_request(
-            runtime,
-            request,
-            external_tool="graph.messages.list",
-            resolved_tool="mail.list",
-            args={"folder": "INBOX"},
-            focus_hint="mail",
-        )
+        try:
+            payload = _dispatch_request(
+                runtime,
+                request,
+                external_tool="graph.messages.list",
+                resolved_tool="mail.list",
+                args={"folder": "INBOX"},
+                focus_hint="mail",
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise _http_exception(exc) from exc
         messages = payload if isinstance(payload, list) else payload.get("messages", [])
         return JSONResponse(
             {"value": [_graph_message_summary(message) for message in messages]}
@@ -1120,14 +1557,17 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
     @app.get("/graph/v1.0/me/events")
     async def graph_events(request: Request) -> JSONResponse:
         _require_bearer(request, bundle.gateway.auth_token)
-        payload = _dispatch_request(
-            runtime,
-            request,
-            external_tool="graph.events.list",
-            resolved_tool="calendar.list_events",
-            args={},
-            focus_hint="calendar",
-        )
+        try:
+            payload = _dispatch_request(
+                runtime,
+                request,
+                external_tool="graph.events.list",
+                resolved_tool="calendar.list_events",
+                args={},
+                focus_hint="calendar",
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise _http_exception(exc) from exc
         events = payload if isinstance(payload, list) else payload.get("events", [])
         return JSONResponse({"value": [_graph_event(event) for event in events]})
 
@@ -1262,7 +1702,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         return JSONResponse({"ok": True})
 
     @app.get("/slack/api/users.list")
@@ -1279,7 +1719,7 @@ def create_twin_gateway_app(root: str | Path) -> FastAPI:
                 focus_hint="slack",
             )
         except Exception as exc:  # noqa: BLE001
-            return JSONResponse({"ok": False, "error": _provider_error_code(exc)})
+            return _mirror_route_error_response(exc, surface="slack")
         users = payload if isinstance(payload, list) else payload.get("users", [])
         members = [
             {
@@ -1524,14 +1964,17 @@ def _jira_search(
         args["status"] = status
     if assignee:
         args["assignee"] = assignee
-    payload = _dispatch_request(
-        runtime,
-        request,
-        external_tool="jira.search",
-        resolved_tool="jira.list_issues",
-        args=args,
-        focus_hint="tickets",
-    )
+    try:
+        payload = _dispatch_request(
+            runtime,
+            request,
+            external_tool="jira.search",
+            resolved_tool="jira.list_issues",
+            args=args,
+            focus_hint="tickets",
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _http_exception(exc) from exc
     issues = payload if isinstance(payload, list) else payload.get("issues", [])
     sliced = issues[start_at : start_at + max_results]
     return {
@@ -1692,38 +2135,41 @@ def _salesforce_query(
     lowered = query.lower()
     limit_match = re.search(r"limit\s+(\d+)", lowered)
     limit = int(limit_match.group(1)) if limit_match else 25
-    if "from opportunity" in lowered:
+    try:
+        if "from opportunity" in lowered:
+            payload = _dispatch_request(
+                runtime,
+                request,
+                external_tool="salesforce.query.opportunity",
+                resolved_tool="salesforce.opportunity.list",
+                args={"limit": limit},
+                focus_hint="crm",
+            )
+            rows = payload if isinstance(payload, list) else payload.get("deals", [])
+            records = [_salesforce_opportunity(item) for item in rows[:limit]]
+            return {"totalSize": len(records), "done": True, "records": records}
+        if "from contact" in lowered:
+            payload = _dispatch_request(
+                runtime,
+                request,
+                external_tool="salesforce.query.contact",
+                resolved_tool="salesforce.contact.list",
+                args={"limit": limit},
+                focus_hint="crm",
+            )
+            rows = payload if isinstance(payload, list) else payload.get("contacts", [])
+            records = [_salesforce_contact(item) for item in rows[:limit]]
+            return {"totalSize": len(records), "done": True, "records": records}
         payload = _dispatch_request(
             runtime,
             request,
-            external_tool="salesforce.query.opportunity",
-            resolved_tool="salesforce.opportunity.list",
+            external_tool="salesforce.query.account",
+            resolved_tool="salesforce.account.list",
             args={"limit": limit},
             focus_hint="crm",
         )
-        rows = payload if isinstance(payload, list) else payload.get("deals", [])
-        records = [_salesforce_opportunity(item) for item in rows[:limit]]
-        return {"totalSize": len(records), "done": True, "records": records}
-    if "from contact" in lowered:
-        payload = _dispatch_request(
-            runtime,
-            request,
-            external_tool="salesforce.query.contact",
-            resolved_tool="salesforce.contact.list",
-            args={"limit": limit},
-            focus_hint="crm",
-        )
-        rows = payload if isinstance(payload, list) else payload.get("contacts", [])
-        records = [_salesforce_contact(item) for item in rows[:limit]]
-        return {"totalSize": len(records), "done": True, "records": records}
-    payload = _dispatch_request(
-        runtime,
-        request,
-        external_tool="salesforce.query.account",
-        resolved_tool="salesforce.account.list",
-        args={"limit": limit},
-        focus_hint="crm",
-    )
+    except Exception as exc:  # noqa: BLE001
+        raise _http_exception(exc) from exc
     rows = payload if isinstance(payload, list) else payload.get("companies", [])
     records = [_salesforce_account(item) for item in rows[:limit]]
     return {"totalSize": len(records), "done": True, "records": records}
@@ -1776,7 +2222,8 @@ def _salesforce_account(payload: dict[str, Any]) -> dict[str, Any]:
 def _http_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, MCPError):
         return HTTPException(
-            status_code=400, detail={"code": exc.code, "message": exc.message}
+            status_code=_status_code_for_error(exc.code),
+            detail={"code": exc.code, "message": exc.message},
         )
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
@@ -1907,6 +2354,119 @@ def _dispatch_request(
         focus_hint=focus_hint,
         agent=agent,
     )
+
+
+def _status_code_for_error(code: str) -> int:
+    if code in {
+        "mirror.surface_denied",
+        "mirror.profile_denied",
+        "mirror.mode_denied",
+        "mirror.agent_not_registered",
+        "mirror.agent_inactive",
+        "mirror.unknown_operation_class",
+        "policy.denied",
+    }:
+        return 403
+    if code in {"mirror.approval_required", "policy.approval_required"}:
+        return 409
+    if code == "mirror.rate_limited":
+        return 429
+    if code in {
+        "mirror.unsupported_live_write",
+        "mirror.connector_degraded",
+        "service_unavailable",
+        "slack.live_backend_unavailable",
+        "mail.live_backend_unavailable",
+        "calendar.live_backend_unavailable",
+        "tickets.live_backend_unavailable",
+        "crm.live_backend_unavailable",
+    }:
+        return 503
+    if code == "mirror.agent_id_required":
+        return 400
+    return 400
+
+
+def _mirror_route_error_response(
+    exc: Exception,
+    *,
+    surface: str,
+) -> JSONResponse:
+    if surface == "slack":
+        return JSONResponse(
+            {"ok": False, "error": _provider_error_code(exc)},
+            status_code=200,
+        )
+    raise _http_exception(exc)
+
+
+def _mirror_operation_class(tool_name: str) -> str | None:
+    route = TOOL_ROUTES.get(tool_name)
+    if route is not None:
+        return route.operation_class.value
+    return _MIRROR_OPERATION_CLASS_BY_TOOL.get(tool_name)
+
+
+def _event_surface(event: MirrorIngestEvent) -> str:
+    if event.target:
+        return _normalize_surface(str(event.target))
+    tool_name = str(event.resolved_tool or event.external_tool or "")
+    if tool_name.startswith("service_ops."):
+        return "service_ops"
+    if tool_name.startswith("jira."):
+        return "tickets"
+    if tool_name.startswith("salesforce."):
+        return "crm"
+    if tool_name.startswith("mail."):
+        return "mail"
+    if tool_name.startswith("calendar."):
+        return "calendar"
+    if tool_name.startswith("slack."):
+        return "slack"
+    return _normalize_surface(
+        str(event.focus_hint or tool_name.split(".")[0] or "world")
+    )
+
+
+def _normalize_surface(surface: str) -> str:
+    normalized = str(surface or "").strip().lower()
+    if normalized in {"jira", "tickets"}:
+        return "tickets"
+    if normalized in {"salesforce", "crm"}:
+        return "crm"
+    return normalized
+
+
+def _surface_alias_set(surface: str) -> set[str]:
+    raw = str(surface or "").strip().lower()
+    normalized = _normalize_surface(raw)
+    if raw == "graph":
+        return {"graph", "mail", "calendar"}
+    if normalized == "mail":
+        return {"mail", "graph"}
+    if normalized == "calendar":
+        return {"calendar", "graph"}
+    if normalized == "tickets":
+        return {"tickets", "jira"}
+    if normalized == "crm":
+        return {"crm", "salesforce"}
+    if normalized == "slack":
+        return {"slack"}
+    if normalized == "service_ops":
+        return {"service_ops"}
+    return {normalized}
+
+
+def _env_bool(name: str) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _blocked_live_operations() -> set[str]:
+    raw = os.environ.get("VEI_LIVE_BLOCK_OPS", "")
+    return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 def _request_agent_identity(request: Request) -> ExternalAgentIdentity | None:

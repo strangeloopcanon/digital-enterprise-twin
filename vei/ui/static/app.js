@@ -70,6 +70,8 @@ const state = {
   compareMode: false,
   compareRunA: null,
   compareRunB: null,
+  compareSnapshotA: null,
+  compareSnapshotB: null,
   compareTimelineA: [],
   compareTimelineB: [],
   compareMissionA: null,
@@ -121,11 +123,10 @@ function el(id) {
 }
 
 function currentSnapshotForkRunId() {
-  const missionRunId = state.missionState?.run_id || null;
-  if (!missionRunId || state.activeRunId !== missionRunId) {
+  if (!state.activeRun?.run_id || state.activeRun?.runner !== "human") {
     return null;
   }
-  return missionRunId;
+  return state.activeRun.run_id;
 }
 
 async function requestMissionBranch(runId, snapshotId = null) {
@@ -144,6 +145,50 @@ async function activateMissionBranch(payload) {
   await loadRuns({ selectActiveRun: false });
   await selectRun(payload.run_id, { previousSurfaceState });
   state.missionState = payload;
+}
+
+async function mirrorPost(path, payload) {
+  return await getJson(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+async function mirrorPatch(path, payload) {
+  return await getJson(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+async function refreshMirrorStatus() {
+  state.mirrorStatus = nonEmptyPayload(
+    await getJson("/api/workspace/mirror").catch(() => null)
+  );
+  renderLivingCompanyView();
+}
+
+async function ensureRunSnapshots(run) {
+  if (!run) return [];
+  if (Array.isArray(run.snapshots) && run.snapshots.length) {
+    return run.snapshots;
+  }
+  const snapshots = await getJson(`/api/runs/${run.run_id}/snapshots`).catch(() => []);
+  run.snapshots = Array.isArray(snapshots) ? snapshots : [];
+  return run.snapshots;
+}
+
+async function refreshAfterMirrorMutation() {
+  await refreshMirrorStatus();
+  if (state.activeRunId) {
+    const previousSurfaceState = state.surfaceState;
+    await refreshActiveRun(state.activeRunId, {
+      previousSurfaceState,
+      preserveSurfaceHighlights: true,
+    }).catch(() => {});
+  }
 }
 
 function renderJson(id, payload) {
@@ -1286,6 +1331,16 @@ function renderTimelineView() {
       pickerA.addEventListener("change", onCompareRunPickerChange);
       pickerB.addEventListener("change", onCompareRunPickerChange);
     }
+    const snapA = document.getElementById("compare-snapshot-a");
+    const snapB = document.getElementById("compare-snapshot-b");
+    if (snapA && state.compareSnapshotA != null) {
+      snapA.value = String(state.compareSnapshotA);
+      snapA.addEventListener("change", onCompareSnapshotPickerChange);
+    }
+    if (snapB && state.compareSnapshotB != null) {
+      snapB.value = String(state.compareSnapshotB);
+      snapB.addEventListener("change", onCompareSnapshotPickerChange);
+    }
     document.getElementById("compare-diff-btn")?.addEventListener("click", onCompareDiffClick);
     return;
   }
@@ -1403,16 +1458,20 @@ function showTimelineDetail(eventIndex) {
 }
 
 async function loadCompareRunData(runA, runB) {
-  const [tlA, tlB, contractA, contractB, missionA, missionB] = await Promise.all([
+  const [tlA, tlB, contractA, contractB, missionA, missionB, snapshotsA, snapshotsB] = await Promise.all([
     getJson(`/api/runs/${runA.run_id}/timeline`),
     getJson(`/api/runs/${runB.run_id}/timeline`),
     getJson(`/api/runs/${runA.run_id}/contract`).catch(() => null),
     getJson(`/api/runs/${runB.run_id}/contract`).catch(() => null),
     getJson(`/api/missions/state?run_id=${encodeURIComponent(runA.run_id)}`).catch(() => null),
     getJson(`/api/missions/state?run_id=${encodeURIComponent(runB.run_id)}`).catch(() => null),
+    ensureRunSnapshots(runA),
+    ensureRunSnapshots(runB),
   ]);
   state.compareRunA = runA;
   state.compareRunB = runB;
+  state.compareSnapshotA = snapshotsA.length ? snapshotsA[snapshotsA.length - 1].snapshot_id : null;
+  state.compareSnapshotB = snapshotsB.length ? snapshotsB[snapshotsB.length - 1].snapshot_id : null;
   state.compareTimelineA = tlA;
   state.compareTimelineB = tlB;
   state.compareContractA = contractA;
@@ -1429,6 +1488,8 @@ async function toggleCompareMode() {
     if (btn) btn.textContent = "Compare";
     state.compareRunA = null;
     state.compareRunB = null;
+    state.compareSnapshotA = null;
+    state.compareSnapshotB = null;
     state.compareTimelineA = [];
     state.compareTimelineB = [];
     state.compareMissionA = null;
@@ -1450,13 +1511,24 @@ async function toggleCompareMode() {
 async function onCompareRunPickerChange() {
   const selA = document.getElementById("compare-picker-a");
   const selB = document.getElementById("compare-picker-b");
+  const snapASelect = document.getElementById("compare-snapshot-a");
+  const snapBSelect = document.getElementById("compare-snapshot-b");
   if (!selA || !selB) return;
   const runs = state.runs || [];
   const runA = runs.find((r) => r.run_id === selA.value);
   const runB = runs.find((r) => r.run_id === selB.value);
   if (!runA || !runB || runA.run_id === runB.run_id) return;
   await loadCompareRunData(runA, runB);
+  if (snapASelect && state.compareSnapshotA != null) snapASelect.value = String(state.compareSnapshotA);
+  if (snapBSelect && state.compareSnapshotB != null) snapBSelect.value = String(state.compareSnapshotB);
   renderTimelineView();
+}
+
+function onCompareSnapshotPickerChange() {
+  const snapASelect = document.getElementById("compare-snapshot-a");
+  const snapBSelect = document.getElementById("compare-snapshot-b");
+  state.compareSnapshotA = snapASelect?.value ? Number(snapASelect.value) : null;
+  state.compareSnapshotB = snapBSelect?.value ? Number(snapBSelect.value) : null;
 }
 
 async function onCompareDiffClick() {
@@ -1470,23 +1542,11 @@ async function onCompareDiffClick() {
   }
   container.innerHTML = `<p class="metric-detail">Loading diff...</p>`;
   try {
-    const snapsA = runA.snapshots || [];
-    const snapsB = runB.snapshots || [];
-    const snapA = snapsA.length ? snapsA[snapsA.length - 1].snapshot_id : null;
-    const snapB = snapsB.length ? snapsB[snapsB.length - 1].snapshot_id : null;
+    const [snapsA, snapsB] = await Promise.all([ensureRunSnapshots(runA), ensureRunSnapshots(runB)]);
+    const snapA = state.compareSnapshotA ?? (snapsA.length ? snapsA[snapsA.length - 1].snapshot_id : null);
+    const snapB = state.compareSnapshotB ?? (snapsB.length ? snapsB[snapsB.length - 1].snapshot_id : null);
     if (snapA == null || snapB == null) {
-      const [fetchedA, fetchedB] = await Promise.all([
-        getJson(`/api/runs/${runA.run_id}/snapshots`).catch(() => []),
-        getJson(`/api/runs/${runB.run_id}/snapshots`).catch(() => []),
-      ]);
-      const lastA = Array.isArray(fetchedA) && fetchedA.length ? fetchedA[fetchedA.length - 1].snapshot_id : null;
-      const lastB = Array.isArray(fetchedB) && fetchedB.length ? fetchedB[fetchedB.length - 1].snapshot_id : null;
-      if (lastA == null || lastB == null) {
-        container.innerHTML = `<p class="metric-detail">One or both runs have no snapshots.</p>`;
-        return;
-      }
-      const diff = await getJson(`/api/runs/diff-cross?run_a=${encodeURIComponent(runA.run_id)}&snap_a=${lastA}&run_b=${encodeURIComponent(runB.run_id)}&snap_b=${lastB}`);
-      renderCrossRunDiff(container, diff, runA, runB);
+      container.innerHTML = `<p class="metric-detail">One or both runs have no snapshots.</p>`;
       return;
     }
     const diff = await getJson(`/api/runs/diff-cross?run_a=${encodeURIComponent(runA.run_id)}&snap_a=${snapA}&run_b=${encodeURIComponent(runB.run_id)}&snap_b=${snapB}`);
@@ -1497,7 +1557,11 @@ async function onCompareDiffClick() {
 }
 
 function _humanizeKey(key) {
-  const parts = key.split(".");
+  const parts = key
+    .replaceAll("components.", "")
+    .replaceAll("audit_state.state.", "")
+    .split(".")
+    .map((part) => part.replaceAll("_", " "));
   const last = parts[parts.length - 1];
   const context = parts.length > 1 ? parts.slice(0, -1).join(" > ") : "";
   const readable = last.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
@@ -1507,11 +1571,19 @@ function _humanizeKey(key) {
 function _groupDiffEntries(entries) {
   const groups = {};
   for (const entry of entries) {
-    const prefix = entry.key.split(".").slice(0, 2).join(".");
+    const prefix = entry.key.split(".").slice(0, 3).join(".");
     if (!groups[prefix]) groups[prefix] = [];
     groups[prefix].push(entry);
   }
   return groups;
+}
+
+function _formatDiffValue(value) {
+  if (typeof value === "boolean") return value ? "On" : "Off";
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  if (value === null || value === undefined || value === "") return "\u2014";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function renderCrossRunDiff(container, diff, runA, runB) {
@@ -1544,20 +1616,26 @@ function renderCrossRunDiff(container, diff, runA, runB) {
     html += `<div class="diff-groups">`;
     for (const groupKey of groupKeys) {
       const items = groups[groupKey];
-      const groupLabel = groupKey.replace(/_/g, " ").replace(/\./g, " > ");
+      const groupLabel = groupKey
+        .replaceAll("components.", "")
+        .replace(/_/g, " ")
+        .replace(/\./g, " > ");
       html += `<div class="diff-group">`;
       html += `<div class="diff-group-label">${escapeHtml(groupLabel)}</div>`;
-      for (const item of items.slice(0, 20)) {
+      for (const item of items.slice(0, 40)) {
         const h = _humanizeKey(item.key);
         const cls = `diff-entry diff-${item.type}`;
         if (item.type === "changed") {
-          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${escapeHtml(h.readable)}</span><span class="diff-val"><span class="diff-from">${escapeHtml(String(item.from))}</span> <span class="diff-arrow">&rarr;</span> <span class="diff-to">${escapeHtml(String(item.to))}</span></span></div>`;
+          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${escapeHtml(h.readable)}</span><span class="diff-val"><span class="diff-from">${escapeHtml(_formatDiffValue(item.from))}</span> <span class="diff-arrow">&rarr;</span> <span class="diff-to">${escapeHtml(_formatDiffValue(item.to))}</span></span></div>`;
         } else {
           const prefix = item.type === "added" ? "+" : "-";
-          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${prefix} ${escapeHtml(h.readable)}</span><span class="diff-val">${escapeHtml(String(item.value))}</span></div>`;
+          html += `<div class="${cls}"><span class="diff-key" title="${escapeHtml(item.key)}">${prefix} ${escapeHtml(h.readable)}</span><span class="diff-val">${escapeHtml(_formatDiffValue(item.value))}</span></div>`;
+        }
+        if (h.context) {
+          html += `<div class="diff-context">${escapeHtml(h.context)}</div>`;
         }
       }
-      if (items.length > 20) html += `<p class="metric-detail">${items.length - 20} more in this group...</p>`;
+      if (items.length > 40) html += `<p class="metric-detail">${items.length - 40} more in this group...</p>`;
       html += `</div>`;
     }
     html += `</div>`;
@@ -1681,11 +1759,17 @@ function renderCompareTimelines() {
     const status = r.status ? ` [${r.status}]` : "";
     return `<option value="${escapeHtml(r.run_id)}">${escapeHtml(label)}${escapeHtml(status)}</option>`;
   }).join("");
+  const snapshotOptionsA = (a.snapshots || []).map((snapshot) =>
+    `<option value="${snapshot.snapshot_id}">${snapshot.snapshot_id} · ${escapeHtml(snapshot.label || "snapshot")}</option>`
+  ).join("");
+  const snapshotOptionsB = (b.snapshots || []).map((snapshot) =>
+    `<option value="${snapshot.snapshot_id}">${snapshot.snapshot_id} · ${escapeHtml(snapshot.label || "snapshot")}</option>`
+  ).join("");
 
   html += `<div class="tl-compare-header">`;
-  html += `<select id="compare-picker-a" class="compare-run-picker">${runOptions}</select>`;
+  html += `<div class="compare-picker-stack"><select id="compare-picker-a" class="compare-run-picker">${runOptions}</select><select id="compare-snapshot-a" class="compare-run-picker compare-snapshot-picker">${snapshotOptionsA}</select></div>`;
   html += `<span class="tl-compare-vs">vs</span>`;
-  html += `<select id="compare-picker-b" class="compare-run-picker">${runOptions}</select>`;
+  html += `<div class="compare-picker-stack"><select id="compare-picker-b" class="compare-run-picker">${runOptions}</select><select id="compare-snapshot-b" class="compare-run-picker compare-snapshot-picker">${snapshotOptionsB}</select></div>`;
   html += `<button id="compare-diff-btn" class="compare-diff-btn">Diff world state</button>`;
   html += `</div>`;
   html += `<div id="compare-diff-result" class="compare-diff-result"></div>`;
@@ -1926,68 +2010,216 @@ function renderMirrorFleetPanel() {
     ? "fleet-badge-live"
     : (mode === "demo" ? "fleet-badge-demo" : "fleet-badge-sim");
   const eventCount = mirror.event_count || 0;
-  const totalDenied = agents.reduce((sum, a) => sum + (a.denied_count || 0), 0);
-  const pending = mirror.pending_demo_steps || 0;
-  const autoplay = mirror.autoplay_running ? "autoplay" : "manual";
+  const pending = Array.isArray(mirror.pending_approvals)
+    ? mirror.pending_approvals.filter((item) => item.status === "pending").length
+    : 0;
+  const profileOptions = Array.isArray(mirror.policy_profiles) ? mirror.policy_profiles : [];
+  const approvers = agents.filter((agent) => agent.resolved_policy_profile?.can_approve);
+
+  const connectorStrip = (Array.isArray(mirror.connector_status) ? mirror.connector_status : []).map((item) => {
+    const statusClass = `connector-${item.availability || "healthy"} connector-${item.write_capability || "interactive"}`;
+    const label = item.surface === "jira"
+      ? "Jira"
+      : item.surface === "graph"
+        ? "Graph"
+        : item.surface === "salesforce"
+          ? "Salesforce"
+          : "Slack";
+    const detail = `${item.source_mode} ${String(item.write_capability || "").replace("_", " ")}`;
+    return `
+      <div class="connector-pill ${statusClass}" title="${escapeHtml(item.reason || detail)}">
+        <span class="connector-dot"></span>
+        <span class="connector-name">${label}</span>
+        <span class="connector-detail">${escapeHtml(detail)}</span>
+      </div>
+    `;
+  }).join("");
 
   const agentCards = agents.map((agent) => {
     const statusClass = `agent-status-${agent.status || "registered"}`;
     const role = agent.role ? agent.role.replace(/_/g, " ") : agent.mode || "agent";
     const surfaces = Array.isArray(agent.allowed_surfaces) ? agent.allowed_surfaces.join(", ") : "";
-    const lastAction = agent.last_action ? `<span class="agent-last-action">${escapeHtml(agent.last_action)}</span>` : "";
     const denied = agent.denied_count || 0;
-    const deniedBadge = denied > 0
-      ? `<span class="agent-denied-badge">${denied} denied</span>`
+    const throttled = agent.throttled_count || 0;
+    const profileBadge = agent.resolved_policy_profile
+      ? `<span class="agent-policy-badge">${escapeHtml(agent.resolved_policy_profile.label)}</span>`
       : "";
+    const profileSelect = profileOptions.map((profile) =>
+      `<option value="${escapeHtml(profile.profile_id)}" ${profile.profile_id === agent.policy_profile_id ? "selected" : ""}>${escapeHtml(profile.label)}</option>`
+    ).join("");
     return `
       <div class="mirror-agent-card${denied > 0 ? " mirror-agent-has-denials" : ""}">
         <div class="agent-card-top">
           <span class="agent-name">${escapeHtml(agent.name || agent.agent_id)}</span>
-          ${deniedBadge}
+          ${profileBadge}
         </div>
-        <span class="agent-role">${escapeHtml(role)}${surfaces ? " · " + escapeHtml(surfaces) : ""}</span>
+        <span class="agent-role">${escapeHtml(role)}</span>
         <span class="agent-status ${statusClass}">${agent.status || "registered"}</span>
-        ${lastAction}
+        <div class="agent-metrics">
+          <span>${denied} blocked</span>
+          <span>${throttled} throttled</span>
+          ${surfaces ? `<span>${escapeHtml(surfaces)}</span>` : ""}
+        </div>
+        ${agent.last_action ? `<span class="agent-last-action">${escapeHtml(agent.last_action)}</span>` : ""}
+        <div class="agent-edit-grid">
+          <label><span>Profile</span><select data-agent-profile="${escapeHtml(agent.agent_id)}">${profileSelect}</select></label>
+          <label><span>Status</span><select data-agent-status="${escapeHtml(agent.agent_id)}">
+            <option value="registered" ${agent.status === "registered" ? "selected" : ""}>registered</option>
+            <option value="active" ${agent.status === "active" ? "selected" : ""}>active</option>
+            <option value="idle" ${agent.status === "idle" ? "selected" : ""}>idle</option>
+            <option value="error" ${agent.status === "error" ? "selected" : ""}>error</option>
+          </select></label>
+          <label class="agent-edit-surfaces"><span>Surfaces</span><input data-agent-surfaces="${escapeHtml(agent.agent_id)}" value="${escapeHtml(surfaces)}" /></label>
+        </div>
+        <button type="button" class="ghost-button agent-save-btn" data-agent-save="${escapeHtml(agent.agent_id)}">Save agent</button>
       </div>
     `;
   }).join("");
 
-  const recentEvents = Array.isArray(mirror.recent_events) ? mirror.recent_events : [];
-  let eventFeedHtml = "";
-  if (recentEvents.length > 0) {
-    const feedItems = recentEvents.slice(-10).reverse().map((evt) => {
-      const denied = evt.handled_by === "denied";
-      const cls = denied ? "mirror-feed-item mirror-feed-denied" : "mirror-feed-item";
-      const label = evt.label || evt.tool || "event";
-      const handledTag = denied
-        ? '<span class="feed-denied-tag">blocked</span>'
-        : `<span class="feed-handled-tag">${escapeHtml(evt.handled_by || "ok")}</span>`;
-      return `<div class="${cls}"><span class="feed-agent">${escapeHtml(evt.agent_id)}</span><span class="feed-label">${escapeHtml(label)}</span>${handledTag}</div>`;
-    }).join("");
-    eventFeedHtml = `
-      <div class="mirror-event-feed">
-        <div class="mirror-feed-header">Activity Log</div>
-        <div class="mirror-feed-list">${feedItems}</div>
-      </div>
-    `;
-  }
+  const approvalQueue = pending
+    ? mirror.pending_approvals
+        .filter((item) => item.status === "pending")
+        .map((item) => {
+          const resolverOptions = approvers.map((agent) =>
+            `<option value="${escapeHtml(agent.agent_id)}">${escapeHtml(agent.name || agent.agent_id)}</option>`
+          ).join("");
+          return `
+            <div class="approval-row">
+              <div class="approval-copy">
+                <strong>${escapeHtml(item.resolved_tool)}</strong>
+                <span>${escapeHtml(item.agent_id)} · ${escapeHtml(item.surface)} · ${escapeHtml(item.reason || "approval required")}</span>
+              </div>
+              <div class="approval-actions">
+                <select data-approval-resolver="${escapeHtml(item.approval_id)}">${resolverOptions}</select>
+                <button type="button" class="ghost-button approval-approve-btn" data-approval-approve="${escapeHtml(item.approval_id)}">Approve</button>
+                <button type="button" class="ghost-button approval-reject-btn" data-approval-reject="${escapeHtml(item.approval_id)}">Reject</button>
+              </div>
+            </div>
+          `;
+        }).join("")
+    : `<p class="metric-detail">No pending approvals.</p>`;
 
-  const deniedIndicator = totalDenied > 0
-    ? `<span class="fleet-denied-indicator">${totalDenied} blocked</span>`
-    : "";
+  const recentEvents = Array.isArray(mirror.recent_events) ? mirror.recent_events : [];
+  const eventFeedHtml = recentEvents.length
+    ? recentEvents.slice(-12).reverse().map((evt) => {
+        const denied = evt.handled_by === "denied";
+        const pendingApproval = evt.handled_by === "pending_approval";
+        const cls = denied
+          ? "mirror-feed-item mirror-feed-denied"
+          : pendingApproval
+            ? "mirror-feed-item mirror-feed-pending"
+            : "mirror-feed-item";
+        const label = evt.label || evt.tool || "event";
+        const reason = evt.reason
+          || ({
+            "mirror.surface_denied": "Surface not allowed",
+            "mirror.profile_denied": "Policy tier blocked the action",
+            "mirror.approval_required": "Held for approval",
+            "mirror.rate_limited": "Rate limited",
+            "mirror.connector_degraded": "Connector unavailable",
+            "mirror.unsupported_live_write": "Live write not supported",
+          }[evt.reason_code] || evt.reason_code || "");
+        const handledTag = pendingApproval
+          ? '<span class="feed-pending-tag">held</span>'
+          : denied
+            ? '<span class="feed-denied-tag">blocked</span>'
+            : `<span class="feed-handled-tag">${escapeHtml(evt.handled_by || "ok")}</span>`;
+        return `<div class="${cls}"><span class="feed-agent">${escapeHtml(evt.agent_id)}</span><span class="feed-label">${escapeHtml(label)}</span>${handledTag}${reason ? `<span class="feed-reason">${escapeHtml(reason)}</span>` : ""}</div>`;
+      }).join("")
+    : `<p class="metric-detail">No governed actions yet.</p>`;
+
+  const addAgentForm = `
+    <div class="mirror-agent-form">
+      <div class="mirror-feed-header">Register Agent</div>
+      <div class="agent-edit-grid">
+        <label><span>Agent ID</span><input id="mirror-new-agent-id" placeholder="control-lead" /></label>
+        <label><span>Name</span><input id="mirror-new-agent-name" placeholder="Control Lead" /></label>
+        <label><span>Mode</span><select id="mirror-new-agent-mode">
+          <option value="proxy">proxy</option>
+          <option value="ingest">ingest</option>
+          <option value="demo">demo</option>
+        </select></label>
+        <label><span>Profile</span><select id="mirror-new-agent-profile">${profileOptions.map((profile) => `<option value="${escapeHtml(profile.profile_id)}">${escapeHtml(profile.label)}</option>`).join("")}</select></label>
+        <label class="agent-edit-surfaces"><span>Surfaces</span><input id="mirror-new-agent-surfaces" placeholder="slack, service_ops" /></label>
+      </div>
+      <button type="button" class="ghost-button" id="mirror-register-agent-btn">Add agent</button>
+    </div>
+  `;
 
   el.innerHTML = `
     <div class="mirror-fleet-header">
       <span class="fleet-label">Control Plane</span>
       <span class="fleet-badge ${badgeClass}">${mode}</span>
-      ${deniedIndicator}
-      <span class="fleet-stat">${eventCount} events${pending ? " · " + pending + " queued" : ""}</span>
+      <span class="fleet-stat">${eventCount} events · ${pending} pending approvals</span>
     </div>
+    <div class="mirror-connector-strip">${connectorStrip}</div>
+    ${addAgentForm}
     <div class="mirror-fleet-body">
       <div class="mirror-agents-grid">${agentCards}</div>
-      ${eventFeedHtml}
+      <div class="mirror-event-feed">
+        <div class="mirror-feed-header">Approval Queue</div>
+        <div class="approval-queue">${approvalQueue}</div>
+        <div class="mirror-feed-header">Activity Log</div>
+        <div class="mirror-feed-list">${eventFeedHtml}</div>
+      </div>
     </div>
   `;
+
+  document.getElementById("mirror-register-agent-btn")?.addEventListener("click", async () => {
+    const agentId = document.getElementById("mirror-new-agent-id")?.value?.trim();
+    const name = document.getElementById("mirror-new-agent-name")?.value?.trim();
+    const modeValue = document.getElementById("mirror-new-agent-mode")?.value || "ingest";
+    const profileValue = document.getElementById("mirror-new-agent-profile")?.value || "operator";
+    const surfacesRaw = document.getElementById("mirror-new-agent-surfaces")?.value || "";
+    if (!agentId || !name) return;
+    await mirrorPost("/api/workspace/mirror/agents", {
+      agent_id: agentId,
+      name,
+      mode: modeValue,
+      policy_profile_id: profileValue,
+      allowed_surfaces: surfacesRaw.split(",").map((item) => item.trim()).filter(Boolean),
+    }).catch(() => null);
+    await refreshAfterMirrorMutation();
+  });
+
+  el.querySelectorAll("[data-agent-save]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      const agentId = node.dataset.agentSave;
+      const profile = el.querySelector(`[data-agent-profile="${agentId}"]`)?.value;
+      const status = el.querySelector(`[data-agent-status="${agentId}"]`)?.value;
+      const surfaces = el.querySelector(`[data-agent-surfaces="${agentId}"]`)?.value || "";
+      await mirrorPatch(`/api/workspace/mirror/agents/${encodeURIComponent(agentId)}`, {
+        policy_profile_id: profile,
+        status,
+        allowed_surfaces: surfaces.split(",").map((item) => item.trim()).filter(Boolean),
+      }).catch(() => null);
+      await refreshAfterMirrorMutation();
+    });
+  });
+
+  el.querySelectorAll("[data-approval-approve]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      const approvalId = node.dataset.approvalApprove;
+      const resolver = el.querySelector(`[data-approval-resolver="${approvalId}"]`)?.value;
+      if (!resolver) return;
+      await mirrorPost(`/api/workspace/mirror/approvals/${encodeURIComponent(approvalId)}/approve`, {
+        resolver_agent_id: resolver,
+      }).catch(() => null);
+      await refreshAfterMirrorMutation();
+    });
+  });
+
+  el.querySelectorAll("[data-approval-reject]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      const approvalId = node.dataset.approvalReject;
+      const resolver = el.querySelector(`[data-approval-resolver="${approvalId}"]`)?.value;
+      if (!resolver) return;
+      await mirrorPost(`/api/workspace/mirror/approvals/${encodeURIComponent(approvalId)}/reject`, {
+        resolver_agent_id: resolver,
+      }).catch(() => null);
+      await refreshAfterMirrorMutation();
+    });
+  });
 }
 
 function renderSurfaceWall() {
@@ -2294,6 +2526,7 @@ function renderMissionPlay() {
   const missionState = state.missionState;
   if (!missionState) {
     state.lastMoveImpact = null;
+    renderOutcomeActions();
     scorecard.innerHTML = `
       <div class="story-card story-span-2">
         <p class="eyebrow">Play</p>
@@ -2393,6 +2626,7 @@ function renderMissionPlay() {
       : "Play a move, branch the situation, or finish the run.";
   renderMoveLog();
   renderJson("mission-state-panel", missionState);
+  renderOutcomeActions();
   renderLivingCompanyView();
 }
 
@@ -2911,6 +3145,19 @@ function renderObjectiveBriefing(contractVariants = [], activeContractVariant = 
   });
 }
 
+function serviceOpsReplayAvailable() {
+  return Boolean(
+    state.missionState?.mission?.vertical_name === "service_ops"
+      && state.missionState?.run_id
+  );
+}
+
+function renderOutcomeActions() {
+  const replayButton = document.getElementById("outcome-policy-btn");
+  if (!replayButton) return;
+  replayButton.style.display = serviceOpsReplayAvailable() ? "" : "none";
+}
+
 function renderRunHeader() {
   const run = state.activeRun;
   const title = el("active-run-title");
@@ -3399,7 +3646,7 @@ function renderSnapshots() {
   if (!forkRunId) {
     rail.insertAdjacentHTML(
       "beforeend",
-      `<p class="metric-detail">Forking is only available on the current playable mission run.</p>`
+      `<p class="metric-detail">Forking is available on human mission runs with snapshots.</p>`
     );
   }
 
@@ -3748,6 +3995,103 @@ function showPolicyChangeModal(move) {
   document.getElementById("policy-modal-confirm").addEventListener("click", () => {
     modal.remove();
     void applyMissionMove(move.move_id);
+  });
+}
+
+async function onTryDifferentPolicyClick() {
+  if (!state.missionState?.run_id) return;
+  try {
+    const bundle = await getJson(`/api/runs/${encodeURIComponent(state.missionState.run_id)}/policy-knobs`);
+    showPolicyReplayModal(bundle);
+  } catch (error) {
+    const status = document.getElementById("mission-form-status");
+    if (status) status.textContent = `Policy replay failed: ${error}`;
+  }
+}
+
+function showPolicyReplayModal(bundle) {
+  let existing = document.getElementById("policy-replay-modal");
+  if (existing) existing.remove();
+  const knobs = Array.isArray(bundle?.knobs) ? bundle.knobs : [];
+  if (!knobs.length) return;
+
+  const rows = knobs.map((knob) => {
+    const inputId = `policy-replay-${knob.field}`;
+    if (knob.value_type === "boolean") {
+      return `
+        <label class="policy-replay-row" for="${escapeHtml(inputId)}">
+          <span class="policy-replay-copy"><strong>${escapeHtml(knob.label)}</strong><em>${escapeHtml(knob.description || "")}</em></span>
+          <select id="${escapeHtml(inputId)}" data-field="${escapeHtml(knob.field)}" data-value-type="${escapeHtml(knob.value_type)}" class="compare-run-picker">
+            <option value="true" ${knob.value ? "selected" : ""}>On</option>
+            <option value="false" ${!knob.value ? "selected" : ""}>Off</option>
+          </select>
+        </label>
+      `;
+    }
+    return `
+      <label class="policy-replay-row" for="${escapeHtml(inputId)}">
+        <span class="policy-replay-copy"><strong>${escapeHtml(knob.label)}</strong><em>${escapeHtml(knob.description || "")}</em></span>
+        <input id="${escapeHtml(inputId)}" class="policy-replay-input" data-field="${escapeHtml(knob.field)}" data-value-type="${escapeHtml(knob.value_type)}" value="${escapeHtml(knob.value)}" />
+      </label>
+    `;
+  }).join("");
+
+  const modal = document.createElement("div");
+  modal.id = "policy-replay-modal";
+  modal.className = "policy-modal-overlay";
+  modal.innerHTML = `
+    <div class="policy-modal policy-replay-modal">
+      <div class="policy-modal-header">
+        <span class="policy-modal-badge">What-If Replay</span>
+        <h3>Try different policy</h3>
+      </div>
+      <p class="policy-modal-consequence">Change the named service-ops policy knobs, replay from the same starting point, and compare the new outcome side by side.</p>
+      <div class="policy-replay-form">${rows}</div>
+      <div class="policy-modal-actions">
+        <button type="button" class="ghost-button" id="policy-replay-cancel">Cancel</button>
+        <button type="button" class="ghost-button policy-modal-confirm" id="policy-replay-confirm">Replay path</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  document.getElementById("policy-replay-cancel").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+  document.getElementById("policy-replay-confirm").addEventListener("click", async () => {
+    const status = document.getElementById("mission-form-status");
+    const policyDelta = {};
+    modal.querySelectorAll("[data-field]").forEach((node) => {
+      const field = node.dataset.field;
+      const valueType = node.dataset.valueType;
+      let value = node.value;
+      if (valueType === "boolean") value = value === "true";
+      if (valueType === "integer") value = Number.parseInt(value, 10);
+      if (valueType === "number") value = Number.parseFloat(value);
+      policyDelta[field] = value;
+    });
+    modal.remove();
+    if (status) status.textContent = "Replaying the path with updated policy\u2026";
+    try {
+      const replay = await mirrorPost(
+        `/api/runs/${encodeURIComponent(state.missionState.run_id)}/replay-with-policy`,
+        { policy_delta: policyDelta }
+      );
+      await loadRuns({ selectActiveRun: false });
+      const runs = state.runs || [];
+      const original = runs.find((run) => run.run_id === replay.source_run_id) || { run_id: replay.source_run_id };
+      const replayed = runs.find((run) => run.run_id === replay.replay_run_id) || { run_id: replay.replay_run_id };
+      await loadCompareRunData(original, replayed);
+      state.compareSnapshotA = replay.source_snapshot_id || state.compareSnapshotA;
+      state.compareSnapshotB = replay.replay_snapshot_id || state.compareSnapshotB;
+      state.compareMode = true;
+      if (!state.timelineMode) toggleTimelineMode();
+      renderTimelineView();
+      setStudioView("outcome");
+      if (status) status.textContent = "Replay complete. Compare the original path against the new policy run.";
+    } catch (error) {
+      if (status) status.textContent = `Policy replay failed: ${error}`;
+    }
   });
 }
 
@@ -4120,6 +4464,9 @@ function bindControls() {
   document.getElementById("timeline-toggle").addEventListener("click", toggleTimelineMode);
   document.getElementById("compare-toggle").addEventListener("click", toggleCompareMode);
   document.getElementById("outcome-compare-btn")?.addEventListener("click", toggleCompareMode);
+  document.getElementById("outcome-policy-btn")?.addEventListener("click", () => {
+    void onTryDifferentPolicyClick();
+  });
   document.getElementById("connect-toggle").addEventListener("click", toggleConnectPanel);
   document.getElementById("scenario-select").addEventListener("change", (event) => {
     void loadScenario(event.target.value);

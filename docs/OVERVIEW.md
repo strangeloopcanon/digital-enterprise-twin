@@ -12,7 +12,7 @@ VEI is best understood as **one kernel with four operating modes**, not as a pil
 
 - **Test / Eval** — run a fixed company world, score an agent, and see whether it actually works
 - **Mirror / Control** — place VEI between agents and enterprise systems, or ingest their actions, so VEI can govern, record, and replay what happened
-- **Sandbox / What-if** — fork the same world, change policy or actions, and compare alternate futures
+- **Sandbox / What-if** — fork the same world, change policy or actions, compare alternate futures, and for `service_ops` replay the same starting point with a small set of named policy changes
 - **Train / Data** — turn the same traces and trajectories into rollouts, demonstrations, and RL-friendly data
 
 Those four modes share the same world session, connector layer, event spine, replay model, and contract scoring. The world simulation is the substrate for all of them. Mirror mode is the special case with live edges: VEI still uses the same kernel, but some actions also flow to or from real systems.
@@ -74,7 +74,7 @@ Mirror mode builds on that gateway in two parallel ways:
 Today mirror mode ships in two maturity levels:
 
 - **Mirror demo mode** — built-in agent registry plus staged timed activity over simulated worlds, especially `service_ops`, so the control-plane story feels live without real credentials
-- **Mirror live alpha** — Slack-first live pass-through with policy gating and twin updates; unsupported surfaces still serve reads from the last synced twin snapshot, and writes fail clearly until their live adapters exist
+- **Mirror live alpha** — Slack-first live pass-through with typed policy profiles, approval holds, and connector-status reporting; unsupported surfaces still serve reads from the last synced twin snapshot, and live writes fail clearly until their adapters exist
 
 That last point matters: VEI is authoritative for actions it directly proxies or ingests. Everything else is refreshed by capture or re-sync, not by claiming real-time convergence yet.
 
@@ -82,18 +82,19 @@ That last point matters: VEI is authoritative for actions it directly proxies or
 
 The `vei.mirror` package provides the runtime that makes mirror mode work:
 
-- **`MirrorRuntime`** — manages the agent registry, event ingest, demo autoplay, and snapshot generation. Each registered agent is a `MirrorAgentSpec` with typed fields for role, team, allowed surfaces, policy profile, status, `last_action`, and `denied_count`.
-- **Surface-access enforcement** — when an agent attempts to act on a surface not in its `allowed_surfaces` list, the twin gateway blocks the action, records a `mirror_denied` event in the run timeline, increments the agent's denial count, and returns a denied result. The `record_only` path intentionally bypasses enforcement so passive observation agents can report without policy gating.
-- **Bounded recent-event feed** — the runtime maintains a small ring buffer of recent mirror events (`MirrorRecentEvent`), each recording the agent, tool, handling mode (dispatch / inject / denied / record_only), and timestamp. This feeds the Studio control plane panel without rescanning full history.
-- **`MirrorRuntimeSnapshot`** — a typed snapshot of the mirror fleet state including all agents, their denial counts, last actions, config, and the recent event feed.
+- **`MirrorRuntime`** — manages the agent registry, event ingest, demo autoplay, approval queue, rate limiting, and snapshot generation. Each registered agent is a `MirrorAgentSpec` with typed fields for role, team, allowed surfaces, policy profile, status, `last_action`, `denied_count`, and `throttled_count`.
+- **Typed policy profiles** — every registered agent resolves to one of four built-in profiles: `observer`, `operator`, `approver`, or `admin`. Those profiles decide whether reads, safe writes, and risky writes are allowed, denied, or held for approval.
+- **Mirror decision pipeline** — the twin gateway evaluates registration, agent mode, allowed surfaces, policy profile, connector safety, and lightweight rate limits before it executes a governed action. The `record_only` path intentionally bypasses enforcement so passive observation agents can report telemetry without policy gating.
+- **Approval queue and recent-event feed** — risky actions can pause in a pending-approval state instead of executing immediately. The runtime keeps a bounded ring buffer of recent mirror events (`MirrorRecentEvent`) so the Studio control plane can show blocked, held, throttled, and executed activity without rescanning full history.
+- **`MirrorRuntimeSnapshot`** — a typed snapshot of the mirror fleet state including agents, resolved policy profiles, pending approvals, connector status, denial counts, throttle counts, config, and the recent event feed.
 
 ## The UI
 
 A single-page Studio interface with three main views:
 
-- **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted. When mirror mode is active, a **mode indicator banner** appears ("Mirror Mode — agents governed by control plane") and the **Control Plane panel** shows registered agents in a two-column layout: agent cards (name, role, surfaces, status, last action, denial badge) on the left and a live activity log on the right.
+- **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted. When mirror mode is active, a **mode indicator banner** appears ("Mirror Mode — agents governed by control plane") and the **Control Plane panel** shows registered agents, policy badges, connector status, an approval queue, inline agent controls, and a readable activity log.
 - **Crisis view** — Structured analysis of what went wrong and why it matters, with crisis description, impact assessment, and failure consequences.
-- **Outcome view** — Contract evaluation (pass/fail, assertions, policy failures), decision audit trail, and a **Compare Paths** button that opens side-by-side path comparison with assertion-level divergence. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **"Diff world state"** button compares two runs and displays changes grouped by domain with humanized keys.
+- **Outcome view** — Contract evaluation (pass/fail, assertions, policy failures), decision audit trail, and a **Compare Paths** button that opens side-by-side path comparison with assertion-level divergence. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **"Diff world state"** button compares two runs and displays changes grouped by domain with humanized keys. For `service_ops`, a **`Try Different Policy`** flow opens a compact what-if form, replays from the same starting snapshot, and lands directly in compare mode.
 - **Connect panel** — Shows which live data sources are configured with status indicators and one-click capture.
 
 Run pickers for path comparison are always visible. Fork-from-here and snapshot inspection are accessible to all users, not gated behind a developer toggle.

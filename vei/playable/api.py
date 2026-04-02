@@ -65,12 +65,37 @@ from .models import (
     PlayerMoveResult,
     PlayableMissionMoveSpec,
     PlayableMissionSpec,
+    ServiceOpsPolicyBundle,
+    ServiceOpsPolicyKnob,
+    ServiceOpsPolicyReplayResult,
 )
 
 MISSION_STATE_FILE = "mission_state.json"
 MISSION_EXPORT_FILE = "mission_exports.json"
 PLAYABLE_BUNDLE_FILE = "playable_manifest.json"
 PLAYABLE_OVERVIEW_FILE = "playable_overview.md"
+_SERVICE_OPS_POLICY_FIELDS: dict[str, dict[str, str]] = {
+    "approval_threshold_usd": {
+        "label": "Approval Threshold (USD)",
+        "value_type": "number",
+        "description": "Dollar amount that triggers approval pressure in dispatch decisions.",
+    },
+    "vip_priority_override": {
+        "label": "VIP Priority Override",
+        "value_type": "boolean",
+        "description": "Keeps VIP work orders prioritized even when the schedule is stressed.",
+    },
+    "billing_hold_on_dispute": {
+        "label": "Billing Hold On Dispute",
+        "value_type": "boolean",
+        "description": "Automatically pauses disputed billing cases while the issue is active.",
+    },
+    "max_auto_reschedules": {
+        "label": "Max Auto Reschedules",
+        "value_type": "integer",
+        "description": "Maximum number of automatic reschedules before the system stops trying.",
+    },
+}
 
 
 def build_playable_mission_catalog() -> MissionCatalog:
@@ -607,6 +632,74 @@ def branch_workspace_mission_run(
         ),
     )
     return branched
+
+
+def get_service_ops_policy_bundle(
+    root: str | Path,
+    *,
+    run_id: str,
+) -> ServiceOpsPolicyBundle:
+    workspace_root = Path(root).expanduser().resolve()
+    state = load_workspace_mission_state(workspace_root, run_id)
+    if state is None:
+        raise ValueError(f"mission run not found: {run_id}")
+    _require_service_ops_replayable_run(state)
+    source_snapshot_id = _initial_snapshot_id(workspace_root, run_id)
+    payload = _load_snapshot_payload(workspace_root, run_id, source_snapshot_id)
+    policy = _service_ops_policy_from_snapshot(payload)
+    knobs: list[ServiceOpsPolicyKnob] = []
+    for field, spec in _SERVICE_OPS_POLICY_FIELDS.items():
+        if field not in policy:
+            raise ValueError(
+                f"service_ops policy field '{field}' is missing from the initial snapshot"
+            )
+        knobs.append(
+            ServiceOpsPolicyKnob(
+                field=field,
+                label=spec["label"],
+                value_type=spec["value_type"],  # type: ignore[arg-type]
+                value=policy[field],
+                description=spec["description"],
+            )
+        )
+    return ServiceOpsPolicyBundle(
+        run_id=run_id,
+        mission_name=state.mission.mission_name,
+        source_snapshot_id=source_snapshot_id,
+        knobs=knobs,
+    )
+
+
+def replay_service_ops_with_policy_delta(
+    root: str | Path,
+    *,
+    run_id: str,
+    policy_delta: dict[str, Any],
+) -> ServiceOpsPolicyReplayResult:
+    workspace_root = Path(root).expanduser().resolve()
+    state = load_workspace_mission_state(workspace_root, run_id)
+    if state is None:
+        raise ValueError(f"mission run not found: {run_id}")
+    _require_service_ops_replayable_run(state)
+    source_snapshot_id = _initial_snapshot_id(workspace_root, run_id)
+    parsed_delta = _validate_service_ops_policy_delta(policy_delta)
+    branched = branch_workspace_mission_run(
+        workspace_root,
+        run_id=run_id,
+        branch_name=f"{state.branch_name}.policy_replay",
+        snapshot_id=source_snapshot_id,
+    )
+    _apply_policy_replay_delta(workspace_root, branched.run_id, parsed_delta)
+    _run_replay_baseline(workspace_root, branched.run_id)
+    replay_state = load_workspace_mission_state(workspace_root, branched.run_id)
+    if replay_state is None:
+        raise ValueError("replayed mission run could not be reloaded")
+    return ServiceOpsPolicyReplayResult(
+        source_run_id=run_id,
+        replay_run_id=branched.run_id,
+        source_snapshot_id=source_snapshot_id,
+        replay_snapshot_id=replay_state.last_snapshot_id,
+    )
 
 
 def finish_workspace_mission_run(
@@ -1323,6 +1416,74 @@ def _write_human_step_events(
     )
 
 
+def _write_human_policy_replay_events(
+    workspace_root: Path,
+    *,
+    state: MissionSessionState,
+    snapshot_id: int,
+    time_ms: int,
+    policy_delta: dict[str, Any],
+    contract_eval: ContractEvaluationResult,
+) -> None:
+    run_dir = get_workspace_run_dir(workspace_root, state.run_id)
+    append_run_event(
+        run_dir / "events.jsonl",
+        RunTimelineEvent(
+            index=0,
+            kind="workflow_step",
+            label="Try different policy",
+            channel="Plan",
+            time_ms=time_ms,
+            runner="human",
+            resolved_tool="service_ops.update_policy",
+            graph_intent="ops_graph.update_policy",
+            graph_domain="ops_graph",
+            graph_action="update_policy",
+            branch=state.branch_name,
+            payload={"policy_delta": dict(policy_delta)},
+        ),
+    )
+    append_run_event(
+        run_dir / "events.jsonl",
+        RunTimelineEvent(
+            index=0,
+            kind="snapshot",
+            label="policy_replay:update_policy",
+            channel="World",
+            time_ms=time_ms,
+            runner="human",
+            branch=state.branch_name,
+            snapshot_id=snapshot_id,
+            payload={
+                "path": _snapshot_path(
+                    workspace_root,
+                    state.run_id,
+                    state.branch_name,
+                    snapshot_id,
+                )
+            },
+        ),
+    )
+    append_run_event(
+        run_dir / "events.jsonl",
+        RunTimelineEvent(
+            index=0,
+            kind="contract",
+            label="policy replay updated mission score",
+            channel="World",
+            time_ms=time_ms,
+            runner="human",
+            branch=state.branch_name,
+            payload={
+                "ok": contract_eval.ok,
+                "issue_count": len(contract_eval.dynamic_validation.issues)
+                + len(contract_eval.static_validation.issues),
+                "score": state.scorecard.overall_score,
+            },
+        ),
+    )
+
+
 def _rewound_executed_moves(
     workspace_root: Path,
     *,
@@ -1375,6 +1536,120 @@ def _load_snapshot_payload(
     snapshot_id: int,
 ) -> dict[str, Any]:
     return load_run_snapshot_payload(workspace_root, run_id, snapshot_id)
+
+
+def _initial_snapshot_id(workspace_root: Path, run_id: str) -> int:
+    snapshots = list_run_snapshots(workspace_root, run_id)
+    if not snapshots:
+        raise ValueError("mission run has no snapshots")
+    return int(snapshots[0].snapshot_id)
+
+
+def _require_service_ops_replayable_run(state: MissionSessionState) -> None:
+    if state.mission.vertical_name != "service_ops":
+        raise ValueError("policy replay is only available for service_ops missions")
+
+
+def _service_ops_policy_from_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(payload.get("data") or {})
+    components = dict(data.get("components") or {})
+    service_ops = dict(components.get("service_ops") or {})
+    policy = dict(service_ops.get("policy") or {})
+    if not policy:
+        raise ValueError("service_ops policy is missing from the selected snapshot")
+    return policy
+
+
+def _validate_service_ops_policy_delta(policy_delta: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(policy_delta, dict) or not policy_delta:
+        raise ValueError("policy replay requires at least one policy change")
+    parsed: dict[str, Any] = {}
+    for field, value in policy_delta.items():
+        if field not in _SERVICE_OPS_POLICY_FIELDS:
+            raise ValueError(f"unsupported service_ops policy field: {field}")
+        value_type = _SERVICE_OPS_POLICY_FIELDS[field]["value_type"]
+        if value_type == "boolean":
+            parsed[field] = bool(value)
+            continue
+        if value_type == "integer":
+            parsed[field] = int(value)
+            continue
+        parsed[field] = float(value)
+    parsed.setdefault("reason", "What-if replay policy change.")
+    return parsed
+
+
+def _apply_policy_replay_delta(
+    workspace_root: Path,
+    run_id: str,
+    policy_delta: dict[str, Any],
+) -> MissionSessionState:
+    state = load_workspace_mission_state(workspace_root, run_id)
+    if state is None:
+        raise ValueError(f"mission run not found: {run_id}")
+    session = _restore_workspace_session(workspace_root, state)
+    result = session.graph_action(
+        CapabilityGraphActionInput(
+            domain="ops_graph",
+            action="update_policy",
+            args=dict(policy_delta),
+        )
+    )
+    observation = session.observe("service_ops")
+    snapshot = session.snapshot("policy_replay:update_policy")
+    contract_eval = _evaluate_play_session(
+        workspace_root,
+        snapshot.data.model_dump(),
+        {
+            "observation": observation,
+            "result": result.result,
+            "time_ms": snapshot.time_ms,
+        },
+    )
+    write_contract_evaluation(workspace_root, run_id, contract_eval)
+    state.last_snapshot_id = snapshot.snapshot_id
+    state.scorecard = _build_scorecard(
+        mission=state.mission,
+        contract_eval=contract_eval,
+        move_count=len(state.executed_moves),
+        action_budget_remaining=state.action_budget_remaining,
+    )
+    state.available_moves = _build_move_states(
+        workspace_root,
+        mission=state.mission,
+        executed_move_ids=[item.move_id for item in state.executed_moves],
+        turn_index=state.turn_index,
+        action_budget_remaining=state.action_budget_remaining,
+    )
+    state.exports = build_mission_run_exports(workspace_root, state)
+    _write_mission_state(workspace_root, run_id, state)
+    _write_mission_exports(workspace_root, run_id, state.exports)
+    _write_human_policy_replay_events(
+        workspace_root,
+        state=state,
+        snapshot_id=snapshot.snapshot_id,
+        time_ms=snapshot.time_ms,
+        policy_delta=policy_delta,
+        contract_eval=contract_eval,
+    )
+    return state
+
+
+def _run_replay_baseline(workspace_root: Path, run_id: str) -> MissionSessionState:
+    state = load_workspace_mission_state(workspace_root, run_id)
+    if state is None:
+        raise ValueError(f"mission run not found: {run_id}")
+    for move in list(state.available_moves):
+        if move.availability == "blocked":
+            continue
+        state = apply_workspace_mission_move(
+            workspace_root, run_id=run_id, move_id=move.move_id
+        )
+        if state.status == "completed":
+            break
+        if len(state.executed_moves) >= 3:
+            break
+    return state
 
 
 def _load_contract_eval_for_run(

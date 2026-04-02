@@ -645,6 +645,56 @@ def test_ui_api_exposes_playable_mission_mode(tmp_path: Path) -> None:
     assert ready_state_response.json() == {}
 
 
+def test_ui_api_supports_service_ops_policy_replay(tmp_path: Path) -> None:
+    root = tmp_path / "service-ops-replay-ui"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref="service_ops",
+    )
+    client = TestClient(ui_api.create_ui_app(root))
+
+    start_response = client.post(
+        "/api/missions/start",
+        json={"mission_name": "service_day_collision"},
+    )
+    assert start_response.status_code == 200
+    mission_state = start_response.json()
+
+    knobs_response = client.get(f"/api/runs/{mission_state['run_id']}/policy-knobs")
+    assert knobs_response.status_code == 200
+    knob_fields = {item["field"] for item in knobs_response.json()["knobs"]}
+    assert knob_fields == {
+        "approval_threshold_usd",
+        "vip_priority_override",
+        "billing_hold_on_dispute",
+        "max_auto_reschedules",
+    }
+
+    replay_response = client.post(
+        f"/api/runs/{mission_state['run_id']}/replay-with-policy",
+        json={
+            "policy_delta": {
+                "billing_hold_on_dispute": False,
+                "approval_threshold_usd": 2500,
+            }
+        },
+    )
+    assert replay_response.status_code == 200
+    replay_payload = replay_response.json()
+    assert replay_payload["replay_run_id"] != mission_state["run_id"]
+
+    surfaces_response = client.get(
+        f"/api/runs/{replay_payload['replay_run_id']}/surfaces"
+    )
+    assert surfaces_response.status_code == 200
+    panel_map = {
+        panel["surface"]: panel for panel in surfaces_response.json()["panels"]
+    }
+    assert panel_map["vertical_heartbeat"]["policy"]["billing_hold_on_dispute"] is False
+    assert panel_map["vertical_heartbeat"]["policy"]["approval_threshold_usd"] == 2500.0
+
+
 def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / "pilot-ui"
     create_workspace_from_template(

@@ -10,6 +10,7 @@ from vei.capability_graph.models import CapabilityGraphActionInput
 MoveTier = Literal["recommended", "available", "risky"]
 MoveAvailability = Literal["recommended", "available", "risky", "blocked"]
 MissionStatus = Literal["ready", "running", "completed"]
+ServiceOpsPolicyFieldType = Literal["boolean", "integer", "number"]
 
 
 class PlayableMissionMoveSpec(BaseModel):
@@ -145,3 +146,25 @@ class PlayableShowcaseResult(BaseModel):
     worlds: list[PlayableShowcaseWorldResult] = Field(default_factory=list)
     result_path: Path
     overview_path: Path
+
+
+class ServiceOpsPolicyKnob(BaseModel):
+    field: str
+    label: str
+    value_type: ServiceOpsPolicyFieldType
+    value: bool | int | float
+    description: str
+
+
+class ServiceOpsPolicyBundle(BaseModel):
+    run_id: str
+    mission_name: str
+    source_snapshot_id: int
+    knobs: list[ServiceOpsPolicyKnob] = Field(default_factory=list)
+
+
+class ServiceOpsPolicyReplayResult(BaseModel):
+    source_run_id: str
+    replay_run_id: str
+    source_snapshot_id: int
+    replay_snapshot_id: int | None = None
