@@ -19,8 +19,6 @@ The Studio opens on the **Living Company** view. The top of the screen still cen
 
 Below that header, mirror-enabled runs show a persistent **mode indicator** so the operator can immediately tell they are looking at governed agent traffic rather than an unguided simulation.
 
-![Header, controls, and mirror mode indicator](assets/service_ops/01_header_and_controls.png)
-
 ---
 
 ## 2. Situation Room Strip
@@ -35,8 +33,6 @@ The situation room remains the fastest summary of business state. It shows six c
 - **Risk** — overall mission risk level
 
 This strip updates after both human moves and mirror-governed agent activity, so the operator sees operational state and governance state move together.
-
-![Situation room strip](assets/service_ops/02_situation_room_strip.png)
 
 ---
 
@@ -62,8 +58,6 @@ The panel now does more than show raw activity:
 - **Inline operator controls** let the human add an agent, change profile, update allowed surfaces, and set status without leaving Studio.
 
 This is the current control-plane moment: you can explain who is acting, what VEI allowed, what VEI blocked, and why.
-
-![Control Plane panel with agent cards and activity log](assets/service_ops/03_mirror_fleet_panel.png)
 
 ---
 
@@ -98,8 +92,6 @@ The rest of the Company view still shows the full business wall:
 
 Mirror-governed actions show up here as normal business activity. That is the key product trick: the control plane is not a side dashboard disconnected from the company simulation. It governs actions that visibly change the company world.
 
-![Full company view with all surfaces](assets/service_ops/04_living_company_full.png)
-
 ---
 
 ## 6. Mission Play Still Matters
@@ -115,14 +107,6 @@ That means the `service_ops` pack can still demo both halves of VEI:
 - **human-in-the-loop mission play**
 - **governed agent activity through mirror mode**
 
-![Mission control and moves](assets/service_ops/05_mission_control_moves.png)
-
-![Policy change ceremony modal](assets/service_ops/06_policy_change_modal.png)
-
-![After policy override](assets/service_ops/07_after_policy_override.png)
-
-![Updated mission score](assets/service_ops/08_updated_mission_score.png)
-
 ---
 
 ## 7. Crisis and Outcome Views
@@ -131,17 +115,13 @@ The **Crisis** tab still explains the business problem and why it matters.
 
 The **Outcome** tab is where the second major product moment now lives:
 
-- contract evaluation and assertion results
+- contract evaluation and success checks
 - decision audit trail
 - snapshot cards with **Fork from here**
 - side-by-side **Compare Paths**
 - snapshot pickers for both comparison paths
-- cross-run world-state diff grouped by domain
+- cross-run snapshot comparison grouped by domain
 - **Try Different Policy** for replayable `service_ops` runs
-
-![Crisis view](assets/service_ops/09_crisis_view.png)
-
-![Outcome view with Compare Paths and Fork buttons](assets/service_ops/10_outcome_view.png)
 
 ---
 
@@ -173,7 +153,7 @@ Snapshot and compare behavior is broader now than the original demo:
 
 - **Fork from here** works from any run snapshot, not just the currently active mission. A compact fork card also appears in the Company rail when snapshots exist, so the operator can branch without switching tabs.
 - **Compare Paths** uses explicit run pickers and snapshot pickers for both sides. When entering compare mode, the current run and the most recent other run are auto-selected.
-- **Diff world state** compares the selected snapshot pair rather than always using the latest snapshot. The diff container is taller (600px) so more of the diff is visible without scrolling.
+- **Compare snapshots** compares the selected snapshot pair rather than always using the latest snapshot. It frames the result as what changed between snapshots, which is easier to explain in business terms. The comparison area is taller (600px) so more of the changes are visible without scrolling.
 
 This makes the sandbox story easier to explain:
 
@@ -181,17 +161,9 @@ This makes the sandbox story easier to explain:
 - one branch can be a human alternative
 - one branch can be a policy replay
 
-![Decision log and snapshots with fork buttons](assets/service_ops/11_decision_log.png)
-
-![Outcome context cards](assets/service_ops/12_move_log.png)
-
-![Snapshots with fork buttons and within-run diff](assets/service_ops/13_snapshots_and_fork.png)
-
-![Path comparison with assertion diff and run pickers](assets/service_ops/14_compare_paths.png)
-
 ---
 
-## 10. Cross-Run World-State Diff
+## 10. Cross-Run Snapshot Comparison
 
 The cross-run diff is now cleaner and more business-readable:
 
@@ -202,8 +174,6 @@ The cross-run diff is now cleaner and more business-readable:
 - numeric values are shown as deltas where useful
 
 The point is not to dump raw JSON. The point is to show how two strategies produced meaningfully different company states.
-
-![Cross-run world state diff grouped by domain](assets/service_ops/15_world_state_diff.png)
 
 ---
 
@@ -232,7 +202,7 @@ Use this moment to show that VEI can replay the same company from the same start
 3. Change `billing_hold_on_dispute` and `approval_threshold_usd`.
 4. Replay the path.
 5. Compare the original and replayed runs side by side.
-6. Open the world-state diff and explain how the business outcome changed.
+6. Click **Compare snapshots** and explain how the business outcome changed.
 
 ---
 

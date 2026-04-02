@@ -4,7 +4,7 @@ VEI is a programmable replica of an entire company's operational software stack.
 
 It spans hundreds of Python files and tests, a single-page Studio UI, and one unified `vei` CLI for project setup, world simulation, benchmarking, release/export, and evaluation.
 
-Use the root `README.md` for install and operator quickstart. Use this document for product framing, personas, and the end-to-end story. Use `docs/ARCHITECTURE.md` for the technical map and `docs/BENCHMARKS.md` for the evaluation surface.
+Use the root `README.md` for install and operator quickstart. Use this document for product framing, personas, and the end-to-end story. Use `docs/ARCHITECTURE.md` for the technical map.
 
 ## One Kernel, Four Modes
 
@@ -94,7 +94,7 @@ A single-page Studio interface with three main views:
 
 - **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted. When mirror mode is active, a **mode indicator banner** appears ("Mirror Mode — agents governed by control plane") and the **Control Plane panel** shows registered agents, policy badges, connector status, an approval queue, inline agent controls, and a readable activity log.
 - **Crisis view** — Structured analysis of what went wrong and why it matters, with crisis description, impact assessment, and failure consequences.
-- **Outcome view** — Contract evaluation (pass/fail, assertions, policy failures), decision audit trail, and a **Compare Paths** button that opens side-by-side path comparison with assertion-level divergence. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **"Diff world state"** button compares two runs and displays changes grouped by domain with humanized keys. For `service_ops`, a **`Try Different Policy`** flow opens a compact what-if form, replays from the same starting snapshot, and lands directly in compare mode.
+- **Outcome view** — Contract evaluation (pass/fail, success checks, policy overrides), decision audit trail, and a **Compare Paths** button that opens a side-by-side view of how two runs differ. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **Compare snapshots** button compares the selected snapshot pair and shows what changed between them, grouped by domain with humanized labels. For `service_ops`, a **`Try Different Policy`** flow opens a compact what-if form, replays from the same starting snapshot, and lands directly in compare mode.
 - **Connect panel** — Shows which live data sources are configured with status indicators and one-click capture.
 
 Run pickers for path comparison are always visible. Fork-from-here and snapshot inspection are accessible to all users, not gated behind a developer toggle.
@@ -102,8 +102,6 @@ Run pickers for path comparison are always visible. Fork-from-here and snapshot 
 ### Pilot Console
 
 The Pilot Console is a separate operator sidecar at `/pilot` that provides the fastest path for an outside agent (or a researcher) to connect. One command (`vei pilot up`) starts the twin gateway and Studio, writes a launch manifest with bearer token and curl snippets, and serves the Pilot Console where the operator can watch live or demo agent activity, check outcome status, and reset or finalize runs.
-
-![VEI Pilot Console](assets/vei_pilot_console.png)
 
 ---
 
