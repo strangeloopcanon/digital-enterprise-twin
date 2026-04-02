@@ -21,12 +21,13 @@ function renderRunHeader() {
     badges.innerHTML = "";
     return;
   }
-  title.textContent = `${run.run_id} · ${run.scenario_name}`;
+  title.textContent = displayScenarioVariantTitle(run.scenario_name, run.run_id || "Run");
   badges.innerHTML = [
-    badge(run.runner, null),
-    badge(run.status, null, statusClass(run.status)),
-    badge(run.contract?.ok ? "contract pass" : run.contract?.ok === false ? "contract fail" : "contract pending", null, statusClass(run.contract?.ok)),
-    run.branch ? badge("branch", run.branch) : "",
+    badge(displayRunnerTitle(run.runner), null),
+    badge(displayStatusTitle(run.status), null, statusClass(run.status)),
+    badge("Contract", displayContractHealth(run.contract?.ok), statusClass(run.contract?.ok)),
+    badge("Run ID", run.run_id),
+    run.branch ? badge("Branch", displayBranchTitle(run.branch)) : "",
   ].join("");
 }
 
@@ -73,10 +74,10 @@ function renderRunSummary() {
   );
   panel.innerHTML = `
     <div class="score-strip">
-      ${scorePill("Contract", run.contract?.ok === null ? "pending" : run.contract?.ok ? "pass" : "fail", run.contract?.contract_name || "workspace contract")}
-      ${scorePill("Assertions", `${successPassed}/${successTotal}`)}
+      ${scorePill("Contract", displayContractHealth(run.contract?.ok), displayContractVariantTitle(run.contract?.contract_name || "", "Workspace contract"))}
+      ${scorePill("Success checks", `${successPassed}/${successTotal}`)}
       ${scorePill("Issues", String(issueCount))}
-      ${scorePill("Policy failures", String(policyFails))}
+      ${scorePill("Policy overrides", String(policyFails))}
       ${scorePill("Run events", compactNumber(state.timeline.length))}
     </div>
     <div class="briefing-grid">
@@ -85,10 +86,10 @@ function renderRunSummary() {
         <h3>${escapeHtml(outcomeTitle)}</h3>
         <p class="metric-detail">${escapeHtml(outcomeBody)}</p>
         <div class="detail-grid">
-          ${detailTile("Graph actions", compactNumber(graphEvents.length))}
+          ${detailTile("System changes", compactNumber(graphEvents.length))}
           ${detailTile("Snapshots", compactNumber(state.snapshots.length))}
           ${detailTile("Domains", compactNumber(graphDomains.length))}
-          ${detailTile("Virtual time", formatMs(run.metrics?.time_ms || 0))}
+          ${detailTile("Elapsed time", formatMs(run.metrics?.time_ms || 0))}
         </div>
         <div class="chip-row">${graphDomains.map((item) => chip(formatDomainTitle(item))).join("")}</div>
       </div>
@@ -111,8 +112,8 @@ function renderRunSummary() {
         whatIfBranches.length
           ? `<div class="story-card">
               <p class="eyebrow">What-if paths</p>
-              <h3>Branch labels</h3>
-              <div class="chip-row">${whatIfBranches.map((item) => chip(item)).join("")}</div>
+              <h3>Alternate paths</h3>
+              <div class="chip-row">${whatIfBranches.map((item) => chip(displayBranchTitle(item))).join("")}</div>
               <p class="metric-detail">These are alternate futures that begin from the same company state.</p>
             </div>`
           : ""

@@ -14,6 +14,38 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function humanize(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+  return text
+    .replace(/\./g, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function currentExerciseTitle() {
+  const manifest = state.exercise?.manifest;
+  const variant = manifest?.scenario_variant || manifest?.crisis_name || state.pilot?.manifest?.crisis_name || "";
+  const catalogMatch = (manifest?.catalog || []).find((item) => item.scenario_variant === manifest?.scenario_variant);
+  return catalogMatch?.crisis_name || humanize(variant) || "Current exercise";
+}
+
+function maskToken(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "Unavailable";
+  }
+  if (text.length <= 8) {
+    return "Available";
+  }
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
 async function getJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -76,12 +108,11 @@ function renderBanner() {
 function renderHeader() {
   const pilot = state.pilot;
   const manifest = pilot?.manifest;
-  const exerciseManifest = state.exercise?.manifest;
   const title = manifest
-    ? `${manifest.organization_name} — ${exerciseManifest?.crisis_name || manifest.crisis_name}`
+    ? `${manifest.organization_name} — ${currentExerciseTitle()}`
     : "Operator stack not configured";
   const summary = manifest
-    ? "Use the company view in Studio for the world itself. Use this sidecar to connect agents, compare paths, and build datasets."
+    ? "Studio is the company view. This console connects agents, compares paths, and builds datasets."
     : "Run `vei exercise up` or `vei pilot up` for this workspace to generate the launch details and live controls.";
   document.getElementById("pilot-company-title").textContent = title;
   document.getElementById("pilot-summary").textContent = summary;
@@ -126,31 +157,52 @@ function renderLaunch() {
     return;
   }
   const activeAgents = state.pilot?.active_agents || [];
+  const surfaces = manifest.supported_surfaces || [];
+  const snippets = manifest.snippets || [];
+  const statusValue = state.pilot?.services_ready ? "Live" : "Waiting";
+  const statusDetail = state.pilot?.services_ready
+    ? "Studio, gateway, and the exercise controls are ready."
+    : "The launch details exist, but the stack is not fully running right now.";
   launchGrid.innerHTML = [
-    metricTile("Studio", manifest.studio_url, "Company-side view"),
-    metricTile("Operator Console", manifest.pilot_console_url, "Operator sidecar"),
-    metricTile("Gateway", manifest.gateway_url, "Outside-agent entrypoint"),
-    metricTile("Bearer token", manifest.bearer_token, "Shared local token"),
+    metricTile("Status", statusValue, statusDetail),
     metricTile("Agents seen", String(activeAgents.length), activeAgents.length ? "Names are shown in the activity stream" : "No external agent has connected yet"),
-    metricTile("Recommended first exercise", manifest.recommended_first_exercise, "Start small and stay customer-safe"),
+    metricTile("Recommended first exercise", currentExerciseTitle(), manifest.recommended_first_exercise || "Start small and stay customer-safe."),
+    metricTile("Supported surfaces", String(surfaces.length), surfaces.length ? "These systems are available to the outside agent." : "No surfaces are registered for this workspace."),
   ].join("");
-  surfaceList.innerHTML = (manifest.supported_surfaces || [])
+  surfaceList.innerHTML = surfaces
     .map((surface) => `<span class="badge">${escapeHtml(surface.title)} · ${escapeHtml(surface.base_path)}</span>`)
     .join("");
-  snippetsPanel.innerHTML = (manifest.snippets || [])
-    .map((snippet) => `
-      <article class="pilot-snippet-card">
-        <div class="pilot-snippet-head">
-          <strong>${escapeHtml(snippet.title)}</strong>
-          <div class="chip-row">
-            <span class="badge">${escapeHtml(snippet.name)}</span>
-            <span class="badge">${escapeHtml(snippet.language || "bash")}</span>
-          </div>
-        </div>
-        <pre>${escapeHtml(snippet.content)}</pre>
-      </article>
-    `)
-    .join("");
+  snippetsPanel.innerHTML = `
+    <details class="pilot-connection-details">
+      <summary>Connection details</summary>
+      <div class="pilot-connection-grid">
+        ${metricTile("Studio URL", manifest.studio_url, "Company-side view")}
+        ${metricTile("Operator Console URL", manifest.pilot_console_url, "Operator sidecar")}
+        ${metricTile("Gateway URL", manifest.gateway_url, "Outside-agent entrypoint")}
+        ${metricTile("Bearer token", maskToken(manifest.bearer_token), "Hidden by default until you open the local snippets below")}
+      </div>
+      ${
+        snippets.length
+          ? `<div class="pilot-snippets">
+              ${snippets
+                .map((snippet) => `
+                  <article class="pilot-snippet-card">
+                    <div class="pilot-snippet-head">
+                      <strong>${escapeHtml(snippet.title)}</strong>
+                      <div class="chip-row">
+                        <span class="badge">${escapeHtml(humanize(snippet.name))}</span>
+                        <span class="badge">${escapeHtml(snippet.language || "bash")}</span>
+                      </div>
+                    </div>
+                    <pre>${escapeHtml(snippet.content)}</pre>
+                  </article>
+                `)
+                .join("")}
+            </div>`
+          : ""
+      }
+    </details>
+  `;
 }
 
 function renderExercise() {
@@ -174,9 +226,9 @@ function renderExercise() {
 
   const manifest = payload.manifest;
   overview.innerHTML = [
-    metricTile("Company", manifest.company_name, manifest.archetype.replaceAll("_", " ")),
-    metricTile("Current crisis", manifest.crisis_name, manifest.scenario_variant),
-    metricTile("Success lens", manifest.contract_variant, "The contract variant that decides whether this path helped"),
+    metricTile("Company", manifest.company_name, humanize(manifest.archetype)),
+    metricTile("Current crisis", currentExerciseTitle(), humanize(manifest.scenario_variant)),
+    metricTile("Success lens", humanize(manifest.contract_variant), "The success lens that decides whether this path helped"),
     metricTile("First move", manifest.recommended_first_move, "Start by reading the company before you act"),
   ].join("");
 
@@ -194,7 +246,7 @@ function renderExercise() {
       <article class="pilot-activity-card">
         <div class="pilot-activity-head">
           <strong>${escapeHtml(row.label)}</strong>
-          <span class="badge">${escapeHtml(row.status || "missing")}</span>
+          <span class="badge">${escapeHtml(humanize(row.status || "missing"))}</span>
         </div>
         <p class="metric-detail">${escapeHtml(row.summary || "No summary yet.")}</p>
         <div class="chip-row">
@@ -230,7 +282,7 @@ function renderExercise() {
       <article class="pilot-catalog-card ${item.active ? "pilot-catalog-card-active" : ""}">
         <div class="pilot-activity-head">
           <strong>${escapeHtml(item.crisis_name)}</strong>
-          ${item.active ? '<span class="badge">Active</span>' : `<button type="button" class="ghost-button pilot-catalog-button" data-scenario-variant="${escapeHtml(item.scenario_variant)}" data-contract-variant="${escapeHtml(item.contract_variant || "")}">Switch</button>`}
+          ${item.active ? '<span class="badge">Active</span>' : `<button type="button" class="ghost-button pilot-catalog-button" data-scenario-variant="${escapeHtml(item.scenario_variant)}" data-contract-variant="${escapeHtml(item.contract_variant || "")}">Switch to this</button>`}
         </div>
         <p class="metric-detail">${escapeHtml(item.summary)}</p>
         <p class="metric-detail">${escapeHtml(item.objective_summary)}</p>

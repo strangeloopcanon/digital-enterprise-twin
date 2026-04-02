@@ -248,6 +248,91 @@ function activeContractVariant() {
   return variants.find((item) => item.name === state.scenarioPreview?.active_contract_variant) || null;
 }
 
+const RUNNER_TITLES = {
+  workflow: "Workflow baseline",
+  scripted: "Scripted baseline",
+  external: "Outside agent",
+  llm: "Model-driven path",
+  bc: "Learned policy",
+  human: "Human path",
+};
+
+function humanize(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+  return text
+    .replace(/\./g, " ")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function scenarioVariantDetail(name) {
+  const variants = Array.isArray(state.scenarioPreview?.available_scenario_variants)
+    ? state.scenarioPreview.available_scenario_variants
+    : [];
+  return variants.find((item) => item.name === name) || null;
+}
+
+function contractVariantDetail(name) {
+  const variants = Array.isArray(state.scenarioPreview?.available_contract_variants)
+    ? state.scenarioPreview.available_contract_variants
+    : [];
+  return variants.find((item) => item.name === name) || null;
+}
+
+function displayScenarioVariantTitle(name, fallback = "Scenario") {
+  const detail = scenarioVariantDetail(name);
+  if (detail?.title) {
+    return detail.title;
+  }
+  return humanize(name || fallback);
+}
+
+function displayContractVariantTitle(name, fallback = "Success mode") {
+  const detail = contractVariantDetail(name);
+  if (detail?.title) {
+    return detail.title;
+  }
+  return humanize(name || fallback);
+}
+
+function displayWorkflowTitle(name, fallback = "Workflow") {
+  return humanize(name || fallback);
+}
+
+function displayBranchTitle(name, fallback = "Base") {
+  const text = String(name || fallback).trim();
+  const match = text.match(/^(.*?)(?:_\d{8}_\d{6}(?:_\d+)?(?:_[a-z0-9]+)?)$/i);
+  if (match?.[1]) {
+    return humanize(match[1]);
+  }
+  return humanize(text || fallback);
+}
+
+function displayRunnerTitle(name, fallback = "Run") {
+  const normalized = String(name || "").trim().toLowerCase();
+  if (RUNNER_TITLES[normalized]) {
+    return RUNNER_TITLES[normalized];
+  }
+  return humanize(name || fallback);
+}
+
+function displayStatusTitle(name, fallback = "") {
+  return humanize(name || fallback);
+}
+
+function displayContractHealth(ok) {
+  if (ok === null || ok === undefined) {
+    return "Pending";
+  }
+  return ok ? "Healthy" : "At risk";
+}
+
 function currentCrisisTitle() {
   if (hasExerciseMode()) {
     const scenarioVariant = activeScenarioVariant();
@@ -447,7 +532,7 @@ function summarizeGraph(graph) {
 }
 
 function formatDomainTitle(domain) {
-  return GRAPH_TITLES[domain] || domain.replaceAll("_", " ");
+  return GRAPH_TITLES[domain] || humanize(domain);
 }
 
 const SURFACE_TITLES = {
@@ -760,7 +845,10 @@ function renderWorkspaceMetrics() {
     chip(manifest.title || manifest.name || "Workspace"),
     chip(`${systemCount} system${systemCount === 1 ? "" : "s"}`),
     chip(`${workspace.run_count || 0} path${workspace.run_count === 1 ? "" : "s"}`),
-    chip(missionState?.status || (latestRun ? latestRun.status : "ready"), statusClass(missionState?.status || latestRun?.status)),
+    chip(
+      displayStatusTitle(missionState?.status || (latestRun ? latestRun.status : "ready"), "Ready"),
+      statusClass(missionState?.status || latestRun?.status)
+    ),
   ].join("");
 }
 
@@ -888,7 +976,7 @@ function renderMissionSelector() {
       )
       .join("");
     if (startButton) {
-      startButton.textContent = "Apply Crisis";
+      startButton.textContent = "Update situation";
     }
     return;
   }
@@ -928,7 +1016,7 @@ function renderMissionSelector() {
     })
     .join("");
   if (startButton) {
-    startButton.textContent = "Start scenario";
+    startButton.textContent = "Start";
   }
 }
 
@@ -950,8 +1038,8 @@ function renderMissionSummary() {
         <h3>${escapeHtml(crisisTitle)}</h3>
         <p class="metric-detail">${escapeHtml(crisisSummary)}</p>
         <div class="chip-row">
-          ${chip(state.scenarioPreview?.active_scenario_variant || "default")}
-          ${chip(state.scenarioPreview?.active_contract_variant || "default objective")}
+          ${chip(displayScenarioVariantTitle(state.scenarioPreview?.active_scenario_variant, "Current situation"))}
+          ${chip(displayContractVariantTitle(state.scenarioPreview?.active_contract_variant, "Default objective"))}
         </div>
       </div>
       <div class="story-card">
@@ -977,12 +1065,12 @@ function renderMissionSummary() {
           (item) => `
             <div class="run-item ${item.name === state.scenarioPreview?.active_scenario_variant ? "active" : ""}">
               <div class="chip-row">
-                ${chip(item.name || "scenario")}
+                ${chip(displayScenarioVariantTitle(item.name, item.title || "Scenario"))}
                 ${item.name === state.scenarioPreview?.active_scenario_variant ? chip("active", "ok") : ""}
               </div>
               <h3>${escapeHtml(item.title || item.name || "Scenario")}</h3>
               <p class="metric-detail">${escapeHtml(item.description || "")}</p>
-              <button type="button" class="ghost-button activate-scenario-variant-button" data-variant-name="${escapeHtml(item.name || "")}">Switch crisis</button>
+              <button type="button" class="ghost-button activate-scenario-variant-button" data-variant-name="${escapeHtml(item.name || "")}">Switch to this</button>
             </div>
           `
         )
@@ -1001,7 +1089,7 @@ function renderMissionSummary() {
       <h3>${escapeHtml(currentMission.title)}</h3>
       <p class="metric-detail">${escapeHtml(currentMission.briefing || "")}</p>
       <div class="chip-row">
-        ${chip(currentMission.primary_domain || "world")}
+        ${chip(formatDomainTitle(currentMission.primary_domain || "world"))}
         ${chip(`${(currentMission.supported_objectives || []).length || 1} success mode${(currentMission.supported_objectives || []).length === 1 ? "" : "s"}`)}
       </div>
     </div>
@@ -1025,16 +1113,16 @@ function renderMissionSummary() {
       (item) => `
         <div class="run-item ${item.mission_name === currentMission.mission_name ? "active" : ""}">
           <div class="chip-row">
-            ${chip(item.mission_name)}
+            ${chip(humanize(item.mission_name))}
             ${item.hero ? chip("primary", "ok") : chip("included")}
           </div>
           <h3>${escapeHtml(item.title)}</h3>
           <p class="metric-detail">${escapeHtml(item.briefing || "")}</p>
           <p class="metric-detail">${escapeHtml(item.why_it_matters || "")}</p>
           <div class="chip-row">
-            ${(item.supported_objectives || []).map((objective) => chip(objective)).join("")}
+            ${(item.supported_objectives || []).map((objective) => chip(displayContractVariantTitle(objective, objective))).join("")}
           </div>
-          <button type="button" class="ghost-button activate-mission-button" data-mission-name="${escapeHtml(item.mission_name)}">Activate mission</button>
+          <button type="button" class="ghost-button activate-mission-button" data-mission-name="${escapeHtml(item.mission_name)}">Switch to this</button>
         </div>
       `
     )
@@ -1342,8 +1430,7 @@ function discoverSurfaces(columns) {
 }
 
 function surfaceLabel(s) {
-  const labels = { slack: "Slack", mail: "Email", tickets: "Tickets", docs: "Docs", approvals: "Approvals", vertical_heartbeat: "Business Core" };
-  return labels[s] || s;
+  return formatSurfaceTitle(s);
 }
 
 function renderTimelineView() {
@@ -1370,11 +1457,11 @@ function renderTimelineView() {
   if (mission) html += `<span class="tl-crisis">${escapeHtml(mission.title || "")}</span>`;
   html += `<span class="tl-stat">Score <strong>${score.overall_score ?? "\u2014"}</strong></span>`;
   html += `<span class="tl-stat">Moves <strong>${moves.length}</strong></span>`;
-  html += `<span class="tl-stat">Risk <strong>${score.business_risk || "\u2014"}</strong></span>`;
+  html += `<span class="tl-stat">Risk <strong>${escapeHtml(humanize(score.business_risk || "\u2014"))}</strong></span>`;
   if (completed) {
     const cls = score.mission_success ? "tl-result-ok" : "tl-result-fail";
-    const label = score.mission_success ? "Mission Complete" : "Exposure Remains";
-    html += `<span class="tl-result ${cls}">${label} &mdash; ${score.success_assertions_passed || 0}/${score.success_assertions_total || 0} assertions</span>`;
+    const label = score.mission_success ? "Resolved" : "Unresolved";
+    html += `<span class="tl-result ${cls}">${label} &mdash; ${score.success_assertions_passed || 0}/${score.success_assertions_total || 0} success checks</span>`;
   }
   html += `</div>`;
 
