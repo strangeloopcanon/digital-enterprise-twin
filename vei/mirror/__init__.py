@@ -1,5 +1,6 @@
 from .api import (
     MirrorRuntime,
+    MirrorTarget,
     default_mirror_workspace_config,
     mirror_policy_profiles,
     resolve_mirror_policy_profile,
@@ -31,6 +32,7 @@ __all__ = [
     "MirrorPolicyProfile",
     "MirrorRecentEvent",
     "MirrorRuntime",
+    "MirrorTarget",
     "MirrorRuntimeSnapshot",
     "MirrorWorkspaceConfig",
     "default_mirror_workspace_config",

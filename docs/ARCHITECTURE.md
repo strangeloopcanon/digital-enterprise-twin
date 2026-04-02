@@ -114,13 +114,14 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
 
 - `vei.mirror`
   - `MirrorRuntime` — agent registry, event ingest, approval queue, rate limiting, demo autoplay, snapshot generation
+  - public mirror surface stays in `vei.mirror.api`, with internal split across `_config.py`, `_demo.py`, and `_runtime.py`
   - `MirrorAgentSpec` — typed model for registered agents with role, team, allowed surfaces, policy profile, status, `last_action`, `denied_count`, and `throttled_count`
   - `MirrorPendingApproval` / `MirrorPolicyProfile` / `MirrorConnectorStatus` — typed models for held actions, built-in agent permissions, and operator-facing surface status
   - `MirrorRecentEvent` — bounded ring buffer entries for the recent-event feed
   - `MirrorRuntimeSnapshot` — typed fleet snapshot including agents, resolved profiles, approvals, connector status, config, and recent events
 - `vei.twin`
   - `CustomerTwinBundle` — builds a customer-shaped twin from a context snapshot and vertical archetype
-  - `TwinRuntime` (in `gateway.py`) — FastAPI application exposing provider-shaped compatibility routes (Slack, Jira, Graph, SFDC) and mirror endpoints
+  - `TwinRuntime` — FastAPI runtime behind `vei.twin.gateway`, with helper, route, and runtime internals separated for the compatibility layer
   - Mirror decision pipeline: registration, agent mode, allowed surface, policy profile, connector safety, rate limit, then execution
   - Surface and policy denials, approval-required holds, unsupported live writes, and rate limits are recorded in the run timeline and exposed through provider-shaped responses
 - `vei.pilot`
@@ -132,12 +133,15 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
 - `vei.run.api`
   - `diff_cross_run_snapshots()` — compare world states between two snapshots from different runs, stripping branch-local metadata and returning added/removed/changed fields
 - `vei.playable.api`
+  - stable public surface over grouped internal modules for mission flow, exports, and policy replay
   - `branch_workspace_mission_run(..., snapshot_id=...)` — fork a playable mission from any historical snapshot, rewinding move history to that point
   - `get_service_ops_policy_bundle()` / `replay_service_ops_with_policy_delta()` — service-ops-only what-if replay over four named policy knobs from the initial snapshot
 - `vei.ui.api`
+  - stable public surface over grouped route registrars for workspace/mirror, playable, run, and imports/context endpoints
   - `GET /api/runs/diff-cross` — HTTP endpoint for cross-run snapshot comparison
   - `POST /api/missions/{run_id}/branch` with optional `snapshot_id` — fork from any snapshot via the UI
   - `GET /api/runs/{run_id}/policy-knobs` / `POST /api/runs/{run_id}/replay-with-policy` — service-ops policy replay endpoints used by the Studio outcome flow
+  - Studio browser code is loaded as ordered plain scripts (`studio-core.js`, `studio-compare.js`, `studio-company.js`, `studio-outcome.js`, `studio-bootstrap.js`) rather than one giant frontend file
 
 ## Context and Synthesis Layer
 

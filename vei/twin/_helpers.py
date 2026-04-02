@@ -1,8 +1,8 @@
-from . import _runtime as _runtime_impl
-from ._helpers import (
+from ._runtime import (
     _blocked_live_operations,
     _channel_for_focus,
     _contract_summary,
+    _dispatch_request,
     _env_bool,
     _error_payload,
     _event_surface,
@@ -21,6 +21,7 @@ from ._helpers import (
     _iso_now,
     _jira_issue,
     _jira_project_key,
+    _jira_search,
     _jira_transitions,
     _merge_mirror_agent_identity,
     _mirror_operation_class,
@@ -35,6 +36,7 @@ from ._helpers import (
     _salesforce_account,
     _salesforce_contact,
     _salesforce_opportunity,
+    _salesforce_query,
     _slack_auth_ok,
     _slack_channel,
     _slack_channel_id,
@@ -44,37 +46,8 @@ from ._helpers import (
     _status_code_for_error,
     _surface_alias_set,
 )
-from ._runtime import TwinRuntime
-
-_dispatch_request = _runtime_impl._dispatch_request
-
-
-def create_twin_gateway_app(root):
-    _runtime_impl._dispatch_request = _dispatch_request
-    return _runtime_impl.create_twin_gateway_app(root)
-
-
-def _jira_search(runtime, request, params):
-    original = _runtime_impl._dispatch_request
-    _runtime_impl._dispatch_request = _dispatch_request
-    try:
-        return _runtime_impl._jira_search(runtime, request, params)
-    finally:
-        _runtime_impl._dispatch_request = original
-
-
-def _salesforce_query(runtime, request, query):
-    original = _runtime_impl._dispatch_request
-    _runtime_impl._dispatch_request = _dispatch_request
-    try:
-        return _runtime_impl._salesforce_query(runtime, request, query)
-    finally:
-        _runtime_impl._dispatch_request = original
-
 
 __all__ = [
-    "TwinRuntime",
-    "create_twin_gateway_app",
     "_blocked_live_operations",
     "_channel_for_focus",
     "_contract_summary",

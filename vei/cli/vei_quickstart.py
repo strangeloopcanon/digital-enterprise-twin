@@ -94,6 +94,8 @@ def quickstart_command(
         _ensure_twin_bundle(
             root,
             world,
+            studio_port=studio_port,
+            gateway_port=gateway_port,
             connector_mode=connector_mode,
             mirror_demo=mirror_demo,
             mirror_demo_interval_ms=mirror_demo_interval_ms,
@@ -176,6 +178,8 @@ def _ensure_twin_bundle(
     root: Path,
     world: str,
     *,
+    studio_port: int,
+    gateway_port: int,
     connector_mode: str,
     mirror_demo: bool,
     mirror_demo_interval_ms: int,
@@ -188,9 +192,6 @@ def _ensure_twin_bundle(
 
     workspace_root = root.expanduser().resolve()
     manifest_path = workspace_root / "twin_manifest.json"
-    if manifest_path.exists():
-        return
-
     ws = load_workspace(workspace_root)
     mirror_config = default_mirror_workspace_config(
         connector_mode=connector_mode,
@@ -216,6 +217,8 @@ def _ensure_twin_bundle(
         "context_snapshot_path": "",
         "blueprint_asset_path": str(ws.blueprint_asset_path),
         "gateway": {
+            "host": "127.0.0.1",
+            "port": gateway_port,
             "auth_token": secrets.token_urlsafe(18),
             "surfaces": [
                 {"name": "slack", "title": "Slack", "base_path": "/slack/api"},
@@ -231,11 +234,20 @@ def _ensure_twin_bundle(
                     "base_path": "/salesforce/services/data/v60.0",
                 },
             ],
-            "ui_command": f"python -m vei.cli.vei ui serve --root {workspace_root} --port 3011",
+            "ui_command": (
+                "python -m vei.cli.vei ui serve "
+                f"--root {workspace_root} --port {studio_port}"
+            ),
         },
         "summary": f"Quickstart twin for {world}",
         "metadata": {"mirror": mirror_metadata_payload(mirror_config)},
     }
+    if manifest_path.exists():
+        existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        bundle["gateway"]["auth_token"] = (
+            existing.get("gateway", {}).get("auth_token")
+            or bundle["gateway"]["auth_token"]
+        )
     manifest_path.write_text(json.dumps(bundle, indent=2), encoding="utf-8")
 
 

@@ -231,6 +231,97 @@ def test_service_ops_twin_mirror_demo_exposes_agents_and_generates_activity(
         assert runtime_payload["runtime"]["request_count"] >= 1
 
 
+def test_service_ops_twin_mirror_demo_runs_salesforce_step_without_error(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_demo_salesforce"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(
+            demo_mode=True,
+            autoplay=False,
+            hero_world="service_ops",
+        ),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        pending_steps = client.get("/api/mirror", headers=auth_headers).json()[
+            "pending_demo_steps"
+        ]
+        for _ in range(pending_steps + 2):
+            response = client.post("/api/mirror/demo/tick", headers=auth_headers)
+            assert response.status_code == 200
+            if response.json().get("remaining_demo_steps") == 0:
+                break
+
+        mirror_payload = client.get("/api/mirror", headers=auth_headers).json()
+        history_payload = client.get("/api/twin/history").json()
+
+        assert mirror_payload["pending_demo_steps"] == 0
+        assert any(
+            item["tool"] == "salesforce.query.opportunity" for item in history_payload
+        )
+        assert not any(
+            item["status"] == "error"
+            and str(item.get("tool", "")).startswith("salesforce.")
+            for item in history_payload
+        )
+
+
+def test_service_ops_twin_mirror_demo_skips_stale_approval_step_after_manual_approval(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "service_ops_demo_manual_approval"
+    bundle = build_customer_twin(
+        root,
+        snapshot=_sample_snapshot(),
+        organization_domain="clearwater.example.com",
+        mold=ContextMoldConfig(archetype="service_ops"),
+        mirror_config=default_mirror_workspace_config(
+            demo_mode=True,
+            autoplay=False,
+            hero_world="service_ops",
+        ),
+    )
+    auth_headers = {"Authorization": f"Bearer {bundle.gateway.auth_token}"}
+
+    with TestClient(create_twin_gateway_app(root)) as client:
+        for _ in range(6):
+            response = client.post("/api/mirror/demo/tick", headers=auth_headers)
+            assert response.status_code == 200
+
+        approvals_payload = client.get(
+            "/api/mirror/approvals",
+            headers=auth_headers,
+        ).json()
+        approval_id = approvals_payload["approvals"][-1]["approval_id"]
+
+        approval_response = client.post(
+            f"/api/mirror/approvals/{approval_id}/approve",
+            headers=auth_headers,
+            json={"resolver_agent_id": "control-lead"},
+        )
+        assert approval_response.status_code == 200
+        assert approval_response.json()["status"] == "executed"
+
+        while True:
+            mirror_payload = client.get("/api/mirror", headers=auth_headers).json()
+            if mirror_payload["pending_demo_steps"] == 0:
+                break
+            response = client.post("/api/mirror/demo/tick", headers=auth_headers)
+            assert response.status_code == 200
+
+        history_payload = client.get("/api/twin/history").json()
+        assert any(
+            item["tool"] == "salesforce.query.opportunity" for item in history_payload
+        )
+        assert not any(item["status"] == "error" for item in history_payload)
+
+
 def test_mirror_policy_profiles_hold_or_deny_as_expected(
     tmp_path: Path,
 ) -> None:
