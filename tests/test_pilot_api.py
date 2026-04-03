@@ -629,6 +629,8 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
         headers=None,
         timeout_s: float = 4.0,
     ):
+        if url.endswith("/api/mirror/agents") and method == "GET":
+            return {"agents": []}
         if url.endswith("/api/mirror/agents"):
             captured_sync_payloads.append(payload or {})
             return {"ok": True}
@@ -681,11 +683,153 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
     assert status.orchestrator.approvals[0].approval_id == "paperclip:approval-1"
 
 
-def test_build_pilot_status_uses_cached_orchestrator_snapshot_when_refresh_fails(
+def test_build_pilot_status_uses_cached_orchestrator_snapshot_without_refresh(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     root = tmp_path / "pilot_orchestrator_cache"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="service_ops",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.local",
+            company_id="company-1",
+        ),
+    )
+    runtime = pilot_api.PilotRuntime(
+        workspace_root=root,
+        services=[
+            pilot_api.PilotServiceRecord(
+                name="gateway",
+                host="127.0.0.1",
+                port=3020,
+                url="http://127.0.0.1:3020",
+                pid=4101,
+                state="running",
+            ),
+            pilot_api.PilotServiceRecord(
+                name="studio",
+                host="127.0.0.1",
+                port=3011,
+                url="http://127.0.0.1:3011",
+                pid=4102,
+                state="running",
+            ),
+        ],
+    )
+    cached_snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-1",
+        fetched_at="2026-04-02T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-1",
+            company_name="Cached Company",
+        ),
+    )
+    cached_sync = OrchestratorSyncHealth(
+        provider="paperclip",
+        status="healthy",
+        last_success_at="2026-04-02T01:00:00+00:00",
+        message="Cached previously.",
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_RUNTIME_FILE).write_text(
+        runtime.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_CACHE_FILE).write_text(
+        cached_snapshot.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_SYNC_FILE).write_text(
+        cached_sync.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    class _BrokenClient:
+        def fetch_snapshot(self):
+            raise AssertionError("fetch_snapshot should not run here")
+
+        def pause_agent(self, _agent_id: str):
+            raise AssertionError("pause should not run here")
+
+        def resume_agent(self, _agent_id: str):
+            raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
+
+        def sync_capabilities(self):
+            return OrchestratorSyncCapabilities()
+
+    def fake_fetch(url: str):
+        if url.endswith("/healthz"):
+            return {"ok": True}
+        if url.endswith("/api/workspace"):
+            return {"manifest": {"name": "pilot"}}
+        if url.endswith("/api/twin"):
+            return {"runtime": {"run_id": "external_run", "status": "running"}}
+        if url.endswith("/api/twin/history"):
+            return []
+        if url.endswith("/api/twin/surfaces"):
+            return {"current_tension": "", "panels": []}
+        return None
+
+    monkeypatch.setattr(
+        pilot_api, "build_orchestrator_client", lambda _config: _BrokenClient()
+    )
+    monkeypatch.setattr(pilot_api, "_fetch_json", fake_fetch)
+    monkeypatch.setattr(pilot_api, "_service_alive", lambda _service: True)
+
+    status = pilot_api.build_pilot_status(root)
+
+    assert status.orchestrator is not None
+    assert status.orchestrator.summary.company_name == "Cached Company"
+    assert status.orchestrator_sync is not None
+    assert status.orchestrator_sync.status == "healthy"
+    assert status.orchestrator_sync.cache_used is False
+
+
+def test_build_pilot_status_force_sync_uses_cached_orchestrator_snapshot_when_refresh_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "pilot_orchestrator_cache_force_sync"
     root.mkdir(parents=True, exist_ok=True)
     manifest = pilot_api.PilotManifest(
         workspace_root=root,
@@ -814,13 +958,440 @@ def test_build_pilot_status_uses_cached_orchestrator_snapshot_when_refresh_fails
     monkeypatch.setattr(pilot_api, "_fetch_json", fake_fetch)
     monkeypatch.setattr(pilot_api, "_service_alive", lambda _service: True)
 
-    status = pilot_api.build_pilot_status(root)
+    status = pilot_api.build_pilot_status(root, force_orchestrator_sync=True)
 
     assert status.orchestrator is not None
     assert status.orchestrator.summary.company_name == "Cached Company"
     assert status.orchestrator_sync is not None
     assert status.orchestrator_sync.status == "stale"
     assert status.orchestrator_sync.cache_used is True
+
+
+def test_build_pilot_status_prunes_stale_orchestrator_agents_from_mirror(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "pilot_orchestrator_prune"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="service_ops",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        supported_surfaces=[
+            CompatibilitySurfaceSpec(
+                name="slack", title="Slack", base_path="/slack/api"
+            )
+        ],
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.local",
+            company_id="company-2",
+        ),
+    )
+    runtime = pilot_api.PilotRuntime(
+        workspace_root=root,
+        services=[
+            pilot_api.PilotServiceRecord(
+                name="gateway",
+                host="127.0.0.1",
+                port=3020,
+                url="http://127.0.0.1:3020",
+                pid=4101,
+                state="running",
+            ),
+            pilot_api.PilotServiceRecord(
+                name="studio",
+                host="127.0.0.1",
+                port=3011,
+                url="http://127.0.0.1:3011",
+                pid=4102,
+                state="running",
+            ),
+        ],
+    )
+    previous_snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-2",
+        fetched_at="2026-04-02T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-2",
+            company_name="Acme AI",
+        ),
+        agents=[
+            OrchestratorAgent(
+                provider="paperclip",
+                agent_id="paperclip:eng-1",
+                external_agent_id="eng-1",
+                name="Backend Engineer",
+                integration_mode="proxy",
+            ),
+            OrchestratorAgent(
+                provider="paperclip",
+                agent_id="paperclip:eng-2",
+                external_agent_id="eng-2",
+                name="Removed Engineer",
+                integration_mode="proxy",
+            ),
+        ],
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_RUNTIME_FILE).write_text(
+        runtime.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_CACHE_FILE).write_text(
+        previous_snapshot.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    current_snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-2",
+        fetched_at="2026-04-03T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-2",
+            company_name="Acme AI",
+        ),
+        agents=[
+            OrchestratorAgent(
+                provider="paperclip",
+                agent_id="paperclip:eng-1",
+                external_agent_id="eng-1",
+                name="Backend Engineer",
+                integration_mode="proxy",
+            )
+        ],
+    )
+
+    class _FakeClient:
+        def fetch_snapshot(self) -> OrchestratorSnapshot:
+            return current_snapshot
+
+        def pause_agent(self, _agent_id: str):
+            raise AssertionError("pause should not run here")
+
+        def resume_agent(self, _agent_id: str):
+            raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
+
+        def sync_capabilities(self) -> OrchestratorSyncCapabilities:
+            return current_snapshot.capabilities
+
+    captured_posts: list[dict[str, object]] = []
+    captured_deletes: list[str] = []
+
+    def fake_fetch(url: str):
+        if url.endswith("/healthz"):
+            return {"ok": True}
+        if url.endswith("/api/workspace"):
+            return {"manifest": {"name": "pilot"}}
+        if url.endswith("/api/twin"):
+            return {"runtime": {"run_id": "external_run", "status": "running"}}
+        if url.endswith("/api/twin/history"):
+            return []
+        if url.endswith("/api/twin/surfaces"):
+            return {"current_tension": "", "panels": []}
+        return None
+
+    def fake_request_json(
+        url: str,
+        *,
+        method: str = "GET",
+        payload: dict[str, object] | None = None,
+        headers=None,
+        timeout_s: float = 4.0,
+    ):
+        del headers, timeout_s
+        if url.endswith("/api/mirror/agents") and method == "GET":
+            return {
+                "agents": [
+                    {
+                        "agent_id": "paperclip:eng-1",
+                        "metadata": {"managed_by": "pilot_orchestrator_bridge"},
+                    },
+                    {
+                        "agent_id": "paperclip:eng-2",
+                        "metadata": {"managed_by": "pilot_orchestrator_bridge"},
+                    },
+                    {"agent_id": "starter-agent", "metadata": {}},
+                ]
+            }
+        if url.endswith("/api/mirror/agents") and method == "POST":
+            captured_posts.append(payload or {})
+            return {"ok": True}
+        if url.endswith("/api/mirror/agents/paperclip%3Aeng-2") and method == "DELETE":
+            captured_deletes.append(url)
+            return {"ok": True}
+        if url.endswith("/api/workforce/sync"):
+            return {"ok": True}
+        return None
+
+    monkeypatch.setattr(
+        pilot_api, "build_orchestrator_client", lambda _config: _FakeClient()
+    )
+    monkeypatch.setattr(pilot_api, "_fetch_json", fake_fetch)
+    monkeypatch.setattr(pilot_api, "_request_json", fake_request_json)
+    monkeypatch.setattr(pilot_api, "_service_alive", lambda _service: True)
+
+    status = pilot_api.build_pilot_status(root, force_orchestrator_sync=True)
+
+    assert status.orchestrator is not None
+    assert [item["agent_id"] for item in captured_posts] == ["paperclip:eng-1"]
+    assert captured_deletes == [
+        "http://127.0.0.1:3020/api/mirror/agents/paperclip%3Aeng-2"
+    ]
+
+
+def test_start_pilot_updates_live_manifest_with_new_orchestrator_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "pilot_live_manifest"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="b2b_saas",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        supported_surfaces=[
+            CompatibilitySurfaceSpec(
+                name="slack", title="Slack", base_path="/slack/api"
+            )
+        ],
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.old",
+            company_id="company-old",
+        ),
+    )
+    runtime = pilot_api.PilotRuntime(
+        workspace_root=root,
+        services=[
+            pilot_api.PilotServiceRecord(
+                name="gateway",
+                host="127.0.0.1",
+                port=3020,
+                url="http://127.0.0.1:3020",
+                pid=4101,
+                state="running",
+            ),
+            pilot_api.PilotServiceRecord(
+                name="studio",
+                host="127.0.0.1",
+                port=3011,
+                url="http://127.0.0.1:3011",
+                pid=4102,
+                state="running",
+            ),
+        ],
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_RUNTIME_FILE).write_text(
+        runtime.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    expected_status = pilot_api.PilotStatus(
+        manifest=manifest,
+        runtime=runtime,
+        outcome=pilot_api.PilotOutcomeSummary(status="running", summary="ok"),
+    )
+    captured_force_sync: list[bool] = []
+
+    monkeypatch.setattr(
+        pilot_api,
+        "_ensure_twin_bundle",
+        lambda *args, **kwargs: _sample_bundle(root),
+    )
+    monkeypatch.setattr(pilot_api, "_service_alive", lambda _service: True)
+    monkeypatch.setattr(
+        pilot_api,
+        "_fetch_json",
+        lambda url: (
+            {"ok": True}
+            if url.endswith("/healthz")
+            else {"manifest": {"name": "pilot"}}
+            if url.endswith("/api/workspace")
+            else None
+        ),
+    )
+
+    def fake_build_pilot_status(*_args, **kwargs):
+        captured_force_sync.append(kwargs.get("force_orchestrator_sync", False))
+        return expected_status
+
+    monkeypatch.setattr(
+        pilot_api,
+        "build_pilot_status",
+        fake_build_pilot_status,
+    )
+
+    status = pilot_api.start_pilot(
+        root,
+        orchestrator="paperclip",
+        orchestrator_url="http://paperclip.new",
+        orchestrator_company_id="company-new",
+    )
+
+    updated_manifest = pilot_api.load_pilot_manifest(root)
+    guide = (root / pilot_api.PILOT_GUIDE_FILE).read_text(encoding="utf-8")
+
+    assert status == expected_status
+    assert captured_force_sync == [True]
+    assert updated_manifest.orchestrator is not None
+    assert updated_manifest.orchestrator.base_url == "http://paperclip.new"
+    assert updated_manifest.orchestrator.company_id == "company-new"
+    assert "http://paperclip.new" in guide
+    assert "company-new" in guide
+
+
+def test_pause_pilot_orchestrator_agent_raises_when_workforce_recording_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "pilot_pause_record_failure"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="service_ops",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.local",
+            company_id="company-1",
+        ),
+    )
+    snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-1",
+        fetched_at="2026-04-02T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-1",
+            company_name="Acme AI",
+        ),
+        agents=[
+            OrchestratorAgent(
+                provider="paperclip",
+                agent_id="paperclip:eng-1",
+                external_agent_id="eng-1",
+                name="Backend Engineer",
+            )
+        ],
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_CACHE_FILE).write_text(
+        snapshot.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    class _FakeClient:
+        def fetch_snapshot(self):
+            raise AssertionError("fetch_snapshot should not run here")
+
+        def pause_agent(self, agent_id: str):
+            return OrchestratorCommandResult(
+                provider="paperclip",
+                action="pause",
+                agent_id="paperclip:eng-1",
+                external_agent_id=agent_id,
+                message="Agent paused.",
+            )
+
+        def resume_agent(self, agent_id: str):
+            raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
+
+        def sync_capabilities(self):
+            return OrchestratorSyncCapabilities()
+
+    monkeypatch.setattr(
+        pilot_api, "build_orchestrator_client", lambda _config: _FakeClient()
+    )
+    monkeypatch.setattr(pilot_api, "_post_json", lambda *args, **kwargs: None)
+
+    with pytest.raises(RuntimeError, match="could not record it"):
+        pilot_api.pause_pilot_orchestrator_agent(root, "paperclip:eng-1")
 
 
 def test_build_pilot_status_merges_vei_workforce_commands_into_activity(
