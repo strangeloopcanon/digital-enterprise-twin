@@ -109,21 +109,20 @@ That means this run demonstrates strong visibility and real steering, but not fu
 
 ## Local proof artifacts
 
-Open these files locally for the visual proof:
+Use these tracked repo assets for the visual proof:
 
 - Refreshed Company Control Room full capture:
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/control-room-refresh-20260403.png`
+  - `docs/assets/paperclip-control-room/demo-frame-03-control-room.png`
 - Refreshed Operator Console full capture:
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/pilot-operator-refresh-20260403.png`
+  - `docs/assets/paperclip-control-room/demo-frame-01-pilot-top.png`
+- VEI intervention in the operator activity stream:
+  - `docs/assets/paperclip-control-room/demo-frame-02-pilot-activity.png`
+- VEI intervention story in the company view:
+  - `docs/assets/paperclip-control-room/demo-frame-04-intervention-story.png`
 - Demo GIF:
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/vei-paperclip-demo.gif`
+  - `docs/assets/paperclip-control-room/vei-paperclip-demo.gif`
 - Demo MP4:
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/vei-paperclip-demo.mp4`
-- Tight demo stills used for the GIF:
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/demo-frame-01-pilot-top.png`
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/demo-frame-02-pilot-activity.png`
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/demo-frame-03-control-room.png`
-  - `/Users/rohit/Documents/Workspace/Coding/digital-enterprise-twin/output/playwright/demo-frame-04-intervention-story.png`
+  - `docs/assets/paperclip-control-room/vei-paperclip-demo.mp4`
 
 ## Bottom line
 
