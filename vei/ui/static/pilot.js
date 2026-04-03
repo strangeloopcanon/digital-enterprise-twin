@@ -216,7 +216,7 @@ function renderExercise() {
     return;
   }
   if (!payload?.manifest) {
-    overview.innerHTML = metricTile("Exercise", "Not configured", "Run `vei exercise up` to create a scored exercise with comparison paths.");
+    overview.innerHTML = metricTile("Exercise", "Not configured", "No scored exercise configured for this scenario.");
     criteria.innerHTML = "";
     comparison.innerHTML = "";
     compatibility.innerHTML = "";
@@ -300,7 +300,7 @@ function renderDataset() {
     return;
   }
   if (!payload) {
-    summary.innerHTML = metricTile("Dataset", "Not built", "Run `vei dataset build` to generate a matrix of environments and export a clean corpus.");
+    summary.innerHTML = metricTile("Dataset", "Not built", "No datasets generated for this workspace yet.");
     splits.innerHTML = "";
     exportsPanel.innerHTML = "";
     return;
@@ -408,7 +408,7 @@ function renderControls() {
   resetButton.disabled = disabled;
   finalizeButton.disabled = disabled;
   if (!manifest && actionStatus) {
-    actionStatus.textContent = "Run `vei exercise up` or `vei pilot up` to enable reset and finalize controls.";
+    actionStatus.textContent = "Operator controls require an active exercise or pilot connection.";
   }
 }
 
