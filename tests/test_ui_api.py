@@ -726,6 +726,26 @@ def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -
         "resume_pilot_orchestrator_agent",
         lambda _root, _agent_id: payload,
     )
+    monkeypatch.setattr(
+        ui_api,
+        "comment_on_pilot_orchestrator_task",
+        lambda _root, _task_id, body: payload,
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "approve_pilot_orchestrator_approval",
+        lambda _root, _approval_id, decision_note=None: payload,
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "reject_pilot_orchestrator_approval",
+        lambda _root, _approval_id, decision_note=None: payload,
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "request_revision_pilot_orchestrator_approval",
+        lambda _root, _approval_id, decision_note=None: payload,
+    )
 
     client = TestClient(ui_api.create_ui_app(root))
 
@@ -760,6 +780,30 @@ def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -
         "/api/pilot/orchestrator/agents/paperclip%3Aeng-1/resume"
     )
     assert resume_response.status_code == 200
+
+    comment_response = client.post(
+        "/api/pilot/orchestrator/tasks/paperclip%3Aissue-1/comment",
+        json={"body": "Ask for a safer rollout plan."},
+    )
+    assert comment_response.status_code == 200
+
+    approve_response = client.post(
+        "/api/pilot/orchestrator/approvals/paperclip%3Aapproval-1/approve",
+        json={"decision_note": "Approved for the first engineering hire."},
+    )
+    assert approve_response.status_code == 200
+
+    revision_response = client.post(
+        "/api/pilot/orchestrator/approvals/paperclip%3Aapproval-1/request-revision",
+        json={"decision_note": "Tighten the budget case first."},
+    )
+    assert revision_response.status_code == 200
+
+    reject_response = client.post(
+        "/api/pilot/orchestrator/approvals/paperclip%3Aapproval-1/reject",
+        json={"decision_note": "Not aligned with current plan."},
+    )
+    assert reject_response.status_code == 200
 
 
 def _sample_pilot_status(root: Path) -> PilotStatus:

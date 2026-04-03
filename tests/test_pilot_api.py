@@ -11,6 +11,7 @@ from vei.context.models import (
 )
 from vei.orchestrators.api import (
     OrchestratorAgent,
+    OrchestratorApproval,
     OrchestratorBudgetSummary,
     OrchestratorConfig,
     OrchestratorSnapshot,
@@ -503,10 +504,12 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
                 task_id="paperclip:issue-1",
                 external_task_id="issue-1",
                 title="Prepare customer-safe update",
+                identifier="ACME-1",
                 status="in_progress",
                 assignee_agent_id="paperclip:eng-1",
                 project_name="Bridge",
                 goal_name="Launch",
+                latest_comment_preview="Need a safe recovery plan before we ship.",
             ),
             OrchestratorTask(
                 provider="homegrown",
@@ -516,6 +519,19 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
                 status="in_progress",
                 assignee_agent_id="homegrown:ana-1",
             ),
+        ],
+        approvals=[
+            OrchestratorApproval(
+                provider="paperclip",
+                approval_id="paperclip:approval-1",
+                external_approval_id="approval-1",
+                approval_type="hire_agent",
+                status="pending",
+                requested_by_agent_id="paperclip:eng-1",
+                requested_by_name="Backend Engineer",
+                summary="Hire Founding Engineer · engineer",
+                task_ids=["paperclip:issue-1"],
+            )
         ],
     )
 
@@ -528,6 +544,27 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
 
         def resume_agent(self, _agent_id: str):
             raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
 
         def sync_capabilities(self) -> OrchestratorSyncCapabilities:
             return snapshot.capabilities
@@ -615,6 +652,7 @@ def test_build_pilot_status_merges_orchestrator_snapshot_and_syncs_mirror_agents
     assert captured_sync_payloads[1]["allowed_surfaces"] == ["graph"]
     assert "paperclip:issue-1" in status.activity[0].object_refs
     assert status.activity[0].source_label == "VEI"
+    assert status.orchestrator.approvals[0].approval_id == "paperclip:approval-1"
 
 
 def test_build_pilot_status_uses_cached_orchestrator_snapshot_when_refresh_fails(
@@ -707,6 +745,27 @@ def test_build_pilot_status_uses_cached_orchestrator_snapshot_when_refresh_fails
         def resume_agent(self, _agent_id: str):
             raise AssertionError("resume should not run here")
 
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
+
         def sync_capabilities(self):
             return OrchestratorSyncCapabilities()
 
@@ -736,6 +795,258 @@ def test_build_pilot_status_uses_cached_orchestrator_snapshot_when_refresh_fails
     assert status.orchestrator_sync is not None
     assert status.orchestrator_sync.status == "stale"
     assert status.orchestrator_sync.cache_used is True
+
+
+def test_comment_on_pilot_orchestrator_task_posts_guidance_and_refreshes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "pilot_comment_task"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="service_ops",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.local",
+            company_id="company-1",
+        ),
+    )
+    snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-1",
+        fetched_at="2026-04-02T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-1",
+            company_name="Acme AI",
+        ),
+        tasks=[
+            OrchestratorTask(
+                provider="paperclip",
+                task_id="paperclip:issue-1",
+                external_task_id="issue-1",
+                title="Ship orchestrator bridge",
+            )
+        ],
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_CACHE_FILE).write_text(
+        snapshot.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeClient:
+        def fetch_snapshot(self):
+            raise AssertionError("fetch_snapshot should not run here")
+
+        def pause_agent(self, _agent_id: str):
+            raise AssertionError("pause should not run here")
+
+        def resume_agent(self, _agent_id: str):
+            raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, task_id: str, body: str):
+            captured["task_id"] = task_id
+            captured["body"] = body
+            return None
+
+        def approve_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("approve should not run here")
+
+        def reject_approval(
+            self, _approval_id: str, *, decision_note: str | None = None
+        ):
+            raise AssertionError("reject should not run here")
+
+        def request_approval_revision(
+            self,
+            _approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            raise AssertionError("request revision should not run here")
+
+        def sync_capabilities(self):
+            return OrchestratorSyncCapabilities()
+
+    expected_status = pilot_api.PilotStatus(
+        manifest=manifest,
+        runtime=pilot_api.PilotRuntime(workspace_root=root),
+        outcome=pilot_api.PilotOutcomeSummary(status="running", summary="ok"),
+    )
+
+    monkeypatch.setattr(
+        pilot_api, "build_orchestrator_client", lambda _config: _FakeClient()
+    )
+    monkeypatch.setattr(
+        pilot_api, "build_pilot_status", lambda *_args, **_kwargs: expected_status
+    )
+
+    status = pilot_api.comment_on_pilot_orchestrator_task(
+        root,
+        "paperclip:issue-1",
+        body="  Ask for a risk review before shipping.  ",
+    )
+
+    assert status == expected_status
+    assert captured == {
+        "task_id": "issue-1",
+        "body": "Ask for a risk review before shipping.",
+    }
+
+
+@pytest.mark.parametrize(
+    ("action_name", "method_name"),
+    [
+        ("approve", "approve_approval"),
+        ("reject", "reject_approval"),
+        ("request_revision", "request_approval_revision"),
+    ],
+)
+def test_pilot_orchestrator_approval_actions_refresh_status(
+    tmp_path: Path,
+    monkeypatch,
+    action_name: str,
+    method_name: str,
+) -> None:
+    root = tmp_path / f"pilot_{action_name}_approval"
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = pilot_api.PilotManifest(
+        workspace_root=root,
+        workspace_name="pilot",
+        organization_name="Pinnacle Analytics",
+        organization_domain="pinnacle.example.com",
+        archetype="service_ops",
+        crisis_name="VIP outage",
+        studio_url="http://127.0.0.1:3011",
+        pilot_console_url="http://127.0.0.1:3011/pilot",
+        gateway_url="http://127.0.0.1:3020",
+        gateway_status_url="http://127.0.0.1:3020/api/twin",
+        bearer_token="pilot-token",
+        recommended_first_exercise="Keep the customer safe.",
+        sample_client_path="/tmp/pilot_client.py",
+        orchestrator=OrchestratorConfig(
+            provider="paperclip",
+            base_url="http://paperclip.local",
+            company_id="company-1",
+        ),
+    )
+    snapshot = OrchestratorSnapshot(
+        provider="paperclip",
+        company_id="company-1",
+        fetched_at="2026-04-02T01:00:00+00:00",
+        summary=OrchestratorSummary(
+            provider="paperclip",
+            company_id="company-1",
+            company_name="Acme AI",
+        ),
+        approvals=[
+            OrchestratorApproval(
+                provider="paperclip",
+                approval_id="paperclip:approval-1",
+                external_approval_id="approval-1",
+                approval_type="hire_agent",
+            )
+        ],
+    )
+    (root / pilot_api.PILOT_MANIFEST_FILE).write_text(
+        manifest.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    (root / pilot_api.PILOT_ORCHESTRATOR_CACHE_FILE).write_text(
+        snapshot.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeClient:
+        def fetch_snapshot(self):
+            raise AssertionError("fetch_snapshot should not run here")
+
+        def pause_agent(self, _agent_id: str):
+            raise AssertionError("pause should not run here")
+
+        def resume_agent(self, _agent_id: str):
+            raise AssertionError("resume should not run here")
+
+        def comment_on_task(self, _task_id: str, _body: str):
+            raise AssertionError("comment should not run here")
+
+        def approve_approval(
+            self, approval_id: str, *, decision_note: str | None = None
+        ):
+            captured["action"] = "approve"
+            captured["approval_id"] = approval_id
+            captured["decision_note"] = decision_note
+            return None
+
+        def reject_approval(
+            self, approval_id: str, *, decision_note: str | None = None
+        ):
+            captured["action"] = "reject"
+            captured["approval_id"] = approval_id
+            captured["decision_note"] = decision_note
+            return None
+
+        def request_approval_revision(
+            self,
+            approval_id: str,
+            *,
+            decision_note: str | None = None,
+        ):
+            captured["action"] = "request_revision"
+            captured["approval_id"] = approval_id
+            captured["decision_note"] = decision_note
+            return None
+
+        def sync_capabilities(self):
+            return OrchestratorSyncCapabilities()
+
+    expected_status = pilot_api.PilotStatus(
+        manifest=manifest,
+        runtime=pilot_api.PilotRuntime(workspace_root=root),
+        outcome=pilot_api.PilotOutcomeSummary(status="running", summary="ok"),
+    )
+
+    monkeypatch.setattr(
+        pilot_api, "build_orchestrator_client", lambda _config: _FakeClient()
+    )
+    monkeypatch.setattr(
+        pilot_api, "build_pilot_status", lambda *_args, **_kwargs: expected_status
+    )
+
+    status = getattr(pilot_api, f"{action_name}_pilot_orchestrator_approval")(
+        root,
+        "paperclip:approval-1",
+        decision_note="Need a clearer staffing plan.",
+    )
+
+    assert status == expected_status
+    assert captured == {
+        "action": method_name.replace("_approval", ""),
+        "approval_id": "approval-1",
+        "decision_note": "Need a clearer staffing plan.",
+    }
 
 
 def _sample_snapshot() -> ContextSnapshot:

@@ -1,7 +1,9 @@
 from .api import (
     OrchestratorActivityItem,
     OrchestratorAgent,
+    OrchestratorApproval,
     OrchestratorBudgetSummary,
+    OrchestratorComment,
     OrchestratorClient,
     OrchestratorCommandResult,
     OrchestratorConfig,
@@ -14,7 +16,10 @@ from .api import (
     OrchestratorTask,
     PaperclipOrchestratorClient,
     build_orchestrator_client,
+    external_approval_id_for,
     external_agent_id_for,
+    external_task_id_for,
+    normalize_approval_id,
     normalize_agent_id,
     normalize_task_id,
 )
@@ -22,7 +27,9 @@ from .api import (
 __all__ = [
     "OrchestratorActivityItem",
     "OrchestratorAgent",
+    "OrchestratorApproval",
     "OrchestratorBudgetSummary",
+    "OrchestratorComment",
     "OrchestratorClient",
     "OrchestratorCommandResult",
     "OrchestratorConfig",
@@ -35,7 +42,10 @@ __all__ = [
     "OrchestratorTask",
     "PaperclipOrchestratorClient",
     "build_orchestrator_client",
+    "external_approval_id_for",
     "external_agent_id_for",
+    "external_task_id_for",
+    "normalize_approval_id",
     "normalize_agent_id",
     "normalize_task_id",
 ]

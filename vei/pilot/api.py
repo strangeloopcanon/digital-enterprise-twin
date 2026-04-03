@@ -24,7 +24,9 @@ from vei.orchestrators.api import (
     OrchestratorSnapshot,
     OrchestratorSyncHealth,
     build_orchestrator_client,
+    external_approval_id_for,
     external_agent_id_for,
+    external_task_id_for,
 )
 from vei.twin.api import build_customer_twin, load_customer_twin
 from vei.twin.models import (
@@ -415,6 +417,73 @@ def resume_pilot_orchestrator_agent(root: str | Path, agent_id: str) -> PilotSta
     return build_pilot_status(workspace_root, force_orchestrator_sync=True)
 
 
+def comment_on_pilot_orchestrator_task(
+    root: str | Path,
+    task_id: str,
+    *,
+    body: str,
+) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    manifest = load_pilot_manifest(workspace_root)
+    config = manifest.orchestrator
+    if config is None:
+        raise RuntimeError("pilot orchestrator is not configured")
+    comment_body = body.strip()
+    if not comment_body:
+        raise RuntimeError("task guidance cannot be empty")
+    client = build_orchestrator_client(config)
+    client.comment_on_task(
+        _resolve_orchestrator_external_task_id(workspace_root, task_id),
+        comment_body,
+    )
+    return build_pilot_status(workspace_root, force_orchestrator_sync=True)
+
+
+def approve_pilot_orchestrator_approval(
+    root: str | Path,
+    approval_id: str,
+    *,
+    decision_note: str | None = None,
+) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    return _act_on_pilot_orchestrator_approval(
+        workspace_root,
+        approval_id,
+        action="approve",
+        decision_note=decision_note,
+    )
+
+
+def reject_pilot_orchestrator_approval(
+    root: str | Path,
+    approval_id: str,
+    *,
+    decision_note: str | None = None,
+) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    return _act_on_pilot_orchestrator_approval(
+        workspace_root,
+        approval_id,
+        action="reject",
+        decision_note=decision_note,
+    )
+
+
+def request_revision_pilot_orchestrator_approval(
+    root: str | Path,
+    approval_id: str,
+    *,
+    decision_note: str | None = None,
+) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    return _act_on_pilot_orchestrator_approval(
+        workspace_root,
+        approval_id,
+        action="request_revision",
+        decision_note=decision_note,
+    )
+
+
 def _ensure_twin_bundle(
     workspace_root: Path,
     *,
@@ -718,6 +787,11 @@ def _build_activity(history_payload: Any) -> list[PilotActivityItem]:
                     if raw.get("created_at") is not None
                     else None
                 ),
+                detail=(
+                    str(payload.get("summary"))
+                    if isinstance(payload, dict) and payload.get("summary")
+                    else None
+                ),
                 source_label="VEI",
                 agent_id=(
                     str(agent.get("agent_id"))
@@ -762,6 +836,7 @@ def _build_orchestrator_activity(
             tool=item.action,
             status=item.status,
             timestamp=item.created_at,
+            detail=item.detail,
             source_label=item.provider,
             agent_id=item.agent_id,
             object_refs=list(item.object_refs),
@@ -1041,6 +1116,63 @@ def _resolve_orchestrator_external_agent_id(
             if item.agent_id == agent_id or item.external_agent_id == agent_id:
                 return item.external_agent_id
     return external_agent_id_for(agent_id)
+
+
+def _resolve_orchestrator_external_task_id(
+    workspace_root: Path,
+    task_id: str,
+) -> str:
+    snapshot = _load_orchestrator_snapshot_cache(workspace_root)
+    if snapshot is not None:
+        for item in snapshot.tasks:
+            if item.task_id == task_id or item.external_task_id == task_id:
+                return item.external_task_id
+    return external_task_id_for(task_id)
+
+
+def _resolve_orchestrator_external_approval_id(
+    workspace_root: Path,
+    approval_id: str,
+) -> str:
+    snapshot = _load_orchestrator_snapshot_cache(workspace_root)
+    if snapshot is not None:
+        for item in snapshot.approvals:
+            if (
+                item.approval_id == approval_id
+                or item.external_approval_id == approval_id
+            ):
+                return item.external_approval_id
+    return external_approval_id_for(approval_id)
+
+
+def _act_on_pilot_orchestrator_approval(
+    workspace_root: Path,
+    approval_id: str,
+    *,
+    action: str,
+    decision_note: str | None,
+) -> PilotStatus:
+    manifest = load_pilot_manifest(workspace_root)
+    config = manifest.orchestrator
+    if config is None:
+        raise RuntimeError("pilot orchestrator is not configured")
+    client = build_orchestrator_client(config)
+    external_approval_id = _resolve_orchestrator_external_approval_id(
+        workspace_root,
+        approval_id,
+    )
+    if action == "approve":
+        client.approve_approval(external_approval_id, decision_note=decision_note)
+    elif action == "reject":
+        client.reject_approval(external_approval_id, decision_note=decision_note)
+    elif action == "request_revision":
+        client.request_approval_revision(
+            external_approval_id,
+            decision_note=decision_note,
+        )
+    else:
+        raise RuntimeError(f"unsupported approval action: {action}")
+    return build_pilot_status(workspace_root, force_orchestrator_sync=True)
 
 
 def _default_policy_profile_for_orchestrator_agent(agent: OrchestratorAgent) -> str:

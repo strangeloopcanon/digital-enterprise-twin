@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field
 OrchestratorProviderId = Literal["paperclip"]
 OrchestratorIntegrationMode = Literal["proxy", "ingest", "observe"]
 OrchestratorSyncStatusValue = Literal["disabled", "healthy", "stale", "error"]
+OrchestratorCommandAction = Literal[
+    "pause",
+    "resume",
+    "comment_task",
+    "approve",
+    "reject",
+    "request_revision",
+]
 
 
 class OrchestratorConfig(BaseModel):
@@ -19,6 +27,8 @@ class OrchestratorConfig(BaseModel):
 class OrchestratorSyncCapabilities(BaseModel):
     can_pause_agents: bool = False
     can_resume_agents: bool = False
+    can_comment_on_tasks: bool = False
+    can_manage_approvals: bool = False
     routeable_surfaces: list[str] = Field(default_factory=list)
 
 
@@ -58,17 +68,46 @@ class OrchestratorAgent(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class OrchestratorComment(BaseModel):
+    provider: str
+    comment_id: str
+    body: str
+    created_at: str | None = None
+    author_agent_id: str | None = None
+    author_name: str | None = None
+    author_user_id: str | None = None
+
+
 class OrchestratorTask(BaseModel):
     provider: str
     task_id: str
     external_task_id: str
     title: str
+    identifier: str | None = None
     status: str | None = None
     assignee_agent_id: str | None = None
     priority: str | None = None
     project_name: str | None = None
     goal_name: str | None = None
     summary: str | None = None
+    linked_approval_ids: list[str] = Field(default_factory=list)
+    latest_comment_preview: str | None = None
+    comments: list[OrchestratorComment] = Field(default_factory=list)
+
+
+class OrchestratorApproval(BaseModel):
+    provider: str
+    approval_id: str
+    external_approval_id: str
+    approval_type: str
+    status: str | None = None
+    requested_by_agent_id: str | None = None
+    requested_by_name: str | None = None
+    decision_note: str | None = None
+    created_at: str | None = None
+    summary: str | None = None
+    task_ids: list[str] = Field(default_factory=list)
+    comments: list[OrchestratorComment] = Field(default_factory=list)
 
 
 class OrchestratorActivityItem(BaseModel):
@@ -80,6 +119,7 @@ class OrchestratorActivityItem(BaseModel):
     agent_name: str | None = None
     task_id: str | None = None
     status: str | None = None
+    detail: str | None = None
     object_refs: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -95,6 +135,7 @@ class OrchestratorSnapshot(BaseModel):
     )
     agents: list[OrchestratorAgent] = Field(default_factory=list)
     tasks: list[OrchestratorTask] = Field(default_factory=list)
+    approvals: list[OrchestratorApproval] = Field(default_factory=list)
     recent_activity: list[OrchestratorActivityItem] = Field(default_factory=list)
 
 
@@ -112,7 +153,12 @@ class OrchestratorSyncHealth(BaseModel):
 class OrchestratorCommandResult(BaseModel):
     ok: bool = True
     provider: str
-    agent_id: str
-    external_agent_id: str
-    action: Literal["pause", "resume"]
+    action: OrchestratorCommandAction
+    agent_id: str | None = None
+    external_agent_id: str | None = None
+    task_id: str | None = None
+    external_task_id: str | None = None
+    approval_id: str | None = None
+    external_approval_id: str | None = None
+    comment_id: str | None = None
     message: str | None = None

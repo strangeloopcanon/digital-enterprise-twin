@@ -4,14 +4,19 @@ from typing import Protocol
 
 from ._paperclip import (
     PaperclipOrchestratorClient,
+    external_approval_id_for,
     external_agent_id_for,
+    external_task_id_for,
+    normalize_approval_id,
     normalize_agent_id,
     normalize_task_id,
 )
 from .models import (
     OrchestratorActivityItem,
     OrchestratorAgent,
+    OrchestratorApproval,
     OrchestratorBudgetSummary,
+    OrchestratorComment,
     OrchestratorCommandResult,
     OrchestratorConfig,
     OrchestratorIntegrationMode,
@@ -31,6 +36,29 @@ class OrchestratorClient(Protocol):
 
     def resume_agent(self, agent_id: str) -> OrchestratorCommandResult: ...
 
+    def comment_on_task(self, task_id: str, body: str) -> OrchestratorCommandResult: ...
+
+    def approve_approval(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult: ...
+
+    def reject_approval(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult: ...
+
+    def request_approval_revision(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult: ...
+
     def sync_capabilities(self) -> OrchestratorSyncCapabilities: ...
 
 
@@ -43,7 +71,9 @@ def build_orchestrator_client(config: OrchestratorConfig) -> OrchestratorClient:
 __all__ = [
     "OrchestratorActivityItem",
     "OrchestratorAgent",
+    "OrchestratorApproval",
     "OrchestratorBudgetSummary",
+    "OrchestratorComment",
     "OrchestratorClient",
     "OrchestratorCommandResult",
     "OrchestratorConfig",
@@ -56,7 +86,10 @@ __all__ = [
     "OrchestratorTask",
     "PaperclipOrchestratorClient",
     "build_orchestrator_client",
+    "external_approval_id_for",
     "external_agent_id_for",
+    "external_task_id_for",
+    "normalize_approval_id",
     "normalize_agent_id",
     "normalize_task_id",
 ]

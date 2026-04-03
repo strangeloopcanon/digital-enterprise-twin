@@ -4186,6 +4186,10 @@ body.timeline-mode .timeline-toggle {
   box-shadow: 0 18px 34px rgba(26, 168, 141, 0.08);
 }
 
+.pilot-subsection-header {
+  margin-top: 20px;
+}
+
 .pilot-catalog-button {
   width: auto;
   min-width: 0;
@@ -4212,6 +4216,64 @@ body.timeline-mode .timeline-toggle {
   width: auto;
   min-width: 0;
   padding: 8px 14px;
+}
+
+.pilot-action-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pilot-field-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(17, 34, 53, 0.68);
+}
+
+.pilot-action-input {
+  width: 100%;
+  min-height: 88px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(17, 34, 53, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.pilot-action-input:focus-visible {
+  outline: 2px solid rgba(30, 108, 242, 0.7);
+  outline-offset: 2px;
+}
+
+.pilot-thread-details {
+  margin-top: 10px;
+}
+
+.pilot-thread-details summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pilot-thread-details[open] summary {
+  margin-bottom: 10px;
+}
+
+.pilot-thread-list {
+  display: grid;
+  gap: 10px;
+}
+
+.pilot-thread-item {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(17, 34, 53, 0.05);
 }
 
 .pilot-control-row {

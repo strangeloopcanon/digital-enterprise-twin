@@ -71,6 +71,7 @@ class PilotActivityItem(BaseModel):
     tool: str | None = None
     status: str | None = None
     timestamp: str | None = None
+    detail: str | None = None
     source_label: str | None = None
     agent_id: str | None = None
     object_refs: list[str] = Field(default_factory=list)

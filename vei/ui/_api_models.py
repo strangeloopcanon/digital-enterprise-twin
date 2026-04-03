@@ -80,6 +80,14 @@ class ExerciseActivateRequest(BaseModel):
     contract_variant: str | None = None
 
 
+class OrchestratorTaskCommentRequest(BaseModel):
+    body: str
+
+
+class OrchestratorApprovalDecisionRequest(BaseModel):
+    decision_note: str | None = None
+
+
 CONTEXT_PROVIDER_ENV_VARS = {
     "slack": "VEI_SLACK_TOKEN",
     "google": "VEI_GOOGLE_TOKEN",

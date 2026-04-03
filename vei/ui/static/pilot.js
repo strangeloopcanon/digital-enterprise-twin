@@ -28,6 +28,57 @@ function humanize(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function truncateText(value, maxLength = 220) {
+  const text = String(value ?? "").trim();
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function formatTimestamp(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function renderCommentThread(comments, emptyMessage) {
+  if (!comments?.length) {
+    return `<p class="metric-detail">${escapeHtml(emptyMessage)}</p>`;
+  }
+  return `
+    <details class="pilot-thread-details">
+      <summary>Recent comments (${comments.length})</summary>
+      <div class="pilot-thread-list">
+        ${comments
+          .slice(-3)
+          .reverse()
+          .map((comment) => `
+            <article class="pilot-thread-item">
+              <div class="pilot-activity-head">
+                <strong>${escapeHtml(comment.author_name || "Unknown author")}</strong>
+                <span class="badge">${escapeHtml(formatTimestamp(comment.created_at) || "No time")}</span>
+              </div>
+              <p class="metric-detail">${escapeHtml(truncateText(comment.body, 360) || "No comment body")}</p>
+            </article>
+          `)
+          .join("")}
+      </div>
+    </details>
+  `;
+}
+
 function currentExerciseTitle() {
   const manifest = state.exercise?.manifest;
   const variant = manifest?.scenario_variant || manifest?.crisis_name || state.pilot?.manifest?.crisis_name || "";
@@ -233,21 +284,24 @@ function renderOrchestrator() {
   const summaryGrid = document.getElementById("pilot-orchestrator-grid");
   const agentPanel = document.getElementById("pilot-orchestrator-agents");
   const taskPanel = document.getElementById("pilot-orchestrator-tasks");
+  const approvalPanel = document.getElementById("pilot-orchestrator-approvals");
   const snapshot = state.pilot?.orchestrator;
   const sync = state.pilot?.orchestrator_sync;
   const manifest = state.pilot?.manifest;
-  if (!summaryGrid || !agentPanel || !taskPanel) {
+  if (!summaryGrid || !agentPanel || !taskPanel || !approvalPanel) {
     return;
   }
   if (!manifest?.orchestrator && !snapshot) {
     summaryGrid.innerHTML = metricTile("Bridge", "Not configured", "This pilot is currently using VEI alone. Add an orchestrator bridge when you want workforce sync.");
     agentPanel.innerHTML = "";
     taskPanel.innerHTML = "";
+    approvalPanel.innerHTML = "";
     return;
   }
 
   const agents = snapshot?.agents || [];
   const tasks = snapshot?.tasks || [];
+  const approvals = snapshot?.approvals || [];
   const budget = snapshot?.budget || {};
   summaryGrid.innerHTML = [
     metricTile("Provider", humanize(snapshot?.provider || manifest?.orchestrator?.provider || "unknown"), sync?.message || "Outside fleet sync is configured."),
@@ -283,6 +337,7 @@ function renderOrchestrator() {
             <p class="metric-detail">${escapeHtml(latestAction ? `Latest governed action: ${latestAction.label}` : "No VEI-governed action recorded yet")}</p>
             ${(agent.allowed_surfaces || []).length ? `<div class="chip-row">${agent.allowed_surfaces.map((surface) => `<span class="badge">${escapeHtml(humanize(surface))}</span>`).join("")}</div>` : `<p class="metric-detail">No explicit surface allowlist reported.</p>`}
             ${(agent.task_ids || []).length ? `<div class="chip-row">${agent.task_ids.map((taskId) => `<span class="badge">${escapeHtml(taskId)}</span>`).join("")}</div>` : `<p class="metric-detail">No task ownership reported yet.</p>`}
+            ${agent.monthly_spend_cents != null ? `<p class="metric-detail">Spend $${escapeHtml((agent.monthly_spend_cents / 100).toFixed(2))}${agent.monthly_budget_cents != null ? ` of $${escapeHtml((agent.monthly_budget_cents / 100).toFixed(2))}` : ""}</p>` : ""}
           </div>
           <div class="pilot-action-row">
             ${canPause ? `<button type="button" class="ghost-button pilot-agent-action" data-agent-action="${isPaused ? "resume" : "pause"}" data-agent-id="${escapeHtml(agent.agent_id)}">${escapeHtml(isPaused ? "Resume" : "Pause")}</button>` : ""}
@@ -296,19 +351,66 @@ function renderOrchestrator() {
     taskPanel.innerHTML = `<article class="pilot-note-card"><p class="metric-detail">No orchestrator tasks are visible yet.</p></article>`;
   } else {
     taskPanel.innerHTML = tasks.slice(0, 8).map((task) => `
-      <article class="pilot-note-card">
+      <article class="pilot-note-card pilot-task-card" data-task-id="${escapeHtml(task.task_id)}">
         <div class="pilot-activity-head">
           <strong>${escapeHtml(task.title)}</strong>
-          ${task.status ? `<span class="badge">${escapeHtml(humanize(task.status))}</span>` : ""}
+          <div class="chip-row">
+            ${task.identifier ? `<span class="badge">${escapeHtml(task.identifier)}</span>` : ""}
+            ${task.status ? `<span class="badge">${escapeHtml(humanize(task.status))}</span>` : ""}
+          </div>
         </div>
         <p class="metric-detail">${escapeHtml([task.priority, task.project_name, task.goal_name].filter(Boolean).join(" · ") || "No extra task metadata reported")}</p>
+        ${task.summary ? `<p class="metric-detail">${escapeHtml(truncateText(task.summary, 220))}</p>` : ""}
+        ${task.latest_comment_preview ? `<p class="metric-detail">${escapeHtml(`Latest note: ${truncateText(task.latest_comment_preview, 180)}`)}</p>` : `<p class="metric-detail">No task comments visible yet.</p>`}
         <div class="chip-row">
           <span class="badge">${escapeHtml(task.task_id)}</span>
           ${task.assignee_agent_id ? `<span class="badge">${escapeHtml(task.assignee_agent_id)}</span>` : ""}
+          ${(task.linked_approval_ids || []).map((approvalId) => `<span class="badge">${escapeHtml(approvalId)}</span>`).join("")}
+        </div>
+        ${renderCommentThread(task.comments, "No task comments loaded yet.")}
+        <div class="pilot-action-form">
+          <label class="pilot-field-label" for="task-guidance-${escapeHtml(task.task_id)}">Guidance from VEI</label>
+          <textarea id="task-guidance-${escapeHtml(task.task_id)}" class="pilot-action-input" data-task-comment-input placeholder="Tell the agent what to do next, what to watch out for, or what the board wants clarified."></textarea>
+          <div class="pilot-action-row">
+            <button type="button" class="ghost-button pilot-task-comment-button" data-task-id="${escapeHtml(task.task_id)}">Send guidance</button>
+          </div>
         </div>
       </article>
     `).join("");
   }
+
+  if (!approvals.length) {
+    approvalPanel.innerHTML = `<article class="pilot-note-card"><p class="metric-detail">No orchestrator approvals are waiting right now.</p></article>`;
+    return;
+  }
+
+  approvalPanel.innerHTML = approvals.slice(0, 8).map((approval) => `
+    <article class="pilot-activity-card pilot-approval-card" data-approval-id="${escapeHtml(approval.approval_id)}">
+      <div class="pilot-activity-head">
+        <strong>${escapeHtml(approval.summary || humanize(approval.approval_type))}</strong>
+        <div class="chip-row">
+          <span class="badge">${escapeHtml(humanize(approval.status || "unknown"))}</span>
+          <span class="badge">${escapeHtml(humanize(approval.approval_type))}</span>
+        </div>
+      </div>
+      <p class="metric-detail">${escapeHtml(approval.requested_by_name ? `Requested by ${approval.requested_by_name}` : "No requester details reported")}</p>
+      ${approval.decision_note ? `<p class="metric-detail">${escapeHtml(`Decision note: ${truncateText(approval.decision_note, 180)}`)}</p>` : ""}
+      <div class="chip-row">
+        <span class="badge">${escapeHtml(approval.approval_id)}</span>
+        ${(approval.task_ids || []).map((taskId) => `<span class="badge">${escapeHtml(taskId)}</span>`).join("")}
+      </div>
+      ${renderCommentThread(approval.comments, "No approval comments loaded yet.")}
+      <div class="pilot-action-form">
+        <label class="pilot-field-label" for="approval-note-${escapeHtml(approval.approval_id)}">Decision note</label>
+        <textarea id="approval-note-${escapeHtml(approval.approval_id)}" class="pilot-action-input" data-approval-note-input placeholder="Explain the decision so the outside team can understand what changed."></textarea>
+        <div class="pilot-action-row">
+          <button type="button" class="ghost-button pilot-approval-action" data-approval-action="approve" data-approval-id="${escapeHtml(approval.approval_id)}">Approve</button>
+          <button type="button" class="ghost-button pilot-approval-action" data-approval-action="request-revision" data-approval-id="${escapeHtml(approval.approval_id)}">Request revision</button>
+          <button type="button" class="ghost-button pilot-approval-action" data-approval-action="reject" data-approval-id="${escapeHtml(approval.approval_id)}">Reject</button>
+        </div>
+      </div>
+    </article>
+  `).join("");
 }
 
 function renderExercise() {
@@ -462,10 +564,12 @@ function renderActivity() {
             <div class="chip-row">
               <span class="badge">${escapeHtml(item.channel)}</span>
               ${item.source_label ? `<span class="badge">${escapeHtml(humanize(item.source_label))}</span>` : ""}
+              ${item.timestamp ? `<span class="badge">${escapeHtml(formatTimestamp(item.timestamp))}</span>` : ""}
             </div>
           </div>
           <p class="metric-detail">${escapeHtml(actor)}</p>
           <p class="metric-detail">${escapeHtml(item.tool || "No resolved tool recorded")}</p>
+          ${item.detail ? `<p class="metric-detail">${escapeHtml(truncateText(item.detail, 260))}</p>` : ""}
           ${(item.object_refs || []).length
             ? `<div class="chip-row">${item.object_refs.map((ref) => `<span class="badge">${escapeHtml(ref)}</span>`).join("")}</div>`
             : ""}
@@ -550,11 +654,16 @@ async function loadOperatorStatus() {
   renderAll();
 }
 
-async function runPilotAction(path, successMessage) {
+async function runPilotAction(path, successMessage, payload = null) {
   const status = document.getElementById("pilot-action-status");
   status.textContent = "Working…";
   try {
-    state.pilot = await getJson(path, { method: "POST" });
+    const options = { method: "POST" };
+    if (payload !== null) {
+      options.headers = { "Content-Type": "application/json" };
+      options.body = JSON.stringify(payload);
+    }
+    state.pilot = await getJson(path, options);
     state.exercise = await loadJsonOrNull("/api/exercise");
     status.textContent = successMessage;
     renderAll();
@@ -602,7 +711,7 @@ document.getElementById("pilot-sync-button").addEventListener("click", () => {
   runPilotAction("/api/pilot/orchestrator/sync", "Outside fleet sync complete.");
 });
 
-document.body.addEventListener("click", (event) => {
+document.body.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
     return;
@@ -612,7 +721,51 @@ document.body.addEventListener("click", (event) => {
     const agentId = agentAction.dataset.agentId || "";
     const action = agentAction.dataset.agentAction || "";
     if (agentId && action) {
-      runPilotAction(`/api/pilot/orchestrator/agents/${encodeURIComponent(agentId)}/${action}`, `Agent ${action} request sent.`);
+      await runPilotAction(`/api/pilot/orchestrator/agents/${encodeURIComponent(agentId)}/${action}`, `Agent ${action} request sent.`);
+    }
+    return;
+  }
+  const taskCommentButton = target.closest(".pilot-task-comment-button");
+  if (taskCommentButton instanceof HTMLElement) {
+    const taskId = taskCommentButton.dataset.taskId || "";
+    const card = taskCommentButton.closest(".pilot-task-card");
+    const input = card?.querySelector("[data-task-comment-input]");
+    const body = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+    if (!taskId) {
+      return;
+    }
+    if (!body) {
+      const status = document.getElementById("pilot-action-status");
+      status.textContent = "Write the guidance before sending it.";
+      return;
+    }
+    await runPilotAction(
+      `/api/pilot/orchestrator/tasks/${encodeURIComponent(taskId)}/comment`,
+      "Guidance sent to the outside task.",
+      { body }
+    );
+    if (input instanceof HTMLTextAreaElement) {
+      input.value = "";
+    }
+    return;
+  }
+  const approvalAction = target.closest(".pilot-approval-action");
+  if (approvalAction instanceof HTMLElement) {
+    const approvalId = approvalAction.dataset.approvalId || "";
+    const action = approvalAction.dataset.approvalAction || "";
+    const card = approvalAction.closest(".pilot-approval-card");
+    const input = card?.querySelector("[data-approval-note-input]");
+    const decisionNote = input instanceof HTMLTextAreaElement ? input.value.trim() : "";
+    if (!approvalId || !action) {
+      return;
+    }
+    await runPilotAction(
+      `/api/pilot/orchestrator/approvals/${encodeURIComponent(approvalId)}/${action}`,
+      `Approval ${humanize(action)} request sent.`,
+      { decision_note: decisionNote || null }
+    );
+    if (input instanceof HTMLTextAreaElement) {
+      input.value = "";
     }
     return;
   }

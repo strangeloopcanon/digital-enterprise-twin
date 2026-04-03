@@ -17,6 +17,8 @@ from ._api_models import (
     ExerciseActivateRequest,
     MirrorAgentUpdateRequest,
     MirrorApprovalResolveRequest,
+    OrchestratorApprovalDecisionRequest,
+    OrchestratorTaskCommentRequest,
     gateway_json_request,
     load_workspace_mirror_payload,
 )
@@ -194,6 +196,74 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
     def api_pilot_orchestrator_resume(agent_id: str) -> JSONResponse:
         try:
             payload = deps.resume_pilot_orchestrator_agent(root, agent_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/tasks/{task_id}/comment")
+    def api_pilot_orchestrator_task_comment(
+        task_id: str,
+        request: OrchestratorTaskCommentRequest,
+    ) -> JSONResponse:
+        try:
+            payload = deps.comment_on_pilot_orchestrator_task(
+                root,
+                task_id,
+                body=request.body,
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/approvals/{approval_id}/approve")
+    def api_pilot_orchestrator_approval_approve(
+        approval_id: str,
+        request: OrchestratorApprovalDecisionRequest,
+    ) -> JSONResponse:
+        try:
+            payload = deps.approve_pilot_orchestrator_approval(
+                root,
+                approval_id,
+                decision_note=request.decision_note,
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/approvals/{approval_id}/reject")
+    def api_pilot_orchestrator_approval_reject(
+        approval_id: str,
+        request: OrchestratorApprovalDecisionRequest,
+    ) -> JSONResponse:
+        try:
+            payload = deps.reject_pilot_orchestrator_approval(
+                root,
+                approval_id,
+                decision_note=request.decision_note,
+            )
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/approvals/{approval_id}/request-revision")
+    def api_pilot_orchestrator_approval_request_revision(
+        approval_id: str,
+        request: OrchestratorApprovalDecisionRequest,
+    ) -> JSONResponse:
+        try:
+            payload = deps.request_revision_pilot_orchestrator_approval(
+                root,
+                approval_id,
+                decision_note=request.decision_note,
+            )
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="pilot stack is not configured")
         except RuntimeError as exc:

@@ -10,7 +10,9 @@ from urllib.request import Request, urlopen
 from .models import (
     OrchestratorActivityItem,
     OrchestratorAgent,
+    OrchestratorApproval,
     OrchestratorBudgetSummary,
+    OrchestratorComment,
     OrchestratorCommandResult,
     OrchestratorConfig,
     OrchestratorSnapshot,
@@ -59,6 +61,9 @@ class PaperclipOrchestratorClient:
         activity_payload = self._safe_get(
             f"/api/companies/{self.config.company_id}/activity"
         )
+        approvals_payload = self._safe_get(
+            f"/api/companies/{self.config.company_id}/approvals"
+        )
         costs_summary_payload = self._safe_get(
             f"/api/companies/{self.config.company_id}/costs/summary"
         )
@@ -74,6 +79,7 @@ class PaperclipOrchestratorClient:
                 agents_payload,
                 issues_payload,
                 activity_payload,
+                approvals_payload,
                 costs_summary_payload,
                 costs_by_agent_payload,
             )
@@ -102,12 +108,45 @@ class PaperclipOrchestratorClient:
             for item in _coerce_records(agents_payload, keys=("agents", "items"))
         ]
         agent_ids_by_external = _build_agent_ids_by_external(agents)
+        agent_names_by_external = _build_agent_names_by_external(agents)
+        issue_records = _coerce_records(issues_payload, keys=("issues", "items"))
+        approval_records = _coerce_records(
+            approvals_payload, keys=("approvals", "items")
+        )
+        activity_records = _coerce_records(activity_payload, keys=("activity", "items"))
+        approval_ids_by_issue = _build_approval_ids_by_issue(activity_records)
+        comment_payloads_by_issue = self._load_comments_for_issues(issue_records)
+        comment_payloads_by_approval = self._load_comments_for_approvals(
+            approval_records
+        )
 
         tasks = [
-            _normalize_task(item, agent_ids_by_external=agent_ids_by_external)
-            for item in _coerce_records(issues_payload, keys=("issues", "items"))
+            _normalize_task(
+                item,
+                agent_ids_by_external=agent_ids_by_external,
+                comment_payloads=comment_payloads_by_issue.get(
+                    _string(item.get("id") or item.get("issueId")) or "",
+                    [],
+                ),
+                linked_approval_ids=approval_ids_by_issue.get(
+                    _string(item.get("id") or item.get("issueId")) or "",
+                    [],
+                ),
+                agent_names_by_external=agent_names_by_external,
+            )
+            for item in issue_records
         ]
         tasks = [item for item in tasks if item is not None]
+        task_ids_by_external = {
+            task.external_task_id: task.task_id
+            for task in tasks
+            if task.external_task_id
+        }
+        task_labels_by_external = {
+            task.external_task_id: task.identifier or task.title
+            for task in tasks
+            if task.external_task_id
+        }
         task_ids_by_agent: dict[str, list[str]] = {}
         for task in tasks:
             if task.assignee_agent_id is None:
@@ -123,9 +162,40 @@ class PaperclipOrchestratorClient:
             for agent in agents
         ]
 
+        approvals = [
+            _normalize_approval(
+                item,
+                agent_ids_by_external=agent_ids_by_external,
+                agent_names_by_external=agent_names_by_external,
+                comment_payloads=comment_payloads_by_approval.get(
+                    _string(item.get("id") or item.get("approvalId")) or "",
+                    [],
+                ),
+                task_ids=[
+                    task_ids_by_external[external_task_id]
+                    for external_task_id, approval_ids in approval_ids_by_issue.items()
+                    if _string(item.get("id") or item.get("approvalId")) in approval_ids
+                    and external_task_id in task_ids_by_external
+                ],
+            )
+            for item in approval_records
+        ]
+        approvals = [item for item in approvals if item is not None]
+        approval_summaries_by_external = {
+            item.external_approval_id: item.summary or item.approval_type
+            for item in approvals
+            if item.external_approval_id
+        }
+
         recent_activity = [
-            _normalize_activity(item, agent_ids_by_external=agent_ids_by_external)
-            for item in _coerce_records(activity_payload, keys=("activity", "items"))
+            _normalize_activity(
+                item,
+                agent_ids_by_external=agent_ids_by_external,
+                agent_names_by_external=agent_names_by_external,
+                task_labels_by_external=task_labels_by_external,
+                approval_summaries_by_external=approval_summaries_by_external,
+            )
+            for item in activity_records
         ]
         recent_activity = [item for item in recent_activity if item is not None][:12]
 
@@ -147,6 +217,7 @@ class PaperclipOrchestratorClient:
             capabilities=capabilities,
             agents=agents,
             tasks=tasks,
+            approvals=approvals,
             recent_activity=recent_activity,
         )
 
@@ -172,12 +243,124 @@ class PaperclipOrchestratorClient:
             message="Paperclip agent resumed.",
         )
 
+    def comment_on_task(self, task_id: str, body: str) -> OrchestratorCommandResult:
+        external_task_id = external_task_id_for(task_id)
+        payload = self._request_json(
+            f"/api/issues/{external_task_id}/comments",
+            method="POST",
+            payload={"body": body},
+        )
+        comment_id = _string(_mapping(payload).get("id"))
+        return OrchestratorCommandResult(
+            provider="paperclip",
+            action="comment_task",
+            task_id=normalize_task_id("paperclip", external_task_id),
+            external_task_id=external_task_id,
+            comment_id=comment_id or None,
+            message="Guidance comment posted to the Paperclip task.",
+        )
+
+    def approve_approval(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult:
+        return self._resolve_approval(
+            approval_id,
+            action="approve",
+            path_suffix="approve",
+            decision_note=decision_note,
+        )
+
+    def reject_approval(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult:
+        return self._resolve_approval(
+            approval_id,
+            action="reject",
+            path_suffix="reject",
+            decision_note=decision_note,
+        )
+
+    def request_approval_revision(
+        self,
+        approval_id: str,
+        *,
+        decision_note: str | None = None,
+    ) -> OrchestratorCommandResult:
+        return self._resolve_approval(
+            approval_id,
+            action="request_revision",
+            path_suffix="request-revision",
+            decision_note=decision_note,
+        )
+
     def sync_capabilities(self) -> OrchestratorSyncCapabilities:
         return OrchestratorSyncCapabilities(
             can_pause_agents=True,
             can_resume_agents=True,
+            can_comment_on_tasks=True,
+            can_manage_approvals=True,
             routeable_surfaces=["slack", "jira", "graph", "salesforce"],
         )
+
+    def _resolve_approval(
+        self,
+        approval_id: str,
+        *,
+        action: str,
+        path_suffix: str,
+        decision_note: str | None,
+    ) -> OrchestratorCommandResult:
+        external_approval_id = external_approval_id_for(approval_id)
+        payload = {}
+        if decision_note and decision_note.strip():
+            payload["decisionNote"] = decision_note.strip()
+        self._request_json(
+            f"/api/approvals/{external_approval_id}/{path_suffix}",
+            method="POST",
+            payload=payload,
+        )
+        return OrchestratorCommandResult(
+            provider="paperclip",
+            action=action,
+            approval_id=normalize_approval_id("paperclip", external_approval_id),
+            external_approval_id=external_approval_id,
+            message=f"Paperclip approval {action.replace('_', ' ')} request sent.",
+        )
+
+    def _load_comments_for_issues(
+        self,
+        issue_records: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        return self._load_comment_threads(issue_records, kind="issue")
+
+    def _load_comments_for_approvals(
+        self,
+        approval_records: list[dict[str, Any]],
+    ) -> dict[str, list[dict[str, Any]]]:
+        return self._load_comment_threads(approval_records, kind="approval")
+
+    def _load_comment_threads(
+        self,
+        records: list[dict[str, Any]],
+        *,
+        kind: str,
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not records:
+            return {}
+        lookup: dict[str, list[dict[str, Any]]] = {}
+        for item in records[:8]:
+            external_id = _string(item.get("id") or item.get(f"{kind}Id"))
+            if not external_id:
+                continue
+            payload = self._safe_get(f"/api/{kind}s/{external_id}/comments")
+            lookup[external_id] = _coerce_records(payload, keys=("comments", "items"))
+        return lookup
 
     def _safe_get(self, path: str) -> dict[str, Any] | list[Any] | None:
         try:
@@ -239,8 +422,30 @@ def normalize_task_id(provider: str, external_task_id: str) -> str:
     return f"{prefix}{external}"
 
 
+def normalize_approval_id(provider: str, external_approval_id: str) -> str:
+    external = str(external_approval_id).strip()
+    prefix = f"{provider}:"
+    if external.startswith(prefix):
+        return external
+    return f"{prefix}{external}"
+
+
 def external_agent_id_for(agent_id: str) -> str:
     text = str(agent_id).strip()
+    if ":" not in text:
+        return text
+    return text.split(":", 1)[1]
+
+
+def external_task_id_for(task_id: str) -> str:
+    text = str(task_id).strip()
+    if ":" not in text:
+        return text
+    return text.split(":", 1)[1]
+
+
+def external_approval_id_for(approval_id: str) -> str:
+    text = str(approval_id).strip()
     if ":" not in text:
         return text
     return text.split(":", 1)[1]
@@ -263,11 +468,12 @@ def _normalize_summary(
             "agent_counts",
             "agentsByStatus",
             "agent_counts_by_status",
+            "agents",
         ),
     ) or _count_records([agent.status or "unknown" for agent in agents])
     task_counts = _coerce_counts(
         dashboard,
-        keys=("taskCounts", "task_counts", "issuesByStatus", "issueCounts"),
+        keys=("taskCounts", "task_counts", "issuesByStatus", "issueCounts", "tasks"),
     ) or _count_records(
         [
             str(item.status or "unknown")
@@ -310,17 +516,20 @@ def _normalize_budget(
     budget_cents = _first_int(
         payload.get("budgetMonthlyCents"),
         payload.get("monthlyBudgetCents"),
+        payload.get("budgetCents"),
         company.get("budgetMonthlyCents"),
     )
     spend_cents = _first_int(
         payload.get("spentMonthlyCents"),
         payload.get("currentMonthSpendCents"),
         payload.get("monthlySpendCents"),
+        payload.get("spendCents"),
     )
     utilization_ratio = _first_float(
         payload.get("utilizationRatio"),
         payload.get("utilization"),
         payload.get("budgetUtilization"),
+        payload.get("utilizationPercent"),
     )
     if utilization_ratio is None and budget_cents and spend_cents is not None:
         utilization_ratio = max(0.0, min(1.0, spend_cents / max(budget_cents, 1)))
@@ -397,6 +606,9 @@ def _normalize_task(
     payload: Mapping[str, Any],
     *,
     agent_ids_by_external: Mapping[str, str],
+    agent_names_by_external: Mapping[str, str],
+    comment_payloads: list[dict[str, Any]],
+    linked_approval_ids: list[str],
 ) -> Any:
     provider = _string(payload.get("provider")) or "paperclip"
     external_task_id = _string(payload.get("id") or payload.get("issueId")) or ""
@@ -411,11 +623,23 @@ def _normalize_task(
         )
     project = _mapping(payload.get("project"))
     goal = _mapping(payload.get("goal"))
+    comments = [
+        _normalize_comment(
+            item,
+            provider=provider,
+            agent_ids_by_external=agent_ids_by_external,
+            agent_names_by_external=agent_names_by_external,
+        )
+        for item in comment_payloads
+    ]
+    comments = [item for item in comments if item is not None]
+    comments = _sort_comments(comments)
     return OrchestratorTask(
         provider=provider,
         task_id=normalize_task_id(provider, external_task_id),
         external_task_id=external_task_id,
         title=_string(payload.get("title")) or external_task_id,
+        identifier=_string(payload.get("identifier")),
         status=_string(payload.get("status")),
         assignee_agent_id=_resolve_agent_id(
             provider,
@@ -428,6 +652,13 @@ def _normalize_task(
         or _string(payload.get("projectName")),
         goal_name=_string(goal.get("name")) or _string(payload.get("goalName")),
         summary=_string(payload.get("description")) or _string(payload.get("summary")),
+        linked_approval_ids=[
+            normalize_approval_id(provider, approval_id)
+            for approval_id in linked_approval_ids
+            if approval_id
+        ],
+        latest_comment_preview=_comment_preview(comments),
+        comments=comments,
     )
 
 
@@ -435,32 +666,61 @@ def _normalize_activity(
     payload: Mapping[str, Any],
     *,
     agent_ids_by_external: Mapping[str, str],
+    agent_names_by_external: Mapping[str, str],
+    task_labels_by_external: Mapping[str, str],
+    approval_summaries_by_external: Mapping[str, str],
 ) -> Any:
     provider = _string(payload.get("provider")) or "paperclip"
     actor = _mapping(payload.get("actor"))
+    details = _mapping(payload.get("details"))
     actor_id = _string(
         actor.get("id") or actor.get("agentId") or payload.get("agentId")
     )
-    actor_name = _string(actor.get("name")) or _string(payload.get("actorName"))
+    actor_type = _string(payload.get("actorType"))
+    actor_name = (
+        _string(actor.get("name"))
+        or _string(payload.get("actorName"))
+        or agent_names_by_external.get(actor_id, "")
+        or _display_actor_name(actor_type=actor_type, actor_id=actor_id)
+    )
     entity_type = _string(payload.get("entityType"))
     entity_id = _string(payload.get("entityId"))
     action = _string(payload.get("action"))
+    entity_label = _display_entity_label(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        details=details,
+        task_labels_by_external=task_labels_by_external,
+        approval_summaries_by_external=approval_summaries_by_external,
+    )
     label_parts = [
-        part
-        for part in (actor_name or actor_id, action, entity_type, entity_id)
-        if part
+        part for part in (actor_name, _humanize_text(action), entity_label) if part
     ]
     object_refs: list[str] = []
     if entity_type == "issue" and entity_id:
         object_refs.append(normalize_task_id(provider, entity_id))
     elif entity_type == "agent" and entity_id:
         object_refs.append(normalize_agent_id(provider, entity_id))
-    run_id = _string(_mapping(payload.get("details")).get("runId"))
+    elif entity_type == "approval" and entity_id:
+        object_refs.append(normalize_approval_id(provider, entity_id))
+    approval_id = _string(details.get("approvalId"))
+    if approval_id:
+        object_refs.append(normalize_approval_id(provider, approval_id))
+    linked_agent_id = _string(details.get("linkedAgentId"))
+    if linked_agent_id:
+        object_refs.append(normalize_agent_id(provider, linked_agent_id))
+    comment_id = _string(details.get("commentId"))
+    if comment_id:
+        object_refs.append(f"comment:{comment_id}")
+    document_id = _string(details.get("documentId"))
+    if document_id:
+        object_refs.append(f"document:{document_id}")
+    run_id = _string(payload.get("runId")) or _string(details.get("runId"))
     if run_id:
         object_refs.append(f"run:{run_id}")
     return OrchestratorActivityItem(
         provider=provider,
-        label=" ".join(label_parts) or "Paperclip activity",
+        label=" · ".join(label_parts) or "Paperclip activity",
         action=action,
         created_at=_string(payload.get("createdAt")),
         agent_id=_resolve_agent_id(
@@ -475,13 +735,15 @@ def _normalize_activity(
             if entity_type == "issue" and entity_id
             else None
         ),
-        status=_string(_mapping(payload.get("details")).get("status")),
+        status=_string(details.get("status")),
+        detail=_activity_detail(details),
         object_refs=object_refs,
         metadata={
             key: value
             for key, value in {
                 "entity_type": entity_type,
                 "entity_id": entity_id,
+                "identifier": _string(details.get("identifier")),
                 "details": (
                     _string(payload.get("details"))
                     if not isinstance(payload.get("details"), Mapping)
@@ -490,6 +752,89 @@ def _normalize_activity(
             }.items()
             if value not in {None, ""}
         },
+    )
+
+
+def _normalize_approval(
+    payload: Mapping[str, Any],
+    *,
+    agent_ids_by_external: Mapping[str, str],
+    agent_names_by_external: Mapping[str, str],
+    comment_payloads: list[dict[str, Any]],
+    task_ids: list[str],
+) -> Any:
+    provider = _string(payload.get("provider")) or "paperclip"
+    external_approval_id = _string(payload.get("id") or payload.get("approvalId")) or ""
+    if not external_approval_id:
+        return None
+    payload_body = _mapping(payload.get("payload"))
+    requested_by_agent_id = _string(payload.get("requestedByAgentId"))
+    comments = [
+        _normalize_comment(
+            item,
+            provider=provider,
+            agent_ids_by_external=agent_ids_by_external,
+            agent_names_by_external=agent_names_by_external,
+        )
+        for item in comment_payloads
+    ]
+    comments = [item for item in comments if item is not None]
+    comments = _sort_comments(comments)
+    return OrchestratorApproval(
+        provider=provider,
+        approval_id=normalize_approval_id(provider, external_approval_id),
+        external_approval_id=external_approval_id,
+        approval_type=_string(payload.get("type")) or "approval",
+        status=_string(payload.get("status")),
+        requested_by_agent_id=_resolve_agent_id(
+            provider,
+            requested_by_agent_id,
+            agent_ids_by_external=agent_ids_by_external,
+        ),
+        requested_by_name=agent_names_by_external.get(
+            requested_by_agent_id,
+            "",
+        )
+        or _display_actor_name(actor_type="agent", actor_id=requested_by_agent_id),
+        decision_note=_string(payload.get("decisionNote")),
+        created_at=_string(payload.get("createdAt")),
+        summary=_approval_summary(
+            approval_type=_string(payload.get("type")),
+            payload=payload_body,
+        ),
+        task_ids=list(task_ids),
+        comments=comments,
+    )
+
+
+def _normalize_comment(
+    payload: Mapping[str, Any],
+    *,
+    provider: str,
+    agent_ids_by_external: Mapping[str, str],
+    agent_names_by_external: Mapping[str, str],
+) -> Any:
+    comment_id = _string(payload.get("id"))
+    if not comment_id:
+        return None
+    author_agent_id = _string(payload.get("authorAgentId"))
+    author_user_id = _string(payload.get("authorUserId"))
+    return OrchestratorComment(
+        provider=provider,
+        comment_id=comment_id,
+        body=_string(payload.get("body")),
+        created_at=_string(payload.get("createdAt")),
+        author_agent_id=_resolve_agent_id(
+            provider,
+            author_agent_id,
+            agent_ids_by_external=agent_ids_by_external,
+        ),
+        author_name=agent_names_by_external.get(author_agent_id, "")
+        or _display_actor_name(
+            actor_type="agent" if author_agent_id else "user",
+            actor_id=author_agent_id or author_user_id,
+        ),
+        author_user_id=author_user_id or None,
     )
 
 
@@ -586,6 +931,36 @@ def _build_agent_ids_by_external(
     return resolved
 
 
+def _build_agent_names_by_external(
+    agents: list[OrchestratorAgent],
+) -> dict[str, str]:
+    names: dict[str, str] = {}
+    for agent in agents:
+        external_agent_id = agent.external_agent_id.strip()
+        if not external_agent_id or not agent.name.strip():
+            continue
+        names[external_agent_id] = agent.name
+    return names
+
+
+def _build_approval_ids_by_issue(
+    activity_records: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    linked: dict[str, list[str]] = {}
+    for item in activity_records:
+        if _string(item.get("entityType")) != "issue":
+            continue
+        details = _mapping(item.get("details"))
+        issue_id = _string(item.get("entityId"))
+        approval_id = _string(details.get("approvalId"))
+        if not issue_id or not approval_id:
+            continue
+        refs = linked.setdefault(issue_id, [])
+        if approval_id not in refs:
+            refs.append(approval_id)
+    return linked
+
+
 def _resolve_agent_id(
     default_provider: str,
     external_agent_id: str,
@@ -637,6 +1012,111 @@ def _count_records(values: list[str]) -> dict[str, int]:
     for value in values:
         counts[str(value)] = counts.get(str(value), 0) + 1
     return counts
+
+
+def _comment_preview(comments: list[OrchestratorComment]) -> str | None:
+    if not comments:
+        return None
+    body = comments[-1].body.strip()
+    if not body:
+        return None
+    if len(body) <= 180:
+        return body
+    return f"{body[:177].rstrip()}..."
+
+
+def _sort_comments(
+    comments: list[OrchestratorComment],
+) -> list[OrchestratorComment]:
+    return sorted(
+        comments,
+        key=lambda item: (item.created_at or "", item.comment_id),
+    )
+
+
+def _approval_summary(
+    *,
+    approval_type: str,
+    payload: Mapping[str, Any],
+) -> str | None:
+    if approval_type == "hire_agent":
+        name = _string(payload.get("title")) or _string(payload.get("name"))
+        role = _string(payload.get("role"))
+        parts = [part for part in (name, role) if part]
+        if parts:
+            return "Hire " + " · ".join(parts)
+    label_fields = (
+        payload.get("title"),
+        payload.get("name"),
+        payload.get("summary"),
+        payload.get("type"),
+    )
+    for field in label_fields:
+        text = _string(field)
+        if text:
+            return text
+    return _humanize_text(approval_type) or None
+
+
+def _humanize_text(value: str) -> str:
+    text = _string(value)
+    if not text:
+        return ""
+    text = text.replace(".", " ").replace("_", " ").replace("-", " ")
+    return " ".join(part.capitalize() for part in text.split())
+
+
+def _display_actor_name(*, actor_type: str, actor_id: str) -> str:
+    normalized_type = _string(actor_type).lower()
+    normalized_id = _string(actor_id)
+    if normalized_type == "user" and normalized_id == "local-board":
+        return "Board"
+    if not normalized_id:
+        return ""
+    return _humanize_text(normalized_id)
+
+
+def _display_entity_label(
+    *,
+    entity_type: str,
+    entity_id: str,
+    details: Mapping[str, Any],
+    task_labels_by_external: Mapping[str, str],
+    approval_summaries_by_external: Mapping[str, str],
+) -> str:
+    if entity_type == "issue":
+        return (
+            _string(details.get("identifier"))
+            or task_labels_by_external.get(entity_id, "")
+            or _string(details.get("issueTitle"))
+            or _string(details.get("title"))
+            or entity_id
+        )
+    if entity_type == "approval":
+        return approval_summaries_by_external.get(entity_id, "") or entity_id
+    if entity_type == "agent":
+        return _string(details.get("name")) or entity_id
+    return _string(details.get("title")) or entity_id
+
+
+def _activity_detail(details: Mapping[str, Any]) -> str | None:
+    if not details:
+        return None
+    body_snippet = _string(details.get("bodySnippet"))
+    if body_snippet:
+        return body_snippet
+    status = _string(details.get("status"))
+    previous = _mapping(details.get("_previous"))
+    previous_status = _string(previous.get("status"))
+    if status and previous_status and status != previous_status:
+        return f"Status changed from {previous_status} to {status}."
+    title = _string(details.get("title")) or _string(details.get("issueTitle"))
+    if title:
+        return title
+    approval_type = _string(details.get("type"))
+    if approval_type:
+        return _humanize_text(approval_type)
+    return None
 
 
 def _normalize_surfaces(raw: Any) -> list[str]:
