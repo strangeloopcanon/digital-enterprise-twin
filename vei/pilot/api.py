@@ -18,6 +18,14 @@ from vei.context.models import (
     ContextSourceResult,
 )
 from vei.mirror import default_mirror_workspace_config
+from vei.orchestrators.api import (
+    OrchestratorAgent,
+    OrchestratorConfig,
+    OrchestratorSnapshot,
+    OrchestratorSyncHealth,
+    build_orchestrator_client,
+    external_agent_id_for,
+)
 from vei.twin.api import build_customer_twin, load_customer_twin
 from vei.twin.models import (
     ContextMoldConfig,
@@ -39,6 +47,8 @@ from .models import (
 PILOT_MANIFEST_FILE = "pilot_manifest.json"
 PILOT_GUIDE_FILE = "pilot_guide.md"
 PILOT_RUNTIME_FILE = "pilot_runtime.json"
+PILOT_ORCHESTRATOR_CACHE_FILE = "pilot_orchestrator_snapshot.json"
+PILOT_ORCHESTRATOR_SYNC_FILE = "pilot_orchestrator_sync.json"
 
 
 def start_pilot(
@@ -59,8 +69,18 @@ def start_pilot(
     gateway_port: int = 3020,
     studio_port: int = 3011,
     rebuild: bool = False,
+    orchestrator: str | None = None,
+    orchestrator_url: str | None = None,
+    orchestrator_company_id: str | None = None,
+    orchestrator_api_key_env: str | None = None,
 ) -> PilotStatus:
     workspace_root = Path(root).expanduser().resolve()
+    resolved_orchestrator_config = _resolve_orchestrator_config(
+        provider=orchestrator,
+        base_url=orchestrator_url,
+        company_id=orchestrator_company_id,
+        api_key_env=orchestrator_api_key_env,
+    )
     if rebuild:
         _clear_stale_pilot_listener(
             workspace_root,
@@ -186,6 +206,7 @@ def start_pilot(
         studio_url=studio_url,
         pilot_console_url=pilot_console_url,
         gateway_url=gateway_url,
+        orchestrator_config=resolved_orchestrator_config,
     )
     _write_json(workspace_root / PILOT_MANIFEST_FILE, manifest.model_dump(mode="json"))
     (workspace_root / PILOT_GUIDE_FILE).write_text(
@@ -245,7 +266,11 @@ def load_pilot_runtime(root: str | Path) -> PilotRuntime:
     )
 
 
-def build_pilot_status(root: str | Path) -> PilotStatus:
+def build_pilot_status(
+    root: str | Path,
+    *,
+    force_orchestrator_sync: bool = False,
+) -> PilotStatus:
     workspace_root = Path(root).expanduser().resolve()
     manifest = load_pilot_manifest(workspace_root)
     runtime = _safe_load_runtime(workspace_root) or PilotRuntime(
@@ -280,10 +305,25 @@ def build_pilot_status(root: str | Path) -> PilotStatus:
     history_payload = history_raw if isinstance(history_raw, list) else []
     surfaces_payload = surfaces_raw if isinstance(surfaces_raw, dict) else {}
 
-    activity = _build_activity(history_payload)
-    outcome = _build_outcome(gateway_payload, surfaces_payload, activity)
     twin_runtime = gateway_payload.get("runtime", {}) if gateway_payload else {}
     services_ready = _services_ready(runtime)
+    orchestrator_snapshot, orchestrator_sync = _build_orchestrator_status(
+        workspace_root,
+        manifest=manifest,
+        services_ready=services_ready,
+        force_sync=force_orchestrator_sync,
+    )
+    twin_activity = _build_activity(history_payload)
+    if orchestrator_snapshot is not None:
+        twin_activity = _attach_task_refs_to_activity(
+            twin_activity,
+            orchestrator_snapshot=orchestrator_snapshot,
+        )
+    activity = _merge_activity(
+        twin_activity,
+        _build_orchestrator_activity(orchestrator_snapshot),
+    )
+    outcome = _build_outcome(gateway_payload, surfaces_payload, activity)
     active_agents = _parse_active_agents(gateway_payload)
     return PilotStatus(
         manifest=manifest,
@@ -295,6 +335,8 @@ def build_pilot_status(root: str | Path) -> PilotStatus:
         active_agents=active_agents,
         activity=activity,
         outcome=outcome,
+        orchestrator=orchestrator_snapshot,
+        orchestrator_sync=orchestrator_sync,
     )
 
 
@@ -340,6 +382,37 @@ def finalize_pilot_run(root: str | Path) -> PilotStatus:
     if payload is None:
         raise RuntimeError("pilot gateway is not reachable right now")
     return build_pilot_status(workspace_root)
+
+
+def sync_pilot_orchestrator(root: str | Path) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    return build_pilot_status(workspace_root, force_orchestrator_sync=True)
+
+
+def pause_pilot_orchestrator_agent(root: str | Path, agent_id: str) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    manifest = load_pilot_manifest(workspace_root)
+    config = manifest.orchestrator
+    if config is None:
+        raise RuntimeError("pilot orchestrator is not configured")
+    client = build_orchestrator_client(config)
+    client.pause_agent(
+        _resolve_orchestrator_external_agent_id(workspace_root, agent_id)
+    )
+    return build_pilot_status(workspace_root, force_orchestrator_sync=True)
+
+
+def resume_pilot_orchestrator_agent(root: str | Path, agent_id: str) -> PilotStatus:
+    workspace_root = Path(root).expanduser().resolve()
+    manifest = load_pilot_manifest(workspace_root)
+    config = manifest.orchestrator
+    if config is None:
+        raise RuntimeError("pilot orchestrator is not configured")
+    client = build_orchestrator_client(config)
+    client.resume_agent(
+        _resolve_orchestrator_external_agent_id(workspace_root, agent_id)
+    )
+    return build_pilot_status(workspace_root, force_orchestrator_sync=True)
 
 
 def _ensure_twin_bundle(
@@ -411,6 +484,7 @@ def _build_manifest(
     studio_url: str,
     pilot_console_url: str,
     gateway_url: str,
+    orchestrator_config: OrchestratorConfig | None,
 ) -> PilotManifest:
     preview = (
         bundle.metadata.get("preview", {}) if isinstance(bundle.metadata, dict) else {}
@@ -435,6 +509,7 @@ def _build_manifest(
             "inspect mail and CRM before taking one customer-safe action."
         ),
         sample_client_path=sample_client_path,
+        orchestrator=orchestrator_config,
     )
     manifest.snippets = _build_snippets(manifest)
     return manifest
@@ -588,6 +663,15 @@ def _render_pilot_guide(manifest: PilotManifest) -> str:
         f"- `{item.title}` at `{item.base_path}`"
         for item in manifest.supported_surfaces
     )
+    orchestrator_lines = ""
+    if manifest.orchestrator is not None:
+        orchestrator_lines = (
+            "## Orchestrator bridge\n\n"
+            f"- Provider: **{manifest.orchestrator.provider}**\n"
+            f"- Base URL: `{manifest.orchestrator.base_url}`\n"
+            f"- Company ID: `{manifest.orchestrator.company_id}`\n"
+            f"- API key env: `{manifest.orchestrator.api_key_env}`\n\n"
+        )
     return (
         f"# Pilot Guide — {manifest.organization_name}\n\n"
         f"## What this is\n\n"
@@ -601,6 +685,7 @@ def _render_pilot_guide(manifest: PilotManifest) -> str:
         f"{surface_lines}\n\n"
         f"## Recommended first exercise\n\n"
         f"{manifest.recommended_first_exercise}\n\n"
+        f"{orchestrator_lines}"
         f"## Sample client\n\n"
         f"`python {manifest.sample_client_path} --base-url {manifest.gateway_url} --token {manifest.bearer_token}`\n\n"
         f"## Connection snippets\n\n"
@@ -628,6 +713,17 @@ def _build_activity(history_payload: Any) -> list[PilotActivityItem]:
                 channel=str(raw.get("channel", "World")),
                 tool=raw.get("resolved_tool") or raw.get("tool"),
                 status=raw.get("status"),
+                timestamp=(
+                    str(raw.get("created_at"))
+                    if raw.get("created_at") is not None
+                    else None
+                ),
+                source_label="VEI",
+                agent_id=(
+                    str(agent.get("agent_id"))
+                    if isinstance(agent, dict) and agent.get("agent_id")
+                    else None
+                ),
                 object_refs=[str(item) for item in raw.get("object_refs", [])],
                 agent_name=(
                     str(agent.get("name"))
@@ -652,6 +748,65 @@ def _build_activity(history_payload: Any) -> list[PilotActivityItem]:
             )
         )
     return items[-6:][::-1]
+
+
+def _build_orchestrator_activity(
+    orchestrator_snapshot: OrchestratorSnapshot | None,
+) -> list[PilotActivityItem]:
+    if orchestrator_snapshot is None:
+        return []
+    return [
+        PilotActivityItem(
+            label=item.label,
+            channel="Orchestrator",
+            tool=item.action,
+            status=item.status,
+            timestamp=item.created_at,
+            source_label=item.provider,
+            agent_id=item.agent_id,
+            object_refs=list(item.object_refs),
+            agent_name=item.agent_name,
+            agent_source=item.provider,
+        )
+        for item in orchestrator_snapshot.recent_activity[:8]
+    ]
+
+
+def _attach_task_refs_to_activity(
+    activity: list[PilotActivityItem],
+    *,
+    orchestrator_snapshot: OrchestratorSnapshot,
+) -> list[PilotActivityItem]:
+    task_refs_by_agent: dict[str, list[str]] = {}
+    for task in orchestrator_snapshot.tasks:
+        if not task.assignee_agent_id:
+            continue
+        refs = task_refs_by_agent.setdefault(task.assignee_agent_id, [])
+        refs.append(task.task_id)
+        if task.project_name:
+            refs.append(f"project:{task.project_name}")
+        if task.goal_name:
+            refs.append(f"goal:{task.goal_name}")
+    enriched: list[PilotActivityItem] = []
+    for item in activity:
+        refs = list(item.object_refs)
+        for ref in task_refs_by_agent.get(item.agent_id or "", []):
+            if ref not in refs:
+                refs.append(ref)
+        enriched.append(item.model_copy(update={"object_refs": refs}, deep=True))
+    return enriched
+
+
+def _merge_activity(
+    twin_activity: list[PilotActivityItem],
+    orchestrator_activity: list[PilotActivityItem],
+) -> list[PilotActivityItem]:
+    combined = [*orchestrator_activity, *twin_activity]
+    combined.sort(
+        key=lambda item: item.timestamp or "",
+        reverse=True,
+    )
+    return combined[:12]
 
 
 def _parse_active_agents(
@@ -726,6 +881,211 @@ def _build_outcome(
     )
 
 
+def _build_orchestrator_status(
+    workspace_root: Path,
+    *,
+    manifest: PilotManifest,
+    services_ready: bool,
+    force_sync: bool,
+) -> tuple[OrchestratorSnapshot | None, OrchestratorSyncHealth | None]:
+    config = manifest.orchestrator
+    if config is None:
+        return None, OrchestratorSyncHealth(status="disabled")
+
+    now = _iso_now()
+    cached_snapshot = _load_orchestrator_snapshot_cache(workspace_root)
+    cached_health = _load_orchestrator_sync_cache(workspace_root)
+    health = (
+        cached_health.model_copy(deep=True)
+        if cached_health is not None
+        else OrchestratorSyncHealth(provider=config.provider)
+    )
+    health.provider = config.provider
+    health.last_attempt_at = now
+
+    client = build_orchestrator_client(config)
+    try:
+        snapshot = client.fetch_snapshot()
+        synced_agent_count = 0
+        message = "Orchestrator snapshot refreshed."
+        if services_ready or force_sync:
+            synced_agent_count = _sync_orchestrator_agents_to_mirror(
+                manifest=manifest,
+                snapshot=snapshot,
+            )
+            message = f"Orchestrator snapshot refreshed and synced {synced_agent_count} routeable agents."
+        else:
+            message = "Orchestrator snapshot refreshed. Mirror registration will resume once the pilot services are live."
+        health = OrchestratorSyncHealth(
+            provider=config.provider,
+            status="healthy",
+            last_attempt_at=now,
+            last_success_at=now,
+            cache_used=False,
+            synced_agent_count=synced_agent_count,
+            message=message,
+        )
+        _write_json(
+            workspace_root / PILOT_ORCHESTRATOR_CACHE_FILE,
+            snapshot.model_dump(mode="json"),
+        )
+        _write_json(
+            workspace_root / PILOT_ORCHESTRATOR_SYNC_FILE,
+            health.model_dump(mode="json"),
+        )
+        return snapshot, health
+    except Exception as exc:  # noqa: BLE001
+        if cached_snapshot is not None:
+            health.status = "stale"
+            health.cache_used = True
+            health.last_error = str(exc)
+            if not health.message:
+                health.message = "Using the last cached orchestrator snapshot."
+            _write_json(
+                workspace_root / PILOT_ORCHESTRATOR_SYNC_FILE,
+                health.model_dump(mode="json"),
+            )
+            return cached_snapshot, health
+        health.status = "error"
+        health.cache_used = False
+        health.last_error = str(exc)
+        health.message = "The orchestrator could not be reached."
+        _write_json(
+            workspace_root / PILOT_ORCHESTRATOR_SYNC_FILE,
+            health.model_dump(mode="json"),
+        )
+        return None, health
+
+
+def _sync_orchestrator_agents_to_mirror(
+    *,
+    manifest: PilotManifest,
+    snapshot: OrchestratorSnapshot,
+) -> int:
+    supported_surfaces = [item.name for item in manifest.supported_surfaces]
+    auth_headers = {"Authorization": f"Bearer {manifest.bearer_token}"}
+    synced_agent_count = 0
+    for agent in snapshot.agents:
+        if agent.integration_mode == "observe":
+            continue
+        allowed_surfaces = [
+            surface
+            for surface in (agent.allowed_surfaces or supported_surfaces)
+            if surface in supported_surfaces
+        ]
+        payload = {
+            "agent_id": agent.agent_id,
+            "name": agent.name,
+            "mode": agent.integration_mode,
+            "role": agent.title or agent.role,
+            "team": agent.team,
+            "allowed_surfaces": allowed_surfaces,
+            "policy_profile_id": agent.policy_profile_id
+            or _default_policy_profile_for_orchestrator_agent(agent),
+            "status": _mirror_status_for_orchestrator_agent(agent.status),
+            "source": agent.provider,
+            "metadata": {
+                "provider": agent.provider,
+                "external_agent_id": agent.external_agent_id,
+                "integration_mode": agent.integration_mode,
+                "task_ids": list(agent.task_ids),
+            },
+        }
+        response = _request_json(
+            f"{manifest.gateway_url}/api/mirror/agents",
+            method="POST",
+            payload=payload,
+            headers=auth_headers,
+            timeout_s=4.0,
+        )
+        if response is None:
+            raise RuntimeError(
+                f"failed to sync orchestrator agent into mirror: {agent.agent_id}"
+            )
+        synced_agent_count += 1
+    return synced_agent_count
+
+
+def _resolve_orchestrator_config(
+    *,
+    provider: str | None,
+    base_url: str | None,
+    company_id: str | None,
+    api_key_env: str | None,
+) -> OrchestratorConfig | None:
+    provider_value = str(provider or "").strip().lower()
+    if not provider_value:
+        return None
+    if provider_value != "paperclip":
+        raise ValueError(f"unsupported orchestrator provider: {provider}")
+    if not base_url:
+        raise ValueError("orchestrator_url is required when orchestrator is set")
+    if not company_id:
+        raise ValueError("orchestrator_company_id is required when orchestrator is set")
+    return OrchestratorConfig(
+        provider="paperclip",
+        base_url=str(base_url).strip(),
+        company_id=str(company_id).strip(),
+        api_key_env=str(api_key_env or "PAPERCLIP_API_KEY").strip()
+        or "PAPERCLIP_API_KEY",
+    )
+
+
+def _resolve_orchestrator_external_agent_id(
+    workspace_root: Path,
+    agent_id: str,
+) -> str:
+    snapshot = _load_orchestrator_snapshot_cache(workspace_root)
+    if snapshot is not None:
+        for item in snapshot.agents:
+            if item.agent_id == agent_id or item.external_agent_id == agent_id:
+                return item.external_agent_id
+    return external_agent_id_for(agent_id)
+
+
+def _default_policy_profile_for_orchestrator_agent(agent: OrchestratorAgent) -> str:
+    text = " ".join(
+        part for part in (agent.role, agent.title, agent.name) if part
+    ).lower()
+    if any(
+        token in text
+        for token in ("approver", "manager", "lead", "director", "chief", "head")
+    ):
+        return "approver"
+    if text:
+        return "operator"
+    return "observer"
+
+
+def _mirror_status_for_orchestrator_agent(status: str | None) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized in {"running", "active"}:
+        return "active"
+    if normalized in {"paused", "idle", "waiting"}:
+        return "idle"
+    if normalized in {"error", "failed"}:
+        return "error"
+    return "registered"
+
+
+def _load_orchestrator_snapshot_cache(
+    workspace_root: Path,
+) -> OrchestratorSnapshot | None:
+    path = workspace_root / PILOT_ORCHESTRATOR_CACHE_FILE
+    if not path.exists():
+        return None
+    return OrchestratorSnapshot.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _load_orchestrator_sync_cache(
+    workspace_root: Path,
+) -> OrchestratorSyncHealth | None:
+    path = workspace_root / PILOT_ORCHESTRATOR_SYNC_FILE
+    if not path.exists():
+        return None
+    return OrchestratorSyncHealth.model_validate_json(path.read_text(encoding="utf-8"))
+
+
 def _default_pilot_snapshot(
     *,
     organization_name: str,
@@ -787,23 +1147,41 @@ def _wait_for_ready(url: str, *, timeout_s: float = 20.0) -> None:
 
 
 def _fetch_json(url: str) -> dict[str, Any] | list[Any] | None:
+    return _request_json(url, timeout_s=2.0)
+
+
+def _request_json(
+    url: str,
+    *,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout_s: float = 4.0,
+) -> dict[str, Any] | list[Any] | None:
+    body = None
+    merged_headers = dict(headers or {})
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        merged_headers["Content-Type"] = "application/json"
+    request = Request(url, data=body, headers=merged_headers, method=method)
     try:
-        with urlopen(url, timeout=2.0) as response:  # nosec B310
-            return json.loads(response.read().decode("utf-8"))
+        with urlopen(request, timeout=timeout_s) as response:  # nosec B310
+            raw = response.read().decode("utf-8")
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+        return None
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
         return None
 
 
 def _post_json(url: str, *, payload: dict[str, Any]) -> dict[str, Any] | None:
-    body = json.dumps(payload).encode("utf-8")
-    request = Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method="POST"
-    )
-    try:
-        with urlopen(request, timeout=4.0) as response:  # nosec B310
-            return json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
+    result = _request_json(url, method="POST", payload=payload, timeout_s=4.0)
+    if isinstance(result, list):
         return None
+    return result
 
 
 def _service_alive(service: PilotServiceRecord) -> bool:

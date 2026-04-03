@@ -4073,7 +4073,9 @@ body.timeline-mode .timeline-toggle {
 }
 
 .pilot-snippets,
-.pilot-activity-list {
+.pilot-activity-list,
+.pilot-agent-grid,
+.pilot-task-grid {
   display: grid;
   gap: 12px;
   margin-top: 16px;
@@ -4086,6 +4088,14 @@ body.timeline-mode .timeline-toggle {
   display: grid;
   gap: 12px;
   margin-top: 16px;
+}
+
+.pilot-agent-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.pilot-task-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .pilot-snippet-card,
@@ -4184,6 +4194,24 @@ body.timeline-mode .timeline-toggle {
 
 .pilot-outcome-callout {
   margin-top: 14px;
+}
+
+.pilot-agent-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.pilot-action-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.pilot-action-row button {
+  width: auto;
+  min-width: 0;
+  padding: 8px 14px;
 }
 
 .pilot-control-row {

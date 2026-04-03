@@ -715,6 +715,17 @@ def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -
         "finalize_pilot_run",
         lambda _: payload.model_copy(update={"twin_status": "completed"}),
     )
+    monkeypatch.setattr(ui_api, "sync_pilot_orchestrator", lambda _: payload)
+    monkeypatch.setattr(
+        ui_api,
+        "pause_pilot_orchestrator_agent",
+        lambda _root, _agent_id: payload,
+    )
+    monkeypatch.setattr(
+        ui_api,
+        "resume_pilot_orchestrator_agent",
+        lambda _root, _agent_id: payload,
+    )
 
     client = TestClient(ui_api.create_ui_app(root))
 
@@ -735,6 +746,20 @@ def test_ui_api_serves_pilot_console_and_controls(tmp_path: Path, monkeypatch) -
     finalize_response = client.post("/api/pilot/finalize")
     assert finalize_response.status_code == 200
     assert finalize_response.json()["twin_status"] == "completed"
+
+    sync_response = client.post("/api/pilot/orchestrator/sync")
+    assert sync_response.status_code == 200
+    assert sync_response.json()["manifest"]["organization_name"] == "Pinnacle Analytics"
+
+    pause_response = client.post(
+        "/api/pilot/orchestrator/agents/paperclip%3Aeng-1/pause"
+    )
+    assert pause_response.status_code == 200
+
+    resume_response = client.post(
+        "/api/pilot/orchestrator/agents/paperclip%3Aeng-1/resume"
+    )
+    assert resume_response.status_code == 200
 
 
 def _sample_pilot_status(root: Path) -> PilotStatus:

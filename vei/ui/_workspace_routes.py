@@ -170,6 +170,36 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(payload.model_dump(mode="json"))
 
+    @app.post("/api/pilot/orchestrator/sync")
+    def api_pilot_orchestrator_sync() -> JSONResponse:
+        try:
+            payload = deps.sync_pilot_orchestrator(root)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/agents/{agent_id}/pause")
+    def api_pilot_orchestrator_pause(agent_id: str) -> JSONResponse:
+        try:
+            payload = deps.pause_pilot_orchestrator_agent(root, agent_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
+    @app.post("/api/pilot/orchestrator/agents/{agent_id}/resume")
+    def api_pilot_orchestrator_resume(agent_id: str) -> JSONResponse:
+        try:
+            payload = deps.resume_pilot_orchestrator_agent(root, agent_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="pilot stack is not configured")
+        except RuntimeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return JSONResponse(payload.model_dump(mode="json"))
+
     @app.get("/api/fidelity")
     def api_fidelity() -> JSONResponse:
         try:

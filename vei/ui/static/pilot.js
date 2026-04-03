@@ -88,6 +88,7 @@ function renderModePanels() {
 function renderBanner() {
   const banner = document.getElementById("pilot-status-banner");
   const payload = state.pilot;
+  const sync = payload?.orchestrator_sync;
   if (!banner) {
     return;
   }
@@ -96,9 +97,19 @@ function renderBanner() {
     banner.textContent = "This workspace is not set up for external agents yet.";
     return;
   }
+  if (payload.services_ready && sync?.status === "healthy") {
+    banner.classList.add("pilot-status-live");
+    banner.textContent = "VEI and the orchestrator are live. Agents can be watched as a fleet while VEI governs what reaches the company.";
+    return;
+  }
   if (payload.services_ready) {
     banner.classList.add("pilot-status-live");
-    banner.textContent = "All systems are live. Connect an outside agent, compare it against the baselines, and watch the company respond.";
+    banner.textContent = "Pilot services are live. Connect an outside agent, compare it against the baselines, and watch the company respond.";
+    return;
+  }
+  if (sync?.status === "stale") {
+    banner.classList.add("pilot-status-waiting");
+    banner.textContent = "The last orchestrator snapshot is cached. VEI is still usable, but the outside fleet view may be out of date.";
     return;
   }
   banner.classList.add("pilot-status-waiting");
@@ -144,6 +155,8 @@ function renderHeader() {
 
 function renderLaunch() {
   const manifest = state.pilot?.manifest;
+  const orchestrator = state.pilot?.orchestrator;
+  const sync = state.pilot?.orchestrator_sync;
   const launchGrid = document.getElementById("pilot-launch-grid");
   const surfaceList = document.getElementById("pilot-surface-list");
   const snippetsPanel = document.getElementById("pilot-snippets");
@@ -168,6 +181,13 @@ function renderLaunch() {
     metricTile("Agents seen", String(activeAgents.length), activeAgents.length ? "Names are shown in the activity stream" : "No external agent has connected yet"),
     metricTile("Recommended first exercise", currentExerciseTitle(), manifest.recommended_first_exercise || "Start small and stay customer-safe."),
     metricTile("Supported surfaces", String(surfaces.length), surfaces.length ? "These systems are available to the outside agent." : "No surfaces are registered for this workspace."),
+    metricTile(
+      "Orchestrator",
+      orchestrator?.summary?.company_name || humanize(manifest.orchestrator?.provider || "none") || "None",
+      manifest.orchestrator
+        ? `${humanize(sync?.status || "waiting")} · ${manifest.orchestrator.base_url}`
+        : "This pilot is running without an external orchestrator bridge."
+    ),
   ].join("");
   surfaceList.innerHTML = surfaces
     .map((surface) => `<span class="badge">${escapeHtml(surface.title)} · ${escapeHtml(surface.base_path)}</span>`)
@@ -203,6 +223,92 @@ function renderLaunch() {
       }
     </details>
   `;
+}
+
+function latestGovernedAction(agentId) {
+  return (state.pilot?.activity || []).find((item) => item.agent_id === agentId && item.source_label === "VEI") || null;
+}
+
+function renderOrchestrator() {
+  const summaryGrid = document.getElementById("pilot-orchestrator-grid");
+  const agentPanel = document.getElementById("pilot-orchestrator-agents");
+  const taskPanel = document.getElementById("pilot-orchestrator-tasks");
+  const snapshot = state.pilot?.orchestrator;
+  const sync = state.pilot?.orchestrator_sync;
+  const manifest = state.pilot?.manifest;
+  if (!summaryGrid || !agentPanel || !taskPanel) {
+    return;
+  }
+  if (!manifest?.orchestrator && !snapshot) {
+    summaryGrid.innerHTML = metricTile("Bridge", "Not configured", "This pilot is currently using VEI alone. Add an orchestrator bridge when you want workforce sync.");
+    agentPanel.innerHTML = "";
+    taskPanel.innerHTML = "";
+    return;
+  }
+
+  const agents = snapshot?.agents || [];
+  const tasks = snapshot?.tasks || [];
+  const budget = snapshot?.budget || {};
+  summaryGrid.innerHTML = [
+    metricTile("Provider", humanize(snapshot?.provider || manifest?.orchestrator?.provider || "unknown"), sync?.message || "Outside fleet sync is configured."),
+    metricTile("Sync", humanize(sync?.status || "waiting"), sync?.cache_used ? "Showing the most recent cached snapshot." : `Synced agents ${sync?.synced_agent_count || 0}`),
+    metricTile("Agents", String(agents.length), snapshot?.summary?.agent_counts ? Object.entries(snapshot.summary.agent_counts).map(([name, count]) => `${humanize(name)} ${count}`).join(" · ") : "No orchestrator agents reported yet."),
+    metricTile("Tasks", String(tasks.length), `${snapshot?.summary?.stale_task_count || 0} stale tasks`),
+    metricTile(
+      "Spend",
+      budget.monthly_spend_cents != null ? `$${(budget.monthly_spend_cents / 100).toFixed(2)}` : "Unknown",
+      budget.monthly_budget_cents != null ? `Budget $${(budget.monthly_budget_cents / 100).toFixed(2)}` : "No monthly budget reported."
+    ),
+  ].join("");
+
+  if (!agents.length) {
+    agentPanel.innerHTML = `<article class="pilot-note-card"><p class="metric-detail">No orchestrator agents are available yet. Once the outside fleet is visible, this panel will show who is routeable through VEI, who is observe-only, and what each person owns.</p></article>`;
+  } else {
+    agentPanel.innerHTML = agents.map((agent) => {
+      const latestAction = latestGovernedAction(agent.agent_id);
+      const canPause = sync?.status !== "disabled";
+      const isPaused = String(agent.status || "").toLowerCase() === "paused";
+      return `
+        <article class="pilot-activity-card">
+          <div class="pilot-activity-head">
+            <strong>${escapeHtml(agent.name)}</strong>
+            <div class="chip-row">
+              <span class="badge">${escapeHtml(humanize(agent.integration_mode))}</span>
+              ${agent.policy_profile_id ? `<span class="badge">${escapeHtml(humanize(agent.policy_profile_id))}</span>` : ""}
+              ${agent.status ? `<span class="badge">${escapeHtml(humanize(agent.status))}</span>` : ""}
+            </div>
+          </div>
+          <div class="pilot-agent-meta">
+            <p class="metric-detail">${escapeHtml([agent.title, agent.role, agent.team].filter(Boolean).join(" · ") || "No role details reported")}</p>
+            <p class="metric-detail">${escapeHtml(latestAction ? `Latest governed action: ${latestAction.label}` : "No VEI-governed action recorded yet")}</p>
+            ${(agent.allowed_surfaces || []).length ? `<div class="chip-row">${agent.allowed_surfaces.map((surface) => `<span class="badge">${escapeHtml(humanize(surface))}</span>`).join("")}</div>` : `<p class="metric-detail">No explicit surface allowlist reported.</p>`}
+            ${(agent.task_ids || []).length ? `<div class="chip-row">${agent.task_ids.map((taskId) => `<span class="badge">${escapeHtml(taskId)}</span>`).join("")}</div>` : `<p class="metric-detail">No task ownership reported yet.</p>`}
+          </div>
+          <div class="pilot-action-row">
+            ${canPause ? `<button type="button" class="ghost-button pilot-agent-action" data-agent-action="${isPaused ? "resume" : "pause"}" data-agent-id="${escapeHtml(agent.agent_id)}">${escapeHtml(isPaused ? "Resume" : "Pause")}</button>` : ""}
+          </div>
+        </article>
+      `;
+    }).join("");
+  }
+
+  if (!tasks.length) {
+    taskPanel.innerHTML = `<article class="pilot-note-card"><p class="metric-detail">No orchestrator tasks are visible yet.</p></article>`;
+  } else {
+    taskPanel.innerHTML = tasks.slice(0, 8).map((task) => `
+      <article class="pilot-note-card">
+        <div class="pilot-activity-head">
+          <strong>${escapeHtml(task.title)}</strong>
+          ${task.status ? `<span class="badge">${escapeHtml(humanize(task.status))}</span>` : ""}
+        </div>
+        <p class="metric-detail">${escapeHtml([task.priority, task.project_name, task.goal_name].filter(Boolean).join(" · ") || "No extra task metadata reported")}</p>
+        <div class="chip-row">
+          <span class="badge">${escapeHtml(task.task_id)}</span>
+          ${task.assignee_agent_id ? `<span class="badge">${escapeHtml(task.assignee_agent_id)}</span>` : ""}
+        </div>
+      </article>
+    `).join("");
+  }
 }
 
 function renderExercise() {
@@ -353,7 +459,10 @@ function renderActivity() {
         <article class="pilot-activity-card">
           <div class="pilot-activity-head">
             <strong>${escapeHtml(item.label)}</strong>
-            <span class="badge">${escapeHtml(item.channel)}</span>
+            <div class="chip-row">
+              <span class="badge">${escapeHtml(item.channel)}</span>
+              ${item.source_label ? `<span class="badge">${escapeHtml(humanize(item.source_label))}</span>` : ""}
+            </div>
           </div>
           <p class="metric-detail">${escapeHtml(actor)}</p>
           <p class="metric-detail">${escapeHtml(item.tool || "No resolved tool recorded")}</p>
@@ -401,10 +510,14 @@ function renderOutcome() {
 
 function renderControls() {
   const manifest = state.pilot?.manifest;
+  const syncButton = document.getElementById("pilot-sync-button");
   const actionStatus = document.getElementById("pilot-action-status");
   const resetButton = document.getElementById("pilot-reset-button");
   const finalizeButton = document.getElementById("pilot-finalize-button");
   const disabled = !manifest;
+  if (syncButton) {
+    syncButton.disabled = disabled || !manifest?.orchestrator;
+  }
   resetButton.disabled = disabled;
   finalizeButton.disabled = disabled;
   if (!manifest && actionStatus) {
@@ -417,6 +530,7 @@ function renderAll() {
   renderBanner();
   renderHeader();
   renderLaunch();
+  renderOrchestrator();
   renderExercise();
   renderDataset();
   renderActivity();
@@ -484,9 +598,22 @@ document.getElementById("pilot-finalize-button").addEventListener("click", () =>
   runPilotAction("/api/pilot/finalize", "Current run finalized.");
 });
 
+document.getElementById("pilot-sync-button").addEventListener("click", () => {
+  runPilotAction("/api/pilot/orchestrator/sync", "Outside fleet sync complete.");
+});
+
 document.body.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  const agentAction = target.closest(".pilot-agent-action");
+  if (agentAction instanceof HTMLElement) {
+    const agentId = agentAction.dataset.agentId || "";
+    const action = agentAction.dataset.agentAction || "";
+    if (agentId && action) {
+      runPilotAction(`/api/pilot/orchestrator/agents/${encodeURIComponent(agentId)}/${action}`, `Agent ${action} request sent.`);
+    }
     return;
   }
   const button = target.closest(".pilot-catalog-button");

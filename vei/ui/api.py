@@ -12,7 +12,14 @@ from vei import __version__ as vei_version
 from vei.dataset import load_workspace_dataset_bundle
 from vei.exercise import activate_exercise, build_exercise_status
 from vei.fidelity import get_or_build_workspace_fidelity_report
-from vei.pilot import build_pilot_status, finalize_pilot_run, reset_pilot_gateway
+from vei.pilot import (
+    build_pilot_status,
+    finalize_pilot_run,
+    pause_pilot_orchestrator_agent,
+    reset_pilot_gateway,
+    resume_pilot_orchestrator_agent,
+    sync_pilot_orchestrator,
+)
 
 from ._api_models import (
     ContextCaptureRequest,
@@ -42,7 +49,10 @@ _PATCHABLE_ROUTE_DEPS = (
     get_or_build_workspace_fidelity_report,
     build_pilot_status,
     finalize_pilot_run,
+    pause_pilot_orchestrator_agent,
     reset_pilot_gateway,
+    resume_pilot_orchestrator_agent,
+    sync_pilot_orchestrator,
 )
 
 __all__ = [

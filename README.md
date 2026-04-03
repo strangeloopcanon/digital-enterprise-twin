@@ -308,12 +308,23 @@ vei pilot up --root _vei_out/pilots/pinnacle
 vei pilot status --root _vei_out/pilots/pinnacle
 ```
 
+You can optionally bridge in an outside orchestrator without changing VEI's mirror core. The first adapter is Paperclip, wired as a vendor-neutral bridge above the pilot stack:
+
+```bash
+vei pilot up \
+  --root _vei_out/pilots/pinnacle \
+  --orchestrator paperclip \
+  --orchestrator-url http://127.0.0.1:3100 \
+  --orchestrator-company-id company-1 \
+  --orchestrator-api-key-env PAPERCLIP_API_KEY
+```
+
 That flow writes:
 - `pilot_manifest.json`
 - `pilot_guide.md`
 - `pilot_runtime.json`
 
-The Pilot Console lives beside Studio on the same UI server and gives the operator one place to check launch details, copy connection snippets, follow external-agent activity, and reset or finalize the run.
+The Pilot Console lives beside Studio on the same UI server and gives the operator one place to check launch details, copy connection snippets, follow external-agent activity, inspect outside-fleet status, sync routeable workers into VEI mirror registration, and reset or finalize the run.
 
 You can also use the bundled quick-start client:
 

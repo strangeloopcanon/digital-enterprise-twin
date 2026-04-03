@@ -1,14 +1,19 @@
 from .api import (
     PILOT_GUIDE_FILE,
     PILOT_MANIFEST_FILE,
+    PILOT_ORCHESTRATOR_CACHE_FILE,
+    PILOT_ORCHESTRATOR_SYNC_FILE,
     PILOT_RUNTIME_FILE,
     build_pilot_status,
     finalize_pilot_run,
     load_pilot_manifest,
     load_pilot_runtime,
+    pause_pilot_orchestrator_agent,
     reset_pilot_gateway,
+    resume_pilot_orchestrator_agent,
     start_pilot,
     stop_pilot,
+    sync_pilot_orchestrator,
 )
 from .models import (
     PilotActivityItem,
@@ -23,6 +28,8 @@ from .models import (
 __all__ = [
     "PILOT_GUIDE_FILE",
     "PILOT_MANIFEST_FILE",
+    "PILOT_ORCHESTRATOR_CACHE_FILE",
+    "PILOT_ORCHESTRATOR_SYNC_FILE",
     "PILOT_RUNTIME_FILE",
     "PilotActivityItem",
     "PilotManifest",
@@ -35,7 +42,10 @@ __all__ = [
     "finalize_pilot_run",
     "load_pilot_manifest",
     "load_pilot_runtime",
+    "pause_pilot_orchestrator_agent",
     "reset_pilot_gateway",
+    "resume_pilot_orchestrator_agent",
     "start_pilot",
     "stop_pilot",
+    "sync_pilot_orchestrator",
 ]
