@@ -1257,9 +1257,11 @@ def test_start_pilot_updates_live_manifest_with_new_orchestrator_config(
         lambda url: (
             {"ok": True}
             if url.endswith("/healthz")
-            else {"manifest": {"name": "pilot"}}
-            if url.endswith("/api/workspace")
-            else None
+            else (
+                {"manifest": {"name": "pilot"}}
+                if url.endswith("/api/workspace")
+                else None
+            )
         ),
     )
 
