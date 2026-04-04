@@ -110,17 +110,22 @@ class OrchestratorApproval(BaseModel):
     comments: list[OrchestratorComment] = Field(default_factory=list)
 
 
-class OrchestratorActivityItem(BaseModel):
-    provider: str
+class ActivityItemBase(BaseModel):
+    """Shared fields for any activity feed item (pilot, orchestrator, workforce)."""
+
     label: str
-    action: str | None = None
-    created_at: str | None = None
+    status: str | None = None
     agent_id: str | None = None
     agent_name: str | None = None
-    task_id: str | None = None
-    status: str | None = None
     detail: str | None = None
     object_refs: list[str] = Field(default_factory=list)
+
+
+class OrchestratorActivityItem(ActivityItemBase):
+    provider: str
+    action: str | None = None
+    created_at: str | None = None
+    task_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

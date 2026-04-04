@@ -10,6 +10,7 @@ from vei.orchestrators.api import (
     OrchestratorSnapshot,
     OrchestratorSyncHealth,
 )
+from vei.orchestrators.models import ActivityItemBase
 from vei.twin.models import (
     CompatibilitySurfaceSpec,
     ExternalAgentIdentity,
@@ -65,17 +66,11 @@ class PilotRuntime(BaseModel):
     updated_at: str = ""
 
 
-class PilotActivityItem(BaseModel):
-    label: str
+class PilotActivityItem(ActivityItemBase):
     channel: str
     tool: str | None = None
-    status: str | None = None
     timestamp: str | None = None
-    detail: str | None = None
     source_label: str | None = None
-    agent_id: str | None = None
-    object_refs: list[str] = Field(default_factory=list)
-    agent_name: str | None = None
     agent_role: str | None = None
     agent_team: str | None = None
     agent_source: str | None = None

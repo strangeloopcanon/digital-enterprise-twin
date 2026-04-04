@@ -63,7 +63,7 @@ def _shell_quote(value: str | Path) -> str:
     return shlex.quote(str(value))
 
 
-def _run_benchmark_demo(spec: BenchmarkDemoSpec) -> BenchmarkDemoResult:
+def run_benchmark_demo(spec: BenchmarkDemoSpec) -> BenchmarkDemoResult:
     manifest = get_benchmark_family_manifest(spec.family_name)
     workflow_name = manifest.workflow_name
     if workflow_name is None:
@@ -223,7 +223,7 @@ def _workflow_validation_summary(score: dict[str, object]) -> dict[str, int]:
     return {"passed": passed, "total": total}
 
 
-def _run_benchmark_showcase(spec: BenchmarkShowcaseSpec) -> BenchmarkShowcaseResult:
+def run_benchmark_showcase(spec: BenchmarkShowcaseSpec) -> BenchmarkShowcaseResult:
     showcase_dir = spec.artifacts_root / spec.run_id
     showcase_dir.mkdir(parents=True, exist_ok=True)
     examples_dir = showcase_dir / "examples"
@@ -231,7 +231,7 @@ def _run_benchmark_showcase(spec: BenchmarkShowcaseSpec) -> BenchmarkShowcaseRes
     example_results: list[BenchmarkShowcaseExampleResult] = []
 
     for example in examples:
-        demo = _run_benchmark_demo(
+        demo = run_benchmark_demo(
             BenchmarkDemoSpec(
                 family_name=example.family_name,
                 compare_runner=spec.compare_runner,
@@ -276,7 +276,7 @@ def _run_benchmark_showcase(spec: BenchmarkShowcaseSpec) -> BenchmarkShowcaseRes
     return result
 
 
-def _run_benchmark_suite(spec: BenchmarkSuiteSpec) -> BenchmarkSuiteResult:
+def run_benchmark_suite(spec: BenchmarkSuiteSpec) -> BenchmarkSuiteResult:
     selected_manifests = (
         [get_benchmark_family_manifest(name) for name in spec.family_names]
         if spec.family_names
@@ -563,7 +563,7 @@ def demo(
         f"Starting benchmark demo for {normalized_family}: "
         f"workflow baseline vs {normalized_runner}"
     )
-    result = _run_benchmark_demo(
+    result = run_benchmark_demo(
         BenchmarkDemoSpec(
             family_name=normalized_family,
             compare_runner=normalized_runner,  # type: ignore[arg-type]
@@ -611,7 +611,7 @@ def suite(
             or [item.name for item in list_benchmark_family_manifest()]
         )
     )
-    result = _run_benchmark_suite(
+    result = run_benchmark_suite(
         BenchmarkSuiteSpec(
             family_names=selected_families,
             seed=seed,
@@ -677,7 +677,7 @@ def showcase(
         "Starting complex-example showcase for "
         + ", ".join(example or [item.name for item in resolve_showcase_examples()])
     )
-    result = _run_benchmark_showcase(
+    result = run_benchmark_showcase(
         BenchmarkShowcaseSpec(
             example_names=example,
             compare_runner=normalized_runner,  # type: ignore[arg-type]

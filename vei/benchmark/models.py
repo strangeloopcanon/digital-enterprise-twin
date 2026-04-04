@@ -163,10 +163,10 @@ class BenchmarkBatchResult(BaseModel):
     summary: BenchmarkBatchSummary = Field(default_factory=BenchmarkBatchSummary)
 
 
-class BenchmarkDemoSpec(BaseModel):
-    family_name: str
+class EvalRunSpec(BaseModel):
+    """Shared fields for any eval comparison run (demo, showcase, suite)."""
+
     compare_runner: Literal["scripted", "bc", "llm"] = "scripted"
-    workflow_variant: Optional[str] = None
     seed: int = 42042
     artifacts_root: Path
     run_id: str
@@ -176,6 +176,11 @@ class BenchmarkDemoSpec(BaseModel):
     compare_provider: Optional[str] = None
     compare_bc_model_path: Optional[Path] = None
     compare_task: Optional[str] = None
+
+
+class BenchmarkDemoSpec(EvalRunSpec):
+    family_name: str
+    workflow_variant: Optional[str] = None
 
 
 class BenchmarkDemoResult(BaseModel):
@@ -252,18 +257,8 @@ class BenchmarkShowcaseExample(BaseModel):
     proves: List[str] = Field(default_factory=list)
 
 
-class BenchmarkShowcaseSpec(BaseModel):
+class BenchmarkShowcaseSpec(EvalRunSpec):
     example_names: List[str] = Field(default_factory=list)
-    compare_runner: Literal["scripted", "bc", "llm"] = "scripted"
-    seed: int = 42042
-    artifacts_root: Path
-    run_id: str
-    score_mode: Literal["email", "full"] = "full"
-    max_steps: int = 40
-    compare_model: Optional[str] = None
-    compare_provider: Optional[str] = None
-    compare_bc_model_path: Optional[Path] = None
-    compare_task: Optional[str] = None
 
 
 class BenchmarkShowcaseExampleResult(BaseModel):

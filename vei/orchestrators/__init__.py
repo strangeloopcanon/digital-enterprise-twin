@@ -1,4 +1,5 @@
 from .api import (
+    ActivityItemBase,
     OrchestratorActivityItem,
     OrchestratorAgent,
     OrchestratorApproval,
@@ -25,6 +26,7 @@ from .api import (
 )
 
 __all__ = [
+    "ActivityItemBase",
     "OrchestratorActivityItem",
     "OrchestratorAgent",
     "OrchestratorApproval",
