@@ -35,31 +35,30 @@ from ._api_models import (
     WhatIfRunRequest,
     WhatIfSearchRequest,
     gateway_json_request,
+    load_workspace_historical_summary,
     load_workspace_workforce_payload,
-    resolve_whatif_rosetta_dir,
+    resolve_whatif_source_path,
 )
 
 
 def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
     def _resolve_whatif_source(source: str, *, max_events: int | None = None):
-        normalized = (source or "enron").strip().lower()
-        if normalized != "enron":
-            raise HTTPException(status_code=400, detail="only enron is supported today")
-        rosetta_dir = resolve_whatif_rosetta_dir(root)
-        if rosetta_dir is None:
+        resolved = resolve_whatif_source_path(root, requested_source=source)
+        if resolved is None:
             raise HTTPException(
                 status_code=404,
-                detail="enron Rosetta tables are not configured for this workspace",
+                detail="historical source is not configured for this workspace",
             )
+        resolved_source, source_dir = resolved
         try:
             world = load_world(
-                source="enron",
-                rosetta_dir=rosetta_dir,
+                source=resolved_source,
+                source_dir=source_dir,
                 max_events=max_events,
             )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return world, rosetta_dir
+        return world, source_dir
 
     def _whatif_artifacts_root() -> Path:
         path = root / ".artifacts" / "whatif_ui"
@@ -74,14 +73,21 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
     def api_workspace() -> JSONResponse:
         return JSONResponse(show_workspace(root).model_dump(mode="json"))
 
+    @app.get("/api/workspace/historical")
+    def api_workspace_historical() -> JSONResponse:
+        payload = load_workspace_historical_summary(root)
+        return JSONResponse(payload.model_dump(mode="json") if payload else {})
+
     @app.get("/api/workspace/whatif")
     def api_workspace_whatif_status() -> JSONResponse:
-        rosetta_dir = resolve_whatif_rosetta_dir(root)
+        resolved = resolve_whatif_source_path(root)
+        source = resolved[0] if resolved is not None else "auto"
+        source_dir = resolved[1] if resolved is not None else None
         return JSONResponse(
             {
-                "available": rosetta_dir is not None,
-                "source": "enron",
-                "rosetta_dir": str(rosetta_dir) if rosetta_dir is not None else None,
+                "available": resolved is not None,
+                "source": source,
+                "source_dir": str(source_dir) if source_dir is not None else None,
                 "objective_packs": [
                     pack.model_dump(mode="json") for pack in list_objective_packs()
                 ],
@@ -90,7 +96,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
 
     @app.post("/api/workspace/whatif/search")
     def api_workspace_whatif_search(request: WhatIfSearchRequest) -> JSONResponse:
-        world, rosetta_dir = _resolve_whatif_source(
+        world, source_dir = _resolve_whatif_source(
             request.source,
             max_events=request.max_events,
         )
@@ -105,7 +111,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
             limit=request.limit,
         )
         payload = result.model_dump(mode="json")
-        payload["rosetta_dir"] = str(rosetta_dir)
+        payload["source_dir"] = str(source_dir)
         return JSONResponse(payload)
 
     @app.post("/api/workspace/whatif/open")
@@ -115,7 +121,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
                 status_code=400,
                 detail="event_id or thread_id is required",
             )
-        world, rosetta_dir = _resolve_whatif_source(
+        world, source_dir = _resolve_whatif_source(
             request.source,
             max_events=request.max_events,
         )
@@ -132,8 +138,8 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return JSONResponse(
             {
-                "source": request.source,
-                "rosetta_dir": str(rosetta_dir),
+                "source": world.source,
+                "source_dir": str(source_dir),
                 "episode_root": str(episode_root),
                 "materialization": materialization.model_dump(mode="json"),
             }
@@ -146,7 +152,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
                 status_code=400,
                 detail="event_id or thread_id is required",
             )
-        world, rosetta_dir = _resolve_whatif_source(
+        world, source_dir = _resolve_whatif_source(
             request.source,
             max_events=request.max_events,
         )
@@ -169,7 +175,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         payload = result.model_dump(mode="json")
-        payload["rosetta_dir"] = str(rosetta_dir)
+        payload["source_dir"] = str(source_dir)
         return JSONResponse(payload)
 
     @app.post("/api/workspace/whatif/rank")
@@ -184,7 +190,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
                 status_code=400,
                 detail="at least one candidate is required",
             )
-        world, rosetta_dir = _resolve_whatif_source(
+        world, source_dir = _resolve_whatif_source(
             request.source,
             max_events=request.max_events,
         )
@@ -225,7 +231,7 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         payload = result.model_dump(mode="json")
-        payload["rosetta_dir"] = str(rosetta_dir)
+        payload["source_dir"] = str(source_dir)
         return JSONResponse(payload)
 
     @app.get("/api/workspace/governor")
@@ -514,6 +520,8 @@ def register_workspace_routes(app: FastAPI, root: Path, *, deps: Any) -> None:
 
     @app.get("/api/fidelity")
     def api_fidelity() -> JSONResponse:
+        if load_workspace_historical_summary(root) is not None:
+            return JSONResponse({})
         try:
             payload = deps.get_or_build_workspace_fidelity_report(root)
         except ValueError:

@@ -9,7 +9,12 @@ from typing import Any, Mapping
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from vei.whatif.models import WhatIfExperimentMode, WhatIfObjectivePackId
+from vei.whatif import load_episode_manifest
+from vei.whatif.models import (
+    WhatIfEventReference,
+    WhatIfExperimentMode,
+    WhatIfObjectivePackId,
+)
 from vei.twin import load_customer_twin
 from vei.workspace.api import show_workspace
 from vei.run.api import list_run_manifests
@@ -91,7 +96,7 @@ class OrchestratorApprovalDecisionRequest(BaseModel):
 
 
 class WhatIfSearchRequest(BaseModel):
-    source: str = "enron"
+    source: str = "auto"
     actor: str | None = None
     participant: str | None = None
     thread_id: str | None = None
@@ -103,7 +108,7 @@ class WhatIfSearchRequest(BaseModel):
 
 
 class WhatIfOpenRequest(BaseModel):
-    source: str = "enron"
+    source: str = "auto"
     event_id: str | None = None
     thread_id: str | None = None
     label: str | None = None
@@ -111,7 +116,7 @@ class WhatIfOpenRequest(BaseModel):
 
 
 class WhatIfRunRequest(BaseModel):
-    source: str = "enron"
+    source: str = "auto"
     prompt: str
     label: str
     event_id: str | None = None
@@ -132,7 +137,7 @@ class WhatIfRankCandidateRequest(BaseModel):
 
 
 class WhatIfRankRequest(BaseModel):
-    source: str = "enron"
+    source: str = "auto"
     label: str
     objective_pack_id: WhatIfObjectivePackId = "contain_exposure"
     candidates: list[WhatIfRankCandidateRequest]
@@ -147,6 +152,20 @@ class WhatIfRankRequest(BaseModel):
     ejepa_batch_size: int = 64
     ejepa_force_retrain: bool = False
     ejepa_device: str | None = None
+
+
+class WorkspaceHistoricalSummary(BaseModel):
+    source: str
+    organization_name: str
+    organization_domain: str
+    thread_id: str
+    thread_subject: str
+    branch_event_id: str
+    branch_timestamp: str
+    branch_event: WhatIfEventReference
+    history_message_count: int = 0
+    future_event_count: int = 0
+    content_notice: str = ""
 
 
 CONTEXT_PROVIDER_ENV_VARS = {
@@ -198,10 +217,13 @@ def context_capture_org_name(workspace_root: Path) -> str:
 
 def resolve_whatif_rosetta_dir(workspace_root: Path) -> Path | None:
     candidates: list[Path] = []
+    candidates.append(workspace_root / "rosetta")
+    manifest_source_dir = _resolve_manifest_rosetta_dir(workspace_root)
+    if manifest_source_dir is not None:
+        candidates.append(manifest_source_dir)
     configured = os.environ.get("VEI_WHATIF_ROSETTA_DIR")
     if configured and configured.strip():
         candidates.append(Path(configured).expanduser())
-    candidates.append(workspace_root / "rosetta")
     candidates.append(
         workspace_root.parent
         / "human_v_llm_messages_experiment"
@@ -221,6 +243,168 @@ def resolve_whatif_rosetta_dir(workspace_root: Path) -> Path | None:
         if (resolved / "enron_rosetta_events_metadata.parquet").exists():
             return resolved
     return None
+
+
+def resolve_whatif_mail_archive_path(workspace_root: Path) -> Path | None:
+    candidates: list[Path] = []
+    candidates.extend(
+        [
+            workspace_root / "whatif_mail_archive.json",
+            workspace_root / "historical_mail_archive.json",
+            workspace_root / "mail_archive.json",
+            workspace_root / "context_snapshot.json",
+        ]
+    )
+    manifest_source_dir = _resolve_manifest_mail_archive_source(workspace_root)
+    if manifest_source_dir is not None:
+        candidates.append(manifest_source_dir)
+    configured = os.environ.get("VEI_WHATIF_SOURCE_DIR")
+    if configured and configured.strip():
+        candidates.append(Path(configured).expanduser())
+    archive_override = os.environ.get("VEI_WHATIF_ARCHIVE_PATH")
+    if archive_override and archive_override.strip():
+        candidates.append(Path(archive_override).expanduser())
+    for candidate in candidates:
+        resolved = candidate.expanduser().resolve()
+        if _looks_like_mail_archive_payload(resolved):
+            return resolved
+    return None
+
+
+def resolve_whatif_source_path(
+    workspace_root: Path,
+    *,
+    requested_source: str | None = None,
+) -> tuple[str, Path] | None:
+    normalized = (requested_source or "").strip().lower()
+    if not normalized or normalized == "auto":
+        normalized = (
+            (
+                _workspace_whatif_source_hint(workspace_root)
+                or os.environ.get("VEI_WHATIF_SOURCE")
+                or "auto"
+            )
+            .strip()
+            .lower()
+        )
+    if normalized in {"", "auto", "mail_archive"}:
+        archive_path = resolve_whatif_mail_archive_path(workspace_root)
+        if archive_path is not None:
+            return ("mail_archive", archive_path)
+    if normalized in {"", "auto", "enron"}:
+        rosetta_dir = resolve_whatif_rosetta_dir(workspace_root)
+        if rosetta_dir is not None:
+            return ("enron", rosetta_dir)
+    return None
+
+
+def _looks_like_mail_archive_payload(path: Path) -> bool:
+    if not path.exists():
+        return False
+    if path.is_dir():
+        return any(
+            _looks_like_mail_archive_payload(path / filename)
+            for filename in (
+                "context_snapshot.json",
+                "mail_archive.json",
+                "historical_mail_archive.json",
+                "whatif_mail_archive.json",
+            )
+        )
+    if path.suffix.lower() != ".json":
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if isinstance(payload, dict) and isinstance(payload.get("threads"), list):
+        return True
+    if isinstance(payload, dict) and isinstance(payload.get("sources"), list):
+        for source in payload.get("sources", []):
+            if not isinstance(source, dict):
+                continue
+            provider = str(source.get("provider", "")).strip().lower()
+            if provider in {"mail_archive", "gmail"}:
+                return True
+    return False
+
+
+def _resolve_manifest_mail_archive_source(workspace_root: Path) -> Path | None:
+    manifest_path = workspace_root / "whatif_episode_manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        manifest = load_episode_manifest(workspace_root)
+    except ValueError:
+        return None
+    if manifest.source != "mail_archive":
+        return None
+    candidate = Path(manifest.source_dir).expanduser()
+    if not candidate.exists():
+        return None
+    return candidate
+
+
+def _resolve_manifest_rosetta_dir(workspace_root: Path) -> Path | None:
+    manifest_path = workspace_root / "whatif_episode_manifest.json"
+    if not manifest_path.exists():
+        return None
+    try:
+        manifest = load_episode_manifest(workspace_root)
+    except ValueError:
+        return None
+    if manifest.source != "enron":
+        return None
+    candidate = Path(manifest.source_dir).expanduser()
+    if not candidate.exists():
+        return None
+    if not (candidate / "enron_rosetta_events_metadata.parquet").exists():
+        return None
+    return candidate
+
+
+def _workspace_whatif_source_hint(workspace_root: Path) -> str | None:
+    manifest_path = workspace_root / "whatif_episode_manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = load_episode_manifest(workspace_root)
+        except ValueError:
+            manifest = None
+        if manifest is not None and manifest.source:
+            return str(manifest.source).strip().lower()
+    for path in (
+        workspace_root / "whatif_mail_archive.json",
+        workspace_root / "historical_mail_archive.json",
+        workspace_root / "mail_archive.json",
+        workspace_root / "context_snapshot.json",
+    ):
+        if _looks_like_mail_archive_payload(path):
+            return "mail_archive"
+    if (workspace_root / "rosetta" / "enron_rosetta_events_metadata.parquet").exists():
+        return "enron"
+    return None
+
+
+def load_workspace_historical_summary(
+    workspace_root: Path,
+) -> WorkspaceHistoricalSummary | None:
+    manifest_path = workspace_root / "whatif_episode_manifest.json"
+    if not manifest_path.exists():
+        return None
+    manifest = load_episode_manifest(workspace_root)
+    return WorkspaceHistoricalSummary(
+        source=manifest.source,
+        organization_name=manifest.organization_name,
+        organization_domain=manifest.organization_domain,
+        thread_id=manifest.thread_id,
+        thread_subject=manifest.thread_subject,
+        branch_event_id=manifest.branch_event_id,
+        branch_timestamp=manifest.branch_timestamp,
+        branch_event=manifest.branch_event,
+        history_message_count=manifest.history_message_count,
+        future_event_count=manifest.future_event_count,
+        content_notice=manifest.content_notice,
+    )
 
 
 def load_workspace_governor_payload(root: Path) -> dict[str, Any]:

@@ -278,6 +278,16 @@ The experiment command writes a bundle with JSON and Markdown summaries plus per
 
 In Studio, the same flow is available as a search-first loop: find a real historical event, materialize it, then run the counterfactual and inspect the saved comparison.
 
+When you want the screen to show Enron itself, serve the saved Enron workspace directly:
+
+```bash
+VEI_WHATIF_ROSETTA_DIR=/path/to/rosetta \
+vei ui serve \
+  --root /path/to/saved-enron-result/workspace \
+  --host 127.0.0.1 \
+  --port 3055
+```
+
 <details>
 <summary>Concrete Enron example: Debra Perlingiere -> Cargill Master Agreement</summary>
 
@@ -338,8 +348,6 @@ vei whatif benchmark eval \
   --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
 ```
-
-The live smoke artifact for this benchmark is currently under `_vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset_smoke`.
 
 ## Use It As A Library
 
@@ -409,7 +417,6 @@ make all      # check → test → llm-live, stops on first failure
 - **[WHATIF.md](docs/WHATIF.md)** — historical replay, ranked what-if, and Enron benchmark flows
 - **[ENRON_BUSINESS_OUTCOME_BENCHMARK.md](docs/ENRON_BUSINESS_OUTCOME_BENCHMARK.md)** — Enron benchmark setup, objectives, judge loop, and artifact layout
 - **[SERVICE_OPS_WALKTHROUGH.md](docs/SERVICE_OPS_WALKTHROUGH.md)** — visual walkthrough of the control plane
-- **[BUSINESS_WORLD_DEMO.md](docs/BUSINESS_WORLD_DEMO.md)** — guided business world demo with Enron capstone
 
 ## License
 

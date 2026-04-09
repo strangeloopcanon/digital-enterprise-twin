@@ -38,6 +38,17 @@ function whatIfObjectivePacks() {
     : [];
 }
 
+function whatIfSourceId() {
+  return state.whatIfStatus?.source || "auto";
+}
+
+function whatIfSourceLabel() {
+  const source = whatIfSourceId();
+  if (source === "mail_archive") return "Historical mail archive";
+  if (source === "enron") return "Enron Rosetta archive";
+  return "Historical archive";
+}
+
 function renderWhatIfStudio() {
   const statusNode = document.getElementById("whatif-status");
   const resultsNode = document.getElementById("whatif-results");
@@ -53,8 +64,8 @@ function renderWhatIfStudio() {
   if (!status.available) {
     statusNode.innerHTML = `
       <div class="whatif-empty">
-        <strong>Enron archive not configured for this workspace.</strong>
-        <span>Set <code>VEI_WHATIF_ROSETTA_DIR</code> or keep the sibling Rosetta repo next to this workspace.</span>
+        <strong>Historical archive not configured for this workspace.</strong>
+        <span>Set <code>VEI_WHATIF_SOURCE_DIR</code> to a mail archive or context snapshot, or set <code>VEI_WHATIF_ROSETTA_DIR</code> for the Enron Rosetta source.</span>
       </div>
     `;
     resultsNode.innerHTML = "";
@@ -67,7 +78,7 @@ function renderWhatIfStudio() {
   statusNode.innerHTML = `
     <div class="whatif-status-pill">
       <strong>Archive ready</strong>
-      <span>${escapeHtml(status.rosetta_dir || "Enron Rosetta source")}</span>
+      <span>${escapeHtml(status.source_dir || whatIfSourceLabel())}</span>
     </div>
   `;
   if (objectiveSelect) {
@@ -300,7 +311,7 @@ async function searchWhatIfEvents() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source: "enron",
+        source: whatIfSourceId(),
         query,
         limit,
       }),
@@ -328,7 +339,7 @@ async function materializeWhatIfEpisode() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source: "enron",
+        source: whatIfSourceId(),
         event_id: event.event_id,
         thread_id: event.thread_id,
         label,
@@ -360,7 +371,7 @@ async function runWhatIfExperimentFromUI() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source: "enron",
+        source: whatIfSourceId(),
         event_id: event.event_id,
         thread_id: event.thread_id,
         label,
@@ -408,7 +419,7 @@ async function runRankedWhatIfFromUI() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        source: "enron",
+        source: whatIfSourceId(),
         event_id: event.event_id,
         thread_id: event.thread_id,
         label,

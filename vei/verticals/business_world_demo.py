@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-
-from vei.whatif import load_experiment_result
-from vei.whatif.models import WhatIfExperimentResult
 
 from .demo import (
     VerticalCompareRunner,
@@ -49,29 +45,6 @@ class BusinessWorldStorySummary(BaseModel):
     comparison_contract_ok: bool | None = None
 
 
-class HistoricalDemoMetrics(BaseModel):
-    branch_event_id: str
-    branch_subject: str
-    baseline_follow_up_events: int = 0
-    alternate_follow_up_events: int = 0
-    baseline_risk_score: float | None = None
-    predicted_risk_score: float | None = None
-    external_send_delta: int | None = None
-
-
-class HistoricalDemoCapstone(BaseModel):
-    source: str = "enron"
-    label: str
-    summary: str
-    result_root: Path
-    workspace_root: Path | None = None
-    overview_path: Path | None = None
-    rosetta_dir: Path | None = None
-    show_result_command: str
-    studio_command: str | None = None
-    metrics: HistoricalDemoMetrics
-
-
 class BusinessWorldDemoSpec(BaseModel):
     root: Path
     run_id: str = "business_world_demo"
@@ -85,8 +58,6 @@ class BusinessWorldDemoSpec(BaseModel):
     compare_model: str | None = None
     compare_provider: str | None = None
     compare_bc_model_path: Path | None = None
-    historical_result_root: Path | None = None
-    historical_rosetta_dir: Path | None = None
 
 
 class BusinessWorldDemoBundle(BaseModel):
@@ -97,9 +68,7 @@ class BusinessWorldDemoBundle(BaseModel):
     live_world_name: str
     story: BusinessWorldStorySummary
     sections: list[BusinessWorldDemoSection] = Field(default_factory=list)
-    historical_capstone: HistoricalDemoCapstone | None = None
     kernel_thesis: str = ""
-    notes: list[str] = Field(default_factory=list)
 
 
 def prepare_business_world_demo(
@@ -125,25 +94,6 @@ def prepare_business_world_demo(
     )
     story_summary = _story_summary_from_bundle(story_bundle)
 
-    historical_root = _resolve_historical_result_root(spec.historical_result_root)
-    historical_rosetta_dir = _resolve_historical_rosetta_dir(
-        spec.historical_rosetta_dir
-    )
-    historical_capstone = (
-        _build_historical_capstone(
-            historical_root,
-            rosetta_dir=historical_rosetta_dir,
-        )
-        if historical_root is not None
-        else None
-    )
-
-    notes: list[str] = []
-    if historical_capstone is None:
-        notes.append(
-            "Historical capstone omitted. Pass --historical-root or keep a saved Enron what-if result under _vei_out/whatif_live_runs_*/master_agreement_internal_review."
-        )
-
     bundle = BusinessWorldDemoBundle(
         run_id=spec.run_id,
         root=bundle_root,
@@ -151,14 +101,8 @@ def prepare_business_world_demo(
         guide_path=bundle_root / "business_world_demo_guide.md",
         live_world_name=spec.live_world_name,
         story=story_summary,
-        sections=_build_demo_sections(
-            story_bundle,
-            story_summary,
-            historical_capstone,
-        ),
-        historical_capstone=historical_capstone,
+        sections=_build_demo_sections(story_bundle, story_summary),
         kernel_thesis=story_bundle.kernel_thesis,
-        notes=notes,
     )
     bundle.manifest_path.write_text(
         json.dumps(bundle.model_dump(mode="json"), indent=2),
@@ -200,10 +144,6 @@ def render_business_world_demo_guide(bundle: BusinessWorldDemoBundle) -> str:
         lines.append(
             f"- Story presentation guide: `{bundle.story.presentation_guide_path}`"
         )
-    if bundle.historical_capstone is not None:
-        lines.append(
-            f"- Historical capstone: `{bundle.historical_capstone.result_root}`"
-        )
     lines.extend(
         [
             "",
@@ -236,10 +176,6 @@ def render_business_world_demo_guide(bundle: BusinessWorldDemoBundle) -> str:
             for path in section.evidence_paths:
                 lines.append(f"- `{path}`")
         lines.append("")
-    if bundle.notes:
-        lines.extend(["## Notes", ""])
-        lines.extend(f"- {note}" for note in bundle.notes)
-        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -265,18 +201,7 @@ def _story_summary_from_bundle(story: VerticalStoryBundle) -> BusinessWorldStory
 def _build_demo_sections(
     story: VerticalStoryBundle,
     story_summary: BusinessWorldStorySummary,
-    historical_capstone: HistoricalDemoCapstone | None,
 ) -> list[BusinessWorldDemoSection]:
-    live_world_commands = [
-        BusinessWorldDemoCommand(
-            label="Start the live world",
-            command="python -m vei.cli.vei quickstart run --world service_ops --governor-demo",
-        ),
-        BusinessWorldDemoCommand(
-            label="Open the generated story workspace",
-            command=story_summary.ui_command,
-        ),
-    ]
     live_world_section = BusinessWorldDemoSection(
         section_id="live_world",
         title="Live Business World",
@@ -289,7 +214,16 @@ def _build_demo_sections(
             "Stay on the Company view long enough to show dispatch, billing, approvals, and operator state moving together.",
             "Use the generated story workspace if you want a static backup that still lives inside the same showcase system.",
         ],
-        commands=live_world_commands,
+        commands=[
+            BusinessWorldDemoCommand(
+                label="Start the live world",
+                command="python -m vei.cli.vei quickstart run --world service_ops --governor-demo",
+            ),
+            BusinessWorldDemoCommand(
+                label="Open the generated story workspace",
+                command=story_summary.ui_command,
+            ),
+        ],
         evidence_paths=[
             story_summary.story_overview_path,
             story_summary.story_manifest_path,
@@ -325,145 +259,7 @@ def _build_demo_sections(
             else []
         ),
     )
-
-    sections = [live_world_section, eval_section]
-    if historical_capstone is not None:
-        sections.append(
-            BusinessWorldDemoSection(
-                section_id="historical_capstone",
-                title="Historical Capstone",
-                duration_seconds=60,
-                summary=historical_capstone.summary,
-                talk_track=[
-                    "Use Enron as the toy historical example. The point is the engine, not the dataset.",
-                    "Show one real branch point, replay the historical path, then compare the alternate path against a forecasted outcome shift.",
-                    (
-                        f"The saved branch carried {historical_capstone.metrics.baseline_follow_up_events} follow-up events; "
-                        f"the alternate path produced {historical_capstone.metrics.alternate_follow_up_events} follow-up messages."
-                    ),
-                ],
-                commands=[
-                    BusinessWorldDemoCommand(
-                        label="Show the saved historical result",
-                        command=historical_capstone.show_result_command,
-                    )
-                ]
-                + (
-                    [
-                        BusinessWorldDemoCommand(
-                            label="Open the saved historical workspace",
-                            command=historical_capstone.studio_command,
-                        )
-                    ]
-                    if historical_capstone.studio_command is not None
-                    else []
-                ),
-                evidence_paths=[
-                    historical_capstone.result_root,
-                ]
-                + (
-                    [historical_capstone.overview_path]
-                    if historical_capstone.overview_path is not None
-                    else []
-                ),
-            )
-        )
-    return sections
-
-
-def _build_historical_capstone(
-    result_root: Path,
-    *,
-    rosetta_dir: Path | None,
-) -> HistoricalDemoCapstone:
-    result = load_experiment_result(result_root)
-    metrics = _historical_metrics(result)
-    workspace_root = result_root / "workspace"
-    workspace_path = workspace_root if workspace_root.exists() else None
-    overview_path = result.artifacts.overview_markdown_path
-    show_result_command = (
-        "python -m vei.cli.vei whatif show-result "
-        f"--root {result_root} --format markdown"
-    )
-    studio_command: str | None = None
-    if rosetta_dir is not None and workspace_path is not None:
-        studio_command = (
-            f"VEI_WHATIF_ROSETTA_DIR={rosetta_dir} "
-            "python -m vei.cli.vei ui serve "
-            f"--root {workspace_path} --host 127.0.0.1 --port 3055"
-        )
-    branch_event = result.materialization.branch_event
-    summary = (
-        f"Branch from `{branch_event.actor_id}` on `{branch_event.subject}`. "
-        f"The saved historical path carries {metrics.baseline_follow_up_events} follow-up events. "
-        f"The alternate path produces {metrics.alternate_follow_up_events} follow-up messages and shifts the forecast toward lower outside sharing."
-    )
-    return HistoricalDemoCapstone(
-        label=result.label,
-        summary=summary,
-        result_root=result_root,
-        workspace_root=workspace_path,
-        overview_path=overview_path if overview_path.exists() else None,
-        rosetta_dir=rosetta_dir,
-        show_result_command=show_result_command,
-        studio_command=studio_command,
-        metrics=metrics,
-    )
-
-
-def _historical_metrics(result: WhatIfExperimentResult) -> HistoricalDemoMetrics:
-    predicted_risk = (
-        result.forecast_result.predicted.risk_score
-        if result.forecast_result is not None
-        else None
-    )
-    external_send_delta = (
-        result.forecast_result.delta.external_event_delta
-        if result.forecast_result is not None
-        else None
-    )
-    return HistoricalDemoMetrics(
-        branch_event_id=result.intervention.branch_event_id or "",
-        branch_subject=result.materialization.branch_event.subject,
-        baseline_follow_up_events=result.baseline.delivered_event_count,
-        alternate_follow_up_events=(
-            result.llm_result.delivered_event_count if result.llm_result else 0
-        ),
-        baseline_risk_score=result.baseline.forecast.risk_score,
-        predicted_risk_score=predicted_risk,
-        external_send_delta=external_send_delta,
-    )
-
-
-def _resolve_historical_result_root(explicit: Path | None) -> Path | None:
-    if explicit is not None:
-        candidate = explicit.expanduser().resolve()
-        return candidate if candidate.exists() else None
-
-    base = Path.cwd().resolve() / "_vei_out"
-    preferred = (
-        base / "whatif_live_runs_20260405_final" / "master_agreement_internal_review"
-    )
-    if preferred.exists():
-        return preferred
-
-    matches = sorted(base.glob("whatif_live_runs_*/master_agreement_internal_review"))
-    if matches:
-        return matches[-1].resolve()
-    return None
-
-
-def _resolve_historical_rosetta_dir(explicit: Path | None) -> Path | None:
-    if explicit is not None:
-        candidate = explicit.expanduser().resolve()
-        return candidate if candidate.exists() else None
-
-    configured = os.environ.get("VEI_WHATIF_ROSETTA_DIR", "").strip()
-    if configured:
-        candidate = Path(configured).expanduser().resolve()
-        if candidate.exists():
-            return candidate
-    return None
+    return [live_world_section, eval_section]
 
 
 __all__ = [
@@ -472,8 +268,6 @@ __all__ = [
     "BusinessWorldDemoSection",
     "BusinessWorldDemoSpec",
     "BusinessWorldStorySummary",
-    "HistoricalDemoCapstone",
-    "HistoricalDemoMetrics",
     "load_business_world_demo_bundle",
     "prepare_business_world_demo",
     "render_business_world_demo_guide",

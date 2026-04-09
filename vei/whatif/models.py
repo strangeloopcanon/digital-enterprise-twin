@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-WhatIfSourceName = Literal["enron"]
+WhatIfSourceName = Literal["enron", "mail_archive"]
 WhatIfScenarioId = Literal[
     "compliance_gateway",
     "escalation_firewall",
@@ -145,6 +145,8 @@ class WhatIfScenario(BaseModel):
 
 class WhatIfWorldSummary(BaseModel):
     source: WhatIfSourceName = "enron"
+    organization_name: str = ""
+    organization_domain: str = ""
     event_count: int = 0
     thread_count: int = 0
     actor_count: int = 0
@@ -157,13 +159,17 @@ class WhatIfWorldSummary(BaseModel):
 
 class WhatIfWorld(BaseModel):
     source: WhatIfSourceName = "enron"
-    rosetta_dir: Path
+    source_dir: Path
     summary: WhatIfWorldSummary
     scenarios: list[WhatIfScenario] = Field(default_factory=list)
     actors: list[WhatIfActorProfile] = Field(default_factory=list)
     threads: list[WhatIfThreadSummary] = Field(default_factory=list)
     events: list[WhatIfEvent] = Field(default_factory=list)
     metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+    @property
+    def rosetta_dir(self) -> Path:
+        return self.source_dir
 
 
 class WhatIfActorImpact(BaseModel):

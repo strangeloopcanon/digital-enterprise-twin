@@ -134,6 +134,8 @@ def run_research_pack(
         pack = research_pack.model_copy(deep=True)
     else:
         pack = get_research_pack(pack_id)
+    if pack.pack_id == "enron_research_v1" and world.source != "enron":
+        raise ValueError("enron_research_v1 requires an Enron historical source")
     root = Path(artifacts_root).expanduser().resolve() / pack.pack_id / _slug(label)
     result_path = root / "research_pack_result.json"
     overview_path = root / "research_pack_scoreboard.md"

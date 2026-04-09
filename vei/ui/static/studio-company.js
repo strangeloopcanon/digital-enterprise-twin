@@ -91,6 +91,10 @@ function updateContextHint() {
   if (!hint) {
     return;
   }
+  if (hasHistoricalWorkspace()) {
+    hint.textContent = "Inspect the historical branch and compare alternate paths";
+    return;
+  }
   const ms = state.missionState;
   if (ms?.status === "completed") {
     hint.textContent = "Run complete \u2014 review outcome or start a new situation";
@@ -820,8 +824,14 @@ function truncate(value, maxLength) {
 
 function renderSurfaceWall() {
   const panel = document.getElementById("living-company-surface-wall");
+  const title = document.getElementById("living-company-title");
   if (!panel) {
     return;
+  }
+  if (title) {
+    title.textContent = hasHistoricalWorkspace()
+      ? "Historical operating state"
+      : "Live operating state";
   }
   const surfaceState = state.surfaceState;
   if (!surfaceState || !Array.isArray(surfaceState.panels) || !surfaceState.panels.length) {
@@ -829,6 +839,20 @@ function renderSurfaceWall() {
     const companyName = state.workspace?.manifest?.title
       || state.story?.manifest?.company_name
       || "Your company";
+    if (hasHistoricalWorkspace()) {
+      panel.innerHTML = `
+        <div class="surface-placeholder">
+          <p class="eyebrow">Historical Workspace</p>
+          <h3>${loadingRun ? "Loading historical state" : `${escapeHtml(companyName)} branch is ready`}</h3>
+          <p class="metric-detail">${
+            loadingRun
+              ? "Loading the saved historical state for this branch point."
+              : "Use the historical what-if panel to inspect the branch point, replay the recorded future, or compare alternate paths."
+          }</p>
+        </div>
+      `;
+      return;
+    }
     panel.innerHTML = `
       <div class="surface-placeholder">
         <p class="eyebrow">Living Company</p>
@@ -913,6 +937,33 @@ function renderSurfaceItem(surfacePanel, item, changedRefs) {
 function renderLivingCompanyRail() {
   const panel = document.getElementById("living-company-rail");
   if (!panel) {
+    return;
+  }
+  if (hasHistoricalWorkspace()) {
+    const historical = state.historicalWorkspace || {};
+    const companyName = historical.organization_name
+      || state.workspace?.manifest?.title
+      || "Company";
+    panel.innerHTML = `
+      <div class="story-card accent-card">
+        <p class="eyebrow">Historical replay</p>
+        <h3>${escapeHtml(companyName)}</h3>
+        <p class="metric-detail">${escapeHtml(currentCrisisSummary())}</p>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Thread</p>
+        <h3>${escapeHtml(currentCrisisTitle())}</h3>
+        <div class="detail-grid">
+          ${detailTile("Recorded future", `${historical.future_event_count || 0} events`)}
+          ${detailTile("Branch", "Saved")}
+        </div>
+        ${currentFailureImpact() ? `<p class="metric-detail">${escapeHtml(currentFailureImpact())}</p>` : ""}
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">What to inspect</p>
+        <p class="metric-detail">${escapeHtml(currentObjectiveSummary())}</p>
+      </div>
+    `;
     return;
   }
   const missionState = state.missionState;
@@ -1146,7 +1197,9 @@ function renderMissionPlay() {
           <div class="story-card story-span-2">
         <p class="eyebrow">Play</p>
         <p class="metric-detail">${
-          hasExerciseMode()
+          hasHistoricalWorkspace()
+            ? "Use the historical what-if panel below to search the historical archive, open the saved branch point, and compare alternate paths."
+            : hasExerciseMode()
             ? "Apply a crisis above, then connect an outside agent and use the control room here to watch the company respond."
             : "Choose a situation and enter the world to begin making moves inside the company."
         }</p>
@@ -1559,9 +1612,36 @@ function renderScenarioSelector() {
 }
 
 function renderScenarioBriefing() {
+  const historical = state.historicalWorkspace;
   const preview = state.scenarioPreview;
   const contract = state.scenarioContract;
   const panel = document.getElementById("scenario-briefing");
+  if (historical && panel) {
+    const branch = historical.branch_event || {};
+    panel.innerHTML = `
+      <div class="story-card story-span-2">
+        <p class="eyebrow">Historical branch point</p>
+        <h3>${escapeHtml(historical.thread_subject || "Historical replay")}</h3>
+        <p class="metric-detail">${escapeHtml(currentCrisisSummary())}</p>
+        <div class="chip-row">
+          ${chip(escapeHtml(historical.branch_event_id || "branch event"))}
+          ${chip(`${historical.history_message_count || 0} prior messages`)}
+          ${chip(`${historical.future_event_count || 0} future events`)}
+        </div>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Saved event</p>
+        <p class="metric-detail">${escapeHtml(branch.actor_id || "Recorded sender")} → ${escapeHtml(branch.target_id || "Recorded recipient")}</p>
+        <p class="metric-detail">${escapeHtml(branch.timestamp || historical.branch_timestamp || "")}</p>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Source notice</p>
+        <p class="metric-detail">${escapeHtml(historical.content_notice || "Historical replay is grounded in archive excerpts and metadata.")}</p>
+      </div>
+    `;
+    renderObjectiveBriefing([], null, null);
+    return;
+  }
   if (!preview || !contract) {
     if (panel) {
       panel.innerHTML = `<div class="metric-tile"><span class="metric-label">Scenario</span><span class="metric-value">Loading</span></div>`;
@@ -1680,7 +1760,35 @@ function renderRuns() {
 function renderObjectiveBriefing(contractVariants = [], activeContractVariant = null, contract = null) {
   const targetContract = contract || state.scenarioContract;
   const panel = document.getElementById("objective-scorecard");
-  if (!panel || !targetContract) {
+  if (!panel) {
+    return;
+  }
+  if (hasHistoricalWorkspace()) {
+    const historical = state.historicalWorkspace;
+    panel.innerHTML = `
+      <div class="briefing-grid">
+        <div class="story-card accent-card story-span-2">
+          <p class="eyebrow">Historical comparison</p>
+          <h3>${escapeHtml(historical?.thread_subject || "Historical replay")}</h3>
+          <p class="metric-detail">${escapeHtml(currentObjectiveSummary())}</p>
+          <div class="chip-row">
+            ${chip(`${historical?.history_message_count || 0} prior messages`)}
+            ${chip(`${historical?.future_event_count || 0} future events`)}
+          </div>
+        </div>
+        <div class="story-card">
+          <p class="eyebrow">What to inspect</p>
+          <p class="metric-detail">Look at the saved branch point, then compare the historical path with alternate continuations in the historical what-if panel.</p>
+        </div>
+        <div class="story-card">
+          <p class="eyebrow">Outcome lens</p>
+          <p class="metric-detail">${escapeHtml(currentObjectiveSummary())}</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  if (!targetContract) {
     return;
   }
   const successCount = Array.isArray(targetContract.success_predicates)

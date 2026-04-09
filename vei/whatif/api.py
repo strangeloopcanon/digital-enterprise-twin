@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import shutil
 from typing import Any, Sequence
 
 from vei.blueprint.api import create_world_session_from_blueprint
@@ -60,12 +61,14 @@ from .corpus import (
     CONTENT_NOTICE,
     ENRON_DOMAIN,
     choose_branch_event,
+    detect_whatif_source,
     display_name,
     event_by_id,
     event_reason_labels,
     event_reference,
     has_external_recipients,
     hydrate_event_snippets,
+    load_mail_archive_world,
     load_enron_world,
     safe_int,
     search_events as search_world_events,
@@ -148,23 +151,41 @@ def list_objective_packs():
 def load_world(
     *,
     source: str,
-    rosetta_dir: str | Path,
+    source_dir: str | Path | None = None,
+    rosetta_dir: str | Path | None = None,
     time_window: tuple[str, str] | None = None,
     custodian_filter: Sequence[str] | None = None,
     max_events: int | None = None,
     include_content: bool = False,
 ) -> WhatIfWorld:
-    normalized_source = source.strip().lower()
-    if normalized_source != "enron":
-        raise ValueError(f"unsupported what-if source: {source}")
-    return load_enron_world(
-        rosetta_dir=rosetta_dir,
-        scenarios=list_supported_scenarios(),
-        time_window=time_window,
-        custodian_filter=custodian_filter,
-        max_events=max_events,
-        include_content=include_content,
+    if source_dir is None and rosetta_dir is None:
+        raise ValueError("source_dir is required")
+    resolved_source_dir = (
+        Path(source_dir if source_dir is not None else rosetta_dir)
+        .expanduser()
+        .resolve()
     )
+    normalized_source = (source or "auto").strip().lower()
+    if normalized_source in {"", "auto"}:
+        normalized_source = detect_whatif_source(resolved_source_dir)
+    if normalized_source == "enron":
+        return load_enron_world(
+            rosetta_dir=resolved_source_dir,
+            scenarios=list_supported_scenarios(),
+            time_window=time_window,
+            custodian_filter=custodian_filter,
+            max_events=max_events,
+            include_content=include_content,
+        )
+    if normalized_source == "mail_archive":
+        return load_mail_archive_world(
+            source_dir=resolved_source_dir,
+            scenarios=list_supported_scenarios(),
+            time_window=time_window,
+            max_events=max_events,
+            include_content=include_content,
+        )
+    raise ValueError(f"unsupported what-if source: {source}")
 
 
 def search_events(
@@ -199,7 +220,10 @@ def run_whatif(
     resolved = _resolve_scenario(scenario=scenario, prompt=prompt)
     thread_by_id = {thread.thread_id: thread for thread in world.threads}
     matched_events = _matched_events_for_scenario(
-        world.events, thread_by_id, resolved.scenario_id
+        world.events,
+        thread_by_id,
+        resolved.scenario_id,
+        organization_domain=world.summary.organization_domain,
     )
     matched_thread_ids = sorted(
         {event.thread_id for event in matched_events if event.thread_id}
@@ -212,9 +236,15 @@ def run_whatif(
             if actor_id
         }
     )
-    actor_impacts = _build_actor_impacts(matched_events)
+    actor_impacts = _build_actor_impacts(
+        matched_events,
+        organization_domain=world.summary.organization_domain,
+    )
     thread_impacts = _build_thread_impacts(
-        matched_events, thread_by_id, resolved.scenario_id
+        matched_events,
+        thread_by_id,
+        resolved.scenario_id,
+        organization_domain=world.summary.organization_domain,
     )
     consequences = _build_consequences(thread_impacts, actor_impacts)
 
@@ -252,10 +282,20 @@ def materialize_episode(
     root: str | Path,
     thread_id: str | None = None,
     event_id: str | None = None,
-    organization_name: str = "Enron Corporation",
-    organization_domain: str = ENRON_DOMAIN,
+    organization_name: str | None = None,
+    organization_domain: str | None = None,
 ) -> WhatIfEpisodeMaterialization:
     workspace_root = Path(root).expanduser().resolve()
+    resolved_organization_name = (
+        (organization_name or "").strip()
+        or world.summary.organization_name
+        or "Historical Archive"
+    )
+    resolved_organization_domain = (
+        (organization_domain or "").strip().lower()
+        or world.summary.organization_domain
+        or "archive.local"
+    )
     selected_thread_id = thread_id
     if selected_thread_id is None:
         if not event_id:
@@ -267,10 +307,11 @@ def materialize_episode(
     thread_history = thread_events(world.events, selected_thread_id)
     if not thread_history:
         raise ValueError(f"thread not found in world: {selected_thread_id}")
-    thread_history = hydrate_event_snippets(
-        rosetta_dir=world.rosetta_dir,
-        events=thread_history,
-    )
+    if world.source == "enron":
+        thread_history = hydrate_event_snippets(
+            rosetta_dir=world.source_dir,
+            events=thread_history,
+        )
 
     branch_event = choose_branch_event(thread_history, requested_event_id=event_id)
     branch_index = next(
@@ -297,7 +338,11 @@ def materialize_episode(
             "subject": selected_thread_subject,
             "category": "historical",
             "messages": [
-                _archive_message_payload(event, base_time_ms=index * 1000)
+                _archive_message_payload(
+                    event,
+                    base_time_ms=index * 1000,
+                    organization_domain=resolved_organization_domain,
+                )
                 for index, event in enumerate(past_events)
             ],
         }
@@ -319,23 +364,25 @@ def materialize_episode(
     ]
     snapshot = ingest_mail_archive_threads(
         archive_threads,
-        organization_name=organization_name,
-        organization_domain=organization_domain,
+        organization_name=resolved_organization_name,
+        organization_domain=resolved_organization_domain,
         actors=actor_payload,
         metadata={
             "whatif": {
                 "source": world.source,
                 "thread_id": selected_thread_id,
                 "branch_event_id": branch_event.event_id,
-                "content_notice": CONTENT_NOTICE,
+                "content_notice": str(
+                    world.metadata.get("content_notice", CONTENT_NOTICE)
+                ),
             }
         },
     )
     bundle = build_customer_twin(
         workspace_root,
         snapshot=snapshot,
-        organization_name=organization_name,
-        organization_domain=organization_domain,
+        organization_name=resolved_organization_name,
+        organization_domain=resolved_organization_domain,
         mold=ContextMoldConfig(
             archetype="b2b_saas",
             density_level="medium",
@@ -349,19 +396,25 @@ def materialize_episode(
         thread_subject=selected_thread_subject,
         branch_event=branch_event,
         future_events=future_events,
+        organization_domain=resolved_organization_domain,
+        source_name=world.source,
     )
     baseline_dataset_path = workspace_root / "whatif_baseline_dataset.json"
     baseline_dataset_path.write_text(
         baseline_dataset.model_dump_json(indent=2),
         encoding="utf-8",
     )
-    forecast = forecast_episode(future_events)
+    _persist_workspace_historical_source(world, workspace_root)
+    forecast = forecast_episode(
+        future_events,
+        organization_domain=resolved_organization_domain,
+    )
     manifest = WhatIfEpisodeManifest(
         source=world.source,
-        source_dir=world.rosetta_dir,
+        source_dir=world.source_dir,
         workspace_root=workspace_root,
-        organization_name=organization_name,
-        organization_domain=organization_domain,
+        organization_name=resolved_organization_name,
+        organization_domain=resolved_organization_domain,
         thread_id=selected_thread_id,
         thread_subject=selected_thread_subject,
         branch_event_id=branch_event.event_id,
@@ -370,7 +423,7 @@ def materialize_episode(
         history_message_count=len(past_events),
         future_event_count=len(future_events),
         baseline_dataset_path=str(baseline_dataset_path.relative_to(workspace_root)),
-        content_notice=CONTENT_NOTICE,
+        content_notice=str(world.metadata.get("content_notice", CONTENT_NOTICE)),
         actor_ids=sorted(
             {
                 actor_id
@@ -390,8 +443,8 @@ def materialize_episode(
         context_snapshot_path=workspace_root / bundle.context_snapshot_path,
         baseline_dataset_path=baseline_dataset_path,
         workspace_root=workspace_root,
-        organization_name=organization_name,
-        organization_domain=organization_domain,
+        organization_name=resolved_organization_name,
+        organization_domain=resolved_organization_domain,
         thread_id=selected_thread_id,
         branch_event_id=branch_event.event_id,
         branch_event=manifest.branch_event,
@@ -400,6 +453,37 @@ def materialize_episode(
         baseline_future_preview=list(manifest.baseline_future_preview),
         forecast=forecast,
     )
+
+
+def _persist_workspace_historical_source(
+    world: WhatIfWorld,
+    workspace_root: Path,
+) -> None:
+    if world.source != "mail_archive":
+        return
+    source_file = _mail_archive_source_file(world.source_dir)
+    if source_file is None or not source_file.exists():
+        return
+    target = workspace_root / "whatif_mail_archive.json"
+    if source_file.resolve() == target.resolve():
+        return
+    shutil.copyfile(source_file, target)
+
+
+def _mail_archive_source_file(source_dir: Path) -> Path | None:
+    resolved = source_dir.expanduser().resolve()
+    if resolved.is_file():
+        return resolved
+    for filename in (
+        "whatif_mail_archive.json",
+        "historical_mail_archive.json",
+        "mail_archive.json",
+        "context_snapshot.json",
+    ):
+        candidate = resolved / filename
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def load_episode_manifest(root: str | Path) -> WhatIfEpisodeManifest:
@@ -457,7 +541,11 @@ def replay_episode_baseline(
     )
 
 
-def forecast_episode(events: Sequence[WhatIfEvent]) -> WhatIfForecast:
+def forecast_episode(
+    events: Sequence[WhatIfEvent],
+    *,
+    organization_domain: str = ENRON_DOMAIN,
+) -> WhatIfForecast:
     future_event_count = len(events)
     future_escalation_count = sum(
         1
@@ -469,7 +557,12 @@ def forecast_episode(events: Sequence[WhatIfEvent]) -> WhatIfForecast:
     )
     future_approval_count = sum(1 for event in events if event.event_type == "approval")
     future_external_event_count = sum(
-        1 for event in events if has_external_recipients(event.flags.to_recipients)
+        1
+        for event in events
+        if has_external_recipients(
+            event.flags.to_recipients,
+            organization_domain=organization_domain,
+        )
     )
     risk_score = min(
         1.0,
@@ -516,6 +609,7 @@ def run_llm_counterfactual(
     )
     recipient_scope, recipient_notes = _apply_recipient_scope(
         allowed_recipients,
+        organization_domain=manifest.organization_domain,
         tags=intervention_tags(prompt),
     )
     system = (
@@ -796,11 +890,20 @@ def run_counterfactual_experiment(
         mode if mode in {"e_jepa", "e_jepa_proxy"} else default_forecast_backend()
     )
     if mode in {"e_jepa", "e_jepa_proxy", "both"}:
-        if resolved_forecast_backend == "e_jepa":
+        if resolved_forecast_backend == "e_jepa" and world.source != "enron":
+            forecast_result = run_ejepa_proxy_counterfactual(
+                workspace_root,
+                prompt=counterfactual_prompt,
+            )
+            forecast_result.notes.insert(
+                0,
+                "Real E-JEPA forecasting is only wired to the Enron Rosetta source today, so this run used the proxy forecast.",
+            )
+        elif resolved_forecast_backend == "e_jepa":
             forecast_result = run_ejepa_counterfactual(
                 workspace_root,
                 prompt=counterfactual_prompt,
-                source_dir=world.rosetta_dir,
+                source_dir=world.source_dir,
                 thread_id=selected_thread_id,
                 branch_event_id=materialization.branch_event_id,
                 llm_messages=llm_result.messages if llm_result is not None else None,
@@ -979,6 +1082,7 @@ def run_ranked_counterfactual_experiment(
             outcome_signals = summarize_llm_branch(
                 branch_event=materialization.branch_event,
                 llm_result=llm_result,
+                organization_domain=materialization.organization_domain,
             )
             outcome_score = score_outcome_signals(
                 pack=objective_pack,
@@ -1139,11 +1243,20 @@ def _run_ranked_shadow_score(
     ejepa_force_retrain: bool,
     ejepa_device: str | None,
 ) -> WhatIfShadowOutcomeScore:
-    if forecast_backend == "e_jepa":
+    if forecast_backend == "e_jepa" and world.source != "enron":
+        forecast_result = run_ejepa_proxy_counterfactual(
+            workspace_root,
+            prompt=prompt,
+        )
+        forecast_result.notes.insert(
+            0,
+            "Real E-JEPA shadow scoring is only wired to the Enron Rosetta source today, so this candidate used the proxy forecast.",
+        )
+    elif forecast_backend == "e_jepa":
         forecast_result = run_ejepa_counterfactual(
             workspace_root,
             prompt=prompt,
-            source_dir=world.rosetta_dir,
+            source_dir=world.source_dir,
             thread_id=materialization.thread_id,
             branch_event_id=materialization.branch_event_id,
             llm_messages=llm_result.messages if llm_result is not None else None,
@@ -1227,6 +1340,7 @@ def _selection_for_specific_event(
     scenario = _resolve_scenario_from_specific_event(
         prompt=prompt,
         event=event,
+        organization_domain=world.summary.organization_domain,
     )
     matching_thread = next(
         (thread for thread in world.threads if thread.thread_id == selected_thread_id),
@@ -1295,6 +1409,7 @@ def _resolve_scenario_from_specific_event(
     *,
     prompt: str,
     event: WhatIfEvent | None,
+    organization_domain: str,
 ) -> WhatIfScenario:
     try:
         return _resolve_scenario(scenario=None, prompt=prompt)
@@ -1302,7 +1417,8 @@ def _resolve_scenario_from_specific_event(
         if event is None:
             return _SUPPORTED_SCENARIOS["compliance_gateway"]
         if event.flags.has_attachment_reference and has_external_recipients(
-            event.flags.to_recipients
+            event.flags.to_recipients,
+            organization_domain=organization_domain,
         ):
             return _SUPPORTED_SCENARIOS["external_dlp"]
         if (
@@ -1356,6 +1472,8 @@ def _matched_events_for_scenario(
     events: Sequence[WhatIfEvent],
     thread_by_id: dict[str, WhatIfThreadSummary],
     scenario_id: WhatIfScenarioId,
+    *,
+    organization_domain: str,
 ) -> list[WhatIfEvent]:
     if scenario_id == "compliance_gateway":
         matched_threads = {
@@ -1382,7 +1500,10 @@ def _matched_events_for_scenario(
             event
             for event in events
             if event.flags.has_attachment_reference
-            and has_external_recipients(event.flags.to_recipients)
+            and has_external_recipients(
+                event.flags.to_recipients,
+                organization_domain=organization_domain,
+            )
         ]
 
     if scenario_id == "approval_chain_enforcement":
@@ -1400,7 +1521,11 @@ def _matched_events_for_scenario(
     raise ValueError(f"unsupported what-if scenario: {scenario_id}")
 
 
-def _build_actor_impacts(events: Sequence[WhatIfEvent]) -> list[WhatIfActorImpact]:
+def _build_actor_impacts(
+    events: Sequence[WhatIfEvent],
+    *,
+    organization_domain: str,
+) -> list[WhatIfActorImpact]:
     counts: dict[str, dict[str, Any]] = {}
     for event in events:
         bucket = counts.setdefault(
@@ -1409,7 +1534,12 @@ def _build_actor_impacts(events: Sequence[WhatIfEvent]) -> list[WhatIfActorImpac
         )
         bucket["count"] += 1
         bucket["threads"].add(event.thread_id)
-        bucket["reasons"].update(event_reason_labels(event))
+        bucket["reasons"].update(
+            event_reason_labels(
+                event,
+                organization_domain=organization_domain,
+            )
+        )
     impacts = [
         WhatIfActorImpact(
             actor_id=actor_id,
@@ -1431,6 +1561,8 @@ def _build_thread_impacts(
     events: Sequence[WhatIfEvent],
     thread_by_id: dict[str, WhatIfThreadSummary],
     scenario_id: WhatIfScenarioId,
+    *,
+    organization_domain: str,
 ) -> list[WhatIfThreadImpact]:
     counts: dict[str, dict[str, Any]] = {}
     for event in events:
@@ -1439,7 +1571,12 @@ def _build_thread_impacts(
             {"count": 0, "reasons": set()},
         )
         bucket["count"] += 1
-        bucket["reasons"].update(event_reason_labels(event))
+        bucket["reasons"].update(
+            event_reason_labels(
+                event,
+                organization_domain=organization_domain,
+            )
+        )
     impacts: list[WhatIfThreadImpact] = []
     for thread_id, payload in counts.items():
         thread = thread_by_id.get(thread_id)
@@ -1517,10 +1654,12 @@ def _archive_message_payload(
     event: WhatIfEvent,
     *,
     base_time_ms: int,
+    organization_domain: str,
 ) -> dict[str, Any]:
     recipient = _primary_recipient(event)
     return {
-        "from": event.actor_id or "unknown@enron.com",
+        "from": event.actor_id
+        or _historical_archive_address(organization_domain, "unknown"),
         "to": recipient,
         "subject": event.subject or event.thread_id,
         "body_text": _historical_body(event),
@@ -1534,6 +1673,8 @@ def _baseline_dataset(
     thread_subject: str,
     branch_event: WhatIfEvent,
     future_events: Sequence[WhatIfEvent],
+    organization_domain: str,
+    source_name: str,
 ) -> VEIDataset:
     baseline_events: list[BaseEvent] = []
     for event in future_events:
@@ -1546,7 +1687,8 @@ def _baseline_dataset(
                 type=event.event_type,
                 correlation_id=event.thread_id,
                 payload={
-                    "from": event.actor_id or "unknown@enron.com",
+                    "from": event.actor_id
+                    or _historical_archive_address(organization_domain, "unknown"),
                     "to": _primary_recipient(event),
                     "subj": event.subject or thread_subject,
                     "body_text": _historical_body(event),
@@ -1560,7 +1702,9 @@ def _baseline_dataset(
             name=f"whatif-baseline-{branch_event.thread_id}",
             description="Historical future events scheduled after the branch point.",
             tags=["whatif", "baseline", "historical"],
-            source="enron_rosetta",
+            source=(
+                "enron_rosetta" if source_name == "enron" else "historical_mail_archive"
+            ),
         ),
         events=baseline_events,
     )
@@ -1597,7 +1741,14 @@ def _primary_recipient(event: WhatIfEvent) -> str:
         return recipients[0]
     if event.target_id:
         return event.target_id
-    return "archive@enron.com"
+    return _historical_archive_address("", "archive")
+
+
+def _historical_archive_address(organization_domain: str, local_part: str) -> str:
+    normalized_domain = organization_domain.strip().lower()
+    if not normalized_domain:
+        return f"{local_part}@archive.local"
+    return f"{local_part}@{normalized_domain}"
 
 
 def _thread_reason_labels(
@@ -1732,9 +1883,17 @@ def _normalize_llm_messages(
         if isinstance(raw_notes, list)
         else []
     )
-    actor_fallback = allowed_actors[0] if allowed_actors else "counterfactual@enron.com"
+    actor_fallback = (
+        allowed_actors[0]
+        if allowed_actors
+        else _historical_archive_address(
+            manifest.organization_domain,
+            "counterfactual",
+        )
+    )
     recipient_fallback = _preferred_recipient_fallback(
         allowed_recipients,
+        organization_domain=manifest.organization_domain,
         default=actor_fallback,
     )
 
@@ -1789,12 +1948,14 @@ def _message_subject(value: Any, *, fallback: str) -> str:
 def _preferred_recipient_fallback(
     recipients: Sequence[str],
     *,
+    organization_domain: str,
     default: str,
 ) -> str:
     for recipient in recipients:
         if (
             recipient
-            and recipient.lower().endswith(f"@{ENRON_DOMAIN}")
+            and organization_domain
+            and recipient.lower().endswith(f"@{organization_domain.lower()}")
             and not recipient.lower().startswith("group:")
         ):
             return recipient
@@ -1860,13 +2021,15 @@ def _counterfactual_notes(plan_args: dict[str, Any]) -> list[str]:
 def _apply_recipient_scope(
     recipients: Sequence[str],
     *,
+    organization_domain: str,
     tags: set[str],
 ) -> tuple[list[str], list[str]]:
     result = [str(item).strip() for item in recipients if str(item).strip()]
     internal_recipients = [
         recipient
         for recipient in result
-        if recipient.lower().endswith(f"@{ENRON_DOMAIN}")
+        if organization_domain
+        and recipient.lower().endswith(f"@{organization_domain.lower()}")
     ]
     internal_only = bool(
         {
@@ -1881,9 +2044,12 @@ def _apply_recipient_scope(
     )
     if not internal_only or not internal_recipients:
         return result, []
+    note = "Recipient scope was clamped to internal participants on this archive."
+    if organization_domain.strip().lower() == ENRON_DOMAIN:
+        note = "Recipient scope was clamped to internal Enron participants."
     return (
         internal_recipients,
-        ["Recipient scope was clamped to internal Enron participants."],
+        [note],
     )
 
 

@@ -724,7 +724,7 @@ function togglePlayback() {
 }
 
 async function loadWorkspace() {
-  const [workspace, storyArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex, governorWorkspace, whatIfStatus] = await Promise.all([
+  const [workspace, storyArtifacts, playableArtifacts, scenarios, importSummary, identityFlow, importSources, importNormalization, importReview, generatedImportScenarios, provenanceIndex, governorWorkspace, historicalWorkspace, whatIfStatus] = await Promise.all([
     getJson("/api/workspace"),
     fetchStoryArtifacts(),
     fetchPlayableArtifacts(),
@@ -737,10 +737,12 @@ async function loadWorkspace() {
     getJson("/api/imports/scenarios").catch(() => []),
     getJson("/api/imports/provenance").catch(() => []),
     getJson("/api/workspace/governor").catch(() => ({})),
+    getJson("/api/workspace/historical").catch(() => ({})),
     getJson("/api/workspace/whatif").catch(() => ({ available: false })),
   ]);
   state.workspace = workspace;
   applyGovernorWorkspaceStatus(governorWorkspace);
+  state.historicalWorkspace = nonEmptyPayload(historicalWorkspace);
   state.story = nonEmptyPayload(storyArtifacts.story);
   state.exportsPreview = storyArtifacts.exportsPreview;
   state.presentation =

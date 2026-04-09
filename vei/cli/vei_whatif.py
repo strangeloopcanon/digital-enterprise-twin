@@ -128,9 +128,14 @@ def list_packs_command(
 
 @app.command("explore")
 def explore_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     scenario: str | None = typer.Option(None, help="Supported scenario id"),
     prompt: str | None = typer.Option(None, help="Plain-English question"),
@@ -145,7 +150,7 @@ def explore_command(
     if scenario is None and prompt is None:
         world = load_world(
             source=source,
-            rosetta_dir=rosetta_dir,
+            source_dir=source_dir,
             time_window=_time_window(date_from, date_to),
             custodian_filter=custodian or [],
             max_events=max_events,
@@ -160,7 +165,7 @@ def explore_command(
 
     world = load_world(
         source=source,
-        rosetta_dir=rosetta_dir,
+        source_dir=source_dir,
         time_window=_time_window(date_from, date_to),
         custodian_filter=custodian or [],
         max_events=max_events,
@@ -176,9 +181,14 @@ def explore_command(
 
 @app.command("open-episode")
 def open_episode_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     root: Path = typer.Option(..., help="Workspace root for the replayable episode"),
     thread_id: str | None = typer.Option(None, help="Thread to materialize"),
@@ -189,7 +199,7 @@ def open_episode_command(
 
     if thread_id is None and event_id is None:
         raise typer.BadParameter("Provide --thread-id or --event-id")
-    world = load_world(source=source, rosetta_dir=rosetta_dir)
+    world = load_world(source=source, source_dir=source_dir)
     materialization = materialize_episode(
         world,
         root=root,
@@ -206,9 +216,14 @@ def open_episode_command(
 
 @app.command("events")
 def events_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     actor: str | None = typer.Option(None, help="Filter by sender email fragment"),
     participant: str | None = typer.Option(
@@ -233,7 +248,7 @@ def events_command(
 
     world = load_world(
         source=source,
-        rosetta_dir=rosetta_dir,
+        source_dir=source_dir,
         max_events=max_events,
     )
     result = search_events(
@@ -279,9 +294,14 @@ def replay_command(
 
 @app.command("experiment")
 def experiment_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     artifacts_root: Path = typer.Option(
         Path("_vei_out/whatif_experiments"),
@@ -346,7 +366,7 @@ def experiment_command(
         raise typer.BadParameter(
             "forecast-backend must be one of: auto, e_jepa, e_jepa_proxy"
         )
-    world = load_world(source=source, rosetta_dir=rosetta_dir)
+    world = load_world(source=source, source_dir=source_dir)
     result = run_counterfactual_experiment(
         world,
         artifacts_root=artifacts_root,
@@ -380,9 +400,14 @@ def experiment_command(
 
 @app.command("rank")
 def rank_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     artifacts_root: Path = typer.Option(
         Path("_vei_out/whatif_ranked"),
@@ -452,7 +477,7 @@ def rank_command(
         raise typer.BadParameter(
             "shadow-forecast-backend must be one of: auto, e_jepa, e_jepa_proxy"
         )
-    world = load_world(source=source, rosetta_dir=rosetta_dir)
+    world = load_world(source=source, source_dir=source_dir)
     result = run_ranked_counterfactual_experiment(
         world,
         artifacts_root=artifacts_root,
@@ -519,9 +544,14 @@ def show_ranked_result_command(
 
 @pack_app.command("run")
 def run_pack_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     artifacts_root: Path = typer.Option(
         Path("_vei_out/whatif_research_packs"),
@@ -560,20 +590,23 @@ def run_pack_command(
         resolved_pack_id = get_research_pack(pack_id).pack_id
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
-    world = load_world(source=source, rosetta_dir=rosetta_dir)
-    result = run_research_pack(
-        world,
-        artifacts_root=artifacts_root,
-        label=label,
-        pack_id=resolved_pack_id,
-        provider=provider,
-        model=model,
-        ejepa_epochs=ejepa_epochs,
-        ejepa_batch_size=ejepa_batch_size,
-        ejepa_force_retrain=ejepa_force_retrain,
-        ejepa_device=ejepa_device,
-        rollout_workers=rollout_workers,
-    )
+    world = load_world(source=source, source_dir=source_dir)
+    try:
+        result = run_research_pack(
+            world,
+            artifacts_root=artifacts_root,
+            label=label,
+            pack_id=resolved_pack_id,
+            provider=provider,
+            model=model,
+            ejepa_epochs=ejepa_epochs,
+            ejepa_batch_size=ejepa_batch_size,
+            ejepa_force_retrain=ejepa_force_retrain,
+            ejepa_device=ejepa_device,
+            rollout_workers=rollout_workers,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     payload = (
         render_research_pack_run(result)
         if format == "markdown"
@@ -616,9 +649,14 @@ def list_benchmark_models_command(
 
 @benchmark_app.command("build")
 def build_benchmark_command(
-    source: str = typer.Option("enron", help="What-if source (currently: enron)"),
-    rosetta_dir: Path = typer.Option(
-        ..., help="Directory holding Rosetta parquet files"
+    source: str = typer.Option(
+        "auto", help="What-if source: auto | enron | mail_archive"
+    ),
+    source_dir: Path = typer.Option(
+        ...,
+        "--source-dir",
+        "--rosetta-dir",
+        help="Historical source directory or file",
     ),
     artifacts_root: Path = typer.Option(
         Path("_vei_out/whatif_benchmarks/branch_point_ranking_v2"),
@@ -635,13 +673,16 @@ def build_benchmark_command(
 ) -> None:
     """Build the pre-branch Enron benchmark dataset and held-out case pack."""
 
-    world = load_world(source=source, rosetta_dir=rosetta_dir)
-    result = build_branch_point_benchmark(
-        world,
-        artifacts_root=artifacts_root,
-        label=label,
-        heldout_pack_id=heldout_pack_id,
-    )
+    world = load_world(source=source, source_dir=source_dir)
+    try:
+        result = build_branch_point_benchmark(
+            world,
+            artifacts_root=artifacts_root,
+            label=label,
+            heldout_pack_id=heldout_pack_id,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     payload = (
         render_benchmark_build(result)
         if format == "markdown"

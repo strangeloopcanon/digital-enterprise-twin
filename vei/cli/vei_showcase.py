@@ -284,18 +284,6 @@ def business_world_command(
         readable=True,
         help="BC policy file when compare-runner=bc",
     ),
-    historical_root: Path | None = typer.Option(
-        None,
-        exists=True,
-        readable=True,
-        help="Optional saved historical what-if result root for the Enron capstone",
-    ),
-    historical_rosetta_dir: Path | None = typer.Option(
-        None,
-        exists=True,
-        file_okay=False,
-        help="Optional Rosetta directory for serving the saved Enron workspace in Studio",
-    ),
 ) -> None:
     normalized_runner = _resolve_compare_runner(
         compare_runner,
@@ -315,8 +303,6 @@ def business_world_command(
             compare_model=compare_model,
             compare_provider=compare_provider,
             compare_bc_model_path=compare_bc_model,
-            historical_result_root=historical_root,
-            historical_rosetta_dir=historical_rosetta_dir,
         )
     )
     typer.echo(json.dumps(result.model_dump(mode="json"), indent=2))

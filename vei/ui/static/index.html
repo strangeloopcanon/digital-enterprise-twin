@@ -37,11 +37,11 @@
             </details>
           </label>
           <label class="toolbar-field sandbox-only">
-            <span>Crisis</span>
+            <span id="mission-field-label">Crisis</span>
             <select id="mission-select"></select>
           </label>
           <label class="toolbar-field sandbox-only">
-            <span>Success criteria</span>
+            <span id="objective-field-label">Success criteria</span>
             <select id="objective-select" aria-label="Success criteria"></select>
           </label>
           <div class="toolbar-actions">
@@ -196,7 +196,7 @@
           <div class="section-header">
             <div>
               <p class="eyebrow">Historical What-If</p>
-              <h2>Pick a real Enron moment and ask what might have happened differently</h2>
+              <h2>Pick a real historical moment and ask what might have happened differently</h2>
               <p class="metric-detail">
                 Search the archive, choose a real event, then compare the historical baseline with the alternate path.
               </p>
@@ -206,7 +206,7 @@
           <div class="whatif-controls">
             <label class="whatif-field whatif-field-wide">
               <span>Find a moment</span>
-              <input id="whatif-query-input" type="text" placeholder="Debra Perlingiere Master Agreement Cargill" />
+              <input id="whatif-query-input" type="text" placeholder="contract draft legal review outside send" />
             </label>
             <label class="whatif-field">
               <span>Max results</span>
@@ -221,11 +221,11 @@
           <div class="whatif-runner">
             <label class="whatif-field">
               <span>Scenario label</span>
-              <input id="whatif-label-input" type="text" placeholder="Master Agreement internal review" />
+              <input id="whatif-label-input" type="text" placeholder="Internal legal review before outside send" />
             </label>
             <label class="whatif-field whatif-field-wide">
               <span>Counterfactual</span>
-              <textarea id="whatif-prompt-input" rows="4" placeholder="What if Debra had kept the draft inside Enron, looped in Gerald Nemec for legal review, and waited for an approved clean draft before sending anything to Cargill?"></textarea>
+              <textarea id="whatif-prompt-input" rows="4" placeholder="What if the sender had kept the draft internal, asked legal for one more review, and waited before sending it outside?"></textarea>
             </label>
             <div class="whatif-actions">
               <button id="whatif-open-btn" type="button">Materialize baseline</button>

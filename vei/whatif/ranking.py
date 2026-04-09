@@ -91,6 +91,7 @@ def summarize_llm_branch(
     *,
     branch_event: WhatIfEventReference,
     llm_result: WhatIfLLMReplayResult,
+    organization_domain: str = ENRON_DOMAIN,
 ) -> WhatIfOutcomeSignals:
     if llm_result.status != "ok" or not llm_result.messages:
         return WhatIfOutcomeSignals(
@@ -103,7 +104,9 @@ def summarize_llm_branch(
     messages = list(llm_result.messages)
     message_count = len(messages)
     outside_message_count = sum(
-        1 for message in messages if _is_external_email(message.to)
+        1
+        for message in messages
+        if _is_external_email(message.to, organization_domain=organization_domain)
     )
     avg_delay_ms = round(sum(message.delay_ms for message in messages) / message_count)
     hold_count = sum(
@@ -153,7 +156,10 @@ def summarize_llm_branch(
     )
 
     if (
-        has_external_recipients(branch_event.to_recipients)
+        has_external_recipients(
+            branch_event.to_recipients,
+            organization_domain=organization_domain,
+        )
         and outside_message_count == 0
     ):
         relationship_protection = _clamp(relationship_protection - 0.15)
@@ -322,11 +328,11 @@ def _build_evidence(
         f"Relationship protection {components['relationship_protection']:.3f}",
     ]
     if outcome.internal_only:
-        lines.append("All simulated messages stayed inside Enron.")
+        lines.append("All simulated messages stayed inside the company.")
     elif outcome.outside_message_count:
         lines.append(
             f"{outcome.outside_message_count} simulated message"
-            f"{'' if outcome.outside_message_count == 1 else 's'} still went outside Enron."
+            f"{'' if outcome.outside_message_count == 1 else 's'} still went outside the company."
         )
     if pack.pack_id == "reduce_delay":
         lines.append(f"Average response delay {outcome.avg_delay_ms} ms.")
@@ -353,11 +359,14 @@ def _message_count_norm(message_count: int) -> float:
     return _clamp((message_count - 1) / 3)
 
 
-def _is_external_email(value: str) -> bool:
+def _is_external_email(value: str, *, organization_domain: str = ENRON_DOMAIN) -> bool:
     email = value.strip().lower()
     if not email:
         return False
-    return not email.endswith(f"@{ENRON_DOMAIN}")
+    normalized_domain = organization_domain.strip().lower()
+    if not normalized_domain:
+        return "@" in email
+    return not email.endswith(f"@{normalized_domain}")
 
 
 def _clamp(value: float) -> float:

@@ -112,6 +112,20 @@ The forecast bundle is written as `whatif_ejepa_result.json` when the real JEPA 
 
 This makes it easy to inspect the result in Studio later, compare runs, or hand the output to another tool.
 
+## Live Enron display in Studio
+
+Use the saved Enron workspace directly when you want the screen to show Enron itself.
+
+```bash
+VEI_WHATIF_ROSETTA_DIR=/path/to/rosetta \
+vei ui serve \
+  --root /path/to/saved-enron-result/workspace \
+  --host 127.0.0.1 \
+  --port 3055
+```
+
+Open `http://127.0.0.1:3055` and stay inside that workspace. This keeps the display tied to the actual Enron branch point and the actual saved result.
+
 ## Enron business-outcome benchmark
 
 The historical replay flow above is for one branch point and one saved comparison. The Enron benchmark is for repeated measurement across many branch points.

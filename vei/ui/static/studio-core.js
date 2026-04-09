@@ -50,6 +50,7 @@ const state = {
   importReview: null,
   generatedImportScenarios: [],
   provenanceIndex: [],
+  historicalWorkspace: null,
   whatIfStatus: null,
   whatIfSearchResult: null,
   whatIfSelectedEvent: null,
@@ -262,8 +263,28 @@ function activeMission() {
   return state.missionState?.mission || state.playableBundle?.mission || state.missions[0] || null;
 }
 
+function hasHistoricalWorkspace() {
+  return Boolean(state.historicalWorkspace?.branch_event_id);
+}
+
 function hasExerciseMode() {
+  if (hasHistoricalWorkspace()) {
+    return false;
+  }
   return Boolean(state.exercise?.manifest);
+}
+
+function historicalBranchSummary() {
+  const historical = state.historicalWorkspace;
+  if (!historical) {
+    return "";
+  }
+  const branch = historical.branch_event || {};
+  const actor = branch.actor_id || "the recorded sender";
+  const target = branch.target_id || "the recorded recipient";
+  const subject = historical.thread_subject || branch.subject || "historical thread";
+  const company = historical.organization_name || "this company";
+  return `Historical replay for ${company} from ${actor} to ${target} on "${subject}".`;
 }
 
 function activeScenarioVariant() {
@@ -366,6 +387,9 @@ function displayContractHealth(ok) {
 }
 
 function currentCrisisTitle() {
+  if (hasHistoricalWorkspace()) {
+    return state.historicalWorkspace?.thread_subject || "Historical replay";
+  }
   if (hasExerciseMode()) {
     const scenarioVariant = activeScenarioVariant();
     if (scenarioVariant?.title) {
@@ -387,6 +411,9 @@ function currentCrisisTitle() {
 }
 
 function currentCrisisSummary() {
+  if (hasHistoricalWorkspace()) {
+    return `${historicalBranchSummary()} Branch just before the saved event and compare alternate paths.`;
+  }
   if (hasExerciseMode()) {
     const scenarioVariant = activeScenarioVariant();
     if (scenarioVariant?.description) {
@@ -413,6 +440,13 @@ function currentCrisisSummary() {
 }
 
 function currentFailureImpact() {
+  if (hasHistoricalWorkspace()) {
+    const historical = state.historicalWorkspace;
+    if (!historical) {
+      return "";
+    }
+    return `${historical.history_message_count || 0} messages before the branch point and ${historical.future_event_count || 0} recorded future events after it.`;
+  }
   if (hasExerciseMode()) {
     const scenarioVariant = activeScenarioVariant();
     if (Array.isArray(scenarioVariant?.change_summary) && scenarioVariant.change_summary.length) {
@@ -431,6 +465,9 @@ function currentFailureImpact() {
 }
 
 function currentObjectiveSummary() {
+  if (hasHistoricalWorkspace()) {
+    return "Inspect the saved branch point, replay the historical future, and compare alternate paths against the recorded thread.";
+  }
   if (hasExerciseMode()) {
     const contractVariant = activeContractVariant();
     if (contractVariant?.objective_summary) {
@@ -893,13 +930,24 @@ function renderWorkspaceHero() {
   const story = state.story || {};
   const title = document.getElementById("workspace-title");
   const subtitle = document.getElementById("workspace-subtitle");
-  const companyName = story.manifest?.company_name || manifest.title || "Workspace";
+  const historical = state.historicalWorkspace;
+  const companyName = historical?.organization_name || manifest.title || story.manifest?.company_name || "Workspace";
   const missionLine = currentCrisisSummary();
   if (title) {
     title.textContent = companyName;
   }
-  subtitle.classList.remove("loading-pulse");
-  subtitle.textContent = missionLine;
+  if (subtitle) {
+    subtitle.classList.remove("loading-pulse");
+    subtitle.textContent = missionLine;
+  }
+  const status = document.getElementById("mission-form-status");
+  if (status && hasHistoricalWorkspace()) {
+    status.textContent = "Inspect the saved branch point, then run the historical what-if below.";
+  }
+  const hint = document.getElementById("shell-context-hint");
+  if (hint && hasHistoricalWorkspace() && !state.missionState?.run_id) {
+    hint.textContent = "Inspect the historical branch and compare alternate paths";
+  }
   renderWorkspaceMetrics();
   renderStudioShell();
   renderWorldsPanel();
@@ -979,8 +1027,37 @@ function renderMissionSelector() {
   const missionSelect = document.getElementById("mission-select");
   const objectiveSelect = document.getElementById("objective-select");
   const startButton = document.getElementById("start-mission-button");
+  const missionLabel = document.getElementById("mission-field-label");
+  const objectiveLabel = document.getElementById("objective-field-label");
   if (!missionSelect || !objectiveSelect) {
     return;
+  }
+  if (hasHistoricalWorkspace()) {
+    const historical = state.historicalWorkspace;
+    const threadSubject = historical?.thread_subject || "Historical thread";
+    missionSelect.innerHTML = `<option value="${escapeHtml(historical?.thread_id || "historical")}">${escapeHtml(threadSubject)}</option>`;
+    objectiveSelect.innerHTML = '<option value="historical_replay">Historical replay</option>';
+    missionSelect.disabled = true;
+    objectiveSelect.disabled = true;
+    if (missionLabel) {
+      missionLabel.textContent = "Historical thread";
+    }
+    if (objectiveLabel) {
+      objectiveLabel.textContent = "Replay mode";
+    }
+    if (startButton) {
+      startButton.textContent = "Saved branch";
+      startButton.disabled = true;
+    }
+    return;
+  }
+  missionSelect.disabled = false;
+  objectiveSelect.disabled = false;
+  if (missionLabel) {
+    missionLabel.textContent = "Crisis";
+  }
+  if (objectiveLabel) {
+    objectiveLabel.textContent = "Success criteria";
   }
   if (hasExerciseMode()) {
     const scenarioVariants = Array.isArray(state.scenarioPreview?.available_scenario_variants)
@@ -1009,6 +1086,7 @@ function renderMissionSelector() {
       .join("");
     if (startButton) {
       startButton.textContent = "Update situation";
+      startButton.disabled = false;
     }
     return;
   }
@@ -1049,6 +1127,7 @@ function renderMissionSelector() {
     .join("");
   if (startButton) {
     startButton.textContent = "Start";
+    startButton.disabled = false;
   }
 }
 
@@ -1056,6 +1135,35 @@ function renderMissionSummary() {
   const briefing = document.getElementById("mission-briefing");
   const catalog = document.getElementById("mission-catalog");
   if (!briefing) {
+    return;
+  }
+  if (hasHistoricalWorkspace()) {
+    const historical = state.historicalWorkspace;
+    const branch = historical?.branch_event || {};
+    briefing.innerHTML = `
+      <div class="story-card accent-card story-span-2 crisis-hero-card">
+        <p class="eyebrow">Historical replay</p>
+        <h3>${escapeHtml(currentCrisisTitle())}</h3>
+        <p class="metric-detail">${escapeHtml(currentCrisisSummary())}</p>
+        <div class="chip-row">
+          ${chip(`${historical?.history_message_count || 0} prior messages`)}
+          ${chip(`${historical?.future_event_count || 0} future events`)}
+          ${chip(branch.event_type || "branch event")}
+        </div>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Branch event</p>
+        <p class="metric-detail">${escapeHtml(branch.actor_id || "Recorded sender")} → ${escapeHtml(branch.target_id || "Recorded recipient")}</p>
+        <p class="metric-detail">${escapeHtml(branch.timestamp || historical?.branch_timestamp || "")}</p>
+      </div>
+      <div class="story-card">
+        <p class="eyebrow">Historical scope</p>
+        <p class="metric-detail">${escapeHtml(currentFailureImpact())}</p>
+      </div>
+    `;
+    if (catalog) {
+      catalog.innerHTML = "";
+    }
     return;
   }
   const currentMission = activeMission();

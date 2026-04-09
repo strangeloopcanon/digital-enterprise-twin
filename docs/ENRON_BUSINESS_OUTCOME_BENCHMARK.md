@@ -153,11 +153,3 @@ Evaluation writes:
 
 - `model_runs/<model_id>/eval_result.json`
 - `model_runs/<model_id>/predictions.jsonl`
-
-## Current live smoke artifact
-
-The current live benchmark smoke build is:
-
-- `_vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset_smoke/`
-
-That build resolved the full 24-case held-out pack against the real Enron archive and wrote the dossiers, templates, and dataset splits.

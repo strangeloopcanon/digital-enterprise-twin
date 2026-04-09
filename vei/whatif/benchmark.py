@@ -299,6 +299,10 @@ def build_branch_point_benchmark(
     label: str,
     heldout_pack_id: str = _DEFAULT_BENCHMARK_PACK_ID,
 ) -> WhatIfBenchmarkBuildResult:
+    if heldout_pack_id == _DEFAULT_BENCHMARK_PACK_ID and world.source != "enron":
+        raise ValueError(
+            "enron_business_outcome_v1 requires an Enron historical source"
+        )
     root = Path(artifacts_root).expanduser().resolve() / _slug(label)
     root.mkdir(parents=True, exist_ok=True)
     build_path = root / "branch_point_benchmark_build.json"

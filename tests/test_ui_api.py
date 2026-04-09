@@ -33,7 +33,15 @@ from vei.workspace.api import (
     create_workspace_from_template,
     generate_workspace_scenarios_from_import,
     import_workspace,
+    load_workspace,
     sync_workspace_source,
+    write_workspace,
+)
+from vei.whatif import load_world, materialize_episode
+from vei.whatif.models import (
+    WhatIfEpisodeManifest,
+    WhatIfEventReference,
+    WhatIfForecast,
 )
 
 
@@ -93,6 +101,56 @@ def _write_rosetta_fixture(root: Path) -> None:
         pa.Table.from_pylist(content_rows),
         root / "enron_rosetta_events_content.parquet",
     )
+
+
+def _write_mail_archive_fixture(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    archive_path = root / "mail_archive.json"
+    archive_path.write_text(
+        json.dumps(
+            {
+                "organization_name": "Py Corp",
+                "organization_domain": "pycorp.example.com",
+                "threads": [
+                    {
+                        "thread_id": "py-legal-001",
+                        "subject": "Pricing addendum",
+                        "category": "historical",
+                        "messages": [
+                            {
+                                "message_id": "py-msg-001",
+                                "from": "emma@pycorp.example.com",
+                                "to": "legal@pycorp.example.com",
+                                "subject": "Pricing addendum",
+                                "body_text": "Please review before we send this draft to Redwood.",
+                                "timestamp": "2026-03-01T09:00:00Z",
+                            },
+                            {
+                                "message_id": "py-msg-002",
+                                "from": "legal@pycorp.example.com",
+                                "to": "emma@pycorp.example.com",
+                                "subject": "Re: Pricing addendum",
+                                "body_text": "Hold for one markup round. Counsel wants one more pass.",
+                                "timestamp": "2026-03-01T09:05:00Z",
+                            },
+                            {
+                                "message_id": "py-msg-003",
+                                "from": "emma@pycorp.example.com",
+                                "to": "partner@redwoodcapital.com",
+                                "subject": "Pricing addendum",
+                                "body_text": "Sharing the draft addendum now.",
+                                "timestamp": "2026-03-01T09:10:00Z",
+                                "has_attachment_reference": True,
+                            },
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return archive_path
 
 
 def test_ui_api_serves_workspace_and_run_details(tmp_path: Path) -> None:
@@ -219,6 +277,163 @@ def test_ui_api_whatif_search_and_open_routes(tmp_path: Path, monkeypatch) -> No
     open_payload = open_response.json()
     assert open_payload["materialization"]["branch_event_id"] == "evt-001"
     assert open_payload["materialization"]["future_event_count"] == 2
+
+
+def test_ui_api_whatif_routes_support_generic_mail_archive(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "workspace"
+    create_workspace_from_template(
+        root=root,
+        source_kind="example",
+        source_ref="acquired_user_cutover",
+    )
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive")
+    monkeypatch.setenv("VEI_WHATIF_SOURCE_DIR", str(archive_path))
+    monkeypatch.setenv("VEI_WHATIF_SOURCE", "mail_archive")
+
+    client = TestClient(ui_api.create_ui_app(root))
+
+    status_response = client.get("/api/workspace/whatif")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["available"] is True
+    assert status_payload["source"] == "mail_archive"
+    assert status_payload["source_dir"] == str(archive_path.resolve())
+
+    search_response = client.post(
+        "/api/workspace/whatif/search",
+        json={"source": "auto", "query": "Redwood draft"},
+    )
+    assert search_response.status_code == 200
+    search_payload = search_response.json()
+    assert search_payload["source"] == "mail_archive"
+    assert search_payload["match_count"] >= 1
+    assert search_payload["matches"][0]["event"]["thread_id"] == "py-legal-001"
+
+    open_response = client.post(
+        "/api/workspace/whatif/open",
+        json={"source": "auto", "thread_id": "py-legal-001", "label": "py-legal"},
+    )
+    assert open_response.status_code == 200
+    open_payload = open_response.json()
+    assert open_payload["source"] == "mail_archive"
+    assert open_payload["materialization"]["organization_name"] == "Py Corp"
+    assert open_payload["materialization"]["branch_event_id"] == "py-msg-002"
+
+
+def test_ui_api_historical_workspace_prefers_saved_mail_archive(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive")
+    world = load_world(source="auto", source_dir=archive_path)
+    workspace_root = tmp_path / "historical_workspace"
+    materialize_episode(world, root=workspace_root, thread_id="py-legal-001")
+
+    other_archive = tmp_path / "other_mail_archive" / "mail_archive.json"
+    other_archive.parent.mkdir(parents=True, exist_ok=True)
+    other_archive.write_text(
+        json.dumps(
+            {
+                "organization_name": "Other Corp",
+                "organization_domain": "other.example.com",
+                "threads": [
+                    {
+                        "thread_id": "other-001",
+                        "subject": "Other thread",
+                        "messages": [
+                            {
+                                "message_id": "other-msg-001",
+                                "from": "ceo@other.example.com",
+                                "to": "board@other.example.com",
+                                "subject": "Other thread",
+                                "body_text": "Different archive entirely.",
+                                "timestamp": "2026-04-01T10:00:00Z",
+                            }
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VEI_WHATIF_SOURCE_DIR", str(other_archive))
+    monkeypatch.setenv("VEI_WHATIF_SOURCE", "enron")
+
+    client = TestClient(ui_api.create_ui_app(workspace_root))
+
+    status_response = client.get("/api/workspace/whatif")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["source"] == "mail_archive"
+    assert status_payload["source_dir"].endswith("whatif_mail_archive.json")
+
+    search_response = client.post(
+        "/api/workspace/whatif/search",
+        json={"source": "auto", "query": "pricing"},
+    )
+    assert search_response.status_code == 200
+    search_payload = search_response.json()
+    assert search_payload["match_count"] == 3
+    assert search_payload["matches"][0]["event"]["timestamp"].startswith("2026-03-01")
+
+
+def test_ui_api_historical_workspace_prefers_manifest_rosetta_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    primary_rosetta = tmp_path / "primary_rosetta"
+    fallback_rosetta = tmp_path / "fallback_rosetta"
+    _write_rosetta_fixture(primary_rosetta)
+    _write_rosetta_fixture(fallback_rosetta)
+    workspace_root = tmp_path / "historical_enron_workspace"
+    create_workspace_from_template(
+        root=workspace_root,
+        source_kind="vertical",
+        source_ref="b2b_saas",
+    )
+    episode = WhatIfEpisodeManifest(
+        source="enron",
+        source_dir=primary_rosetta,
+        workspace_root=workspace_root,
+        organization_name="Enron Corporation",
+        organization_domain="enron.com",
+        thread_id="thr-external",
+        thread_subject="Draft term sheet",
+        branch_event_id="evt-001",
+        branch_timestamp="2001-05-01T10:00:00Z",
+        branch_event=WhatIfEventReference(
+            event_id="evt-001",
+            timestamp="2001-05-01T10:00:00Z",
+            actor_id="jeff.skilling@enron.com",
+            target_id="outside@lawfirm.com",
+            event_type="message",
+            thread_id="thr-external",
+            subject="Draft term sheet",
+            snippet="External draft attached for review.",
+        ),
+        history_message_count=0,
+        future_event_count=2,
+        baseline_dataset_path="whatif_baseline_dataset.json",
+        content_notice="Historical email bodies are grounded in archive excerpts and metadata.",
+        forecast=WhatIfForecast(backend="historical", risk_score=1.0),
+    )
+    (workspace_root / "whatif_episode_manifest.json").write_text(
+        episode.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VEI_WHATIF_ROSETTA_DIR", str(fallback_rosetta))
+    monkeypatch.setenv("VEI_WHATIF_SOURCE", "mail_archive")
+
+    client = TestClient(ui_api.create_ui_app(workspace_root))
+    status_response = client.get("/api/workspace/whatif")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["source"] == "enron"
+    assert status_payload["source_dir"] == str(primary_rosetta.resolve())
 
 
 def test_ui_api_whatif_run_route_returns_experiment_payload(
@@ -941,6 +1156,68 @@ def test_ui_api_exposes_story_bundle_and_export_preview(tmp_path: Path) -> None:
         "continuous_eval_export",
         "agent_ops_export",
     ]
+
+
+def test_ui_api_exposes_historical_workspace_without_vertical_story(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "historical-ui"
+    create_workspace_from_template(
+        root=root,
+        source_kind="vertical",
+        source_ref="b2b_saas",
+    )
+    manifest = load_workspace(root)
+    manifest.title = "Enron Corporation"
+    manifest.description = "Historical Enron replay workspace"
+    write_workspace(root, manifest)
+    episode = WhatIfEpisodeManifest(
+        source="enron",
+        source_dir=tmp_path / "rosetta",
+        workspace_root=root,
+        organization_name="Enron Corporation",
+        organization_domain="enron.com",
+        thread_id="thr_master_agreement",
+        thread_subject="Master Agreement",
+        branch_event_id="enron_branch_001",
+        branch_timestamp="2000-09-27T13:42:00Z",
+        branch_event=WhatIfEventReference(
+            event_id="enron_branch_001",
+            timestamp="2000-09-27T13:42:00Z",
+            actor_id="debra.perlingiere@enron.com",
+            target_id="kathy_gerken@cargill.com",
+            event_type="assignment",
+            thread_id="thr_master_agreement",
+            subject="Master Agreement",
+            snippet="Attached for your review is a draft Master Agreement.",
+        ),
+        history_message_count=6,
+        future_event_count=84,
+        baseline_dataset_path="whatif_baseline_dataset.json",
+        content_notice="Historical email bodies are grounded in archive excerpts and metadata.",
+        forecast=WhatIfForecast(backend="historical", risk_score=1.0),
+    )
+    (root / "whatif_episode_manifest.json").write_text(
+        episode.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    client = TestClient(ui_api.create_ui_app(root))
+
+    story_response = client.get("/api/story")
+    assert story_response.status_code == 200
+    assert story_response.json() == {}
+
+    historical_response = client.get("/api/workspace/historical")
+    assert historical_response.status_code == 200
+    payload = historical_response.json()
+    assert payload["organization_name"] == "Enron Corporation"
+    assert payload["thread_subject"] == "Master Agreement"
+    assert payload["branch_event"]["actor_id"] == "debra.perlingiere@enron.com"
+
+    fidelity_response = client.get("/api/fidelity")
+    assert fidelity_response.status_code == 200
+    assert fidelity_response.json() == {}
 
 
 def test_ui_api_exposes_playable_mission_mode(tmp_path: Path) -> None:

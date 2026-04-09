@@ -188,6 +188,69 @@ def _write_rosetta_fixture(root: Path) -> None:
     )
 
 
+def _write_mail_archive_fixture(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    archive_path = root / "mail_archive.json"
+    archive_path.write_text(
+        json.dumps(
+            {
+                "organization_name": "Py Corp",
+                "organization_domain": "pycorp.example.com",
+                "captured_at": "2026-03-01T09:15:00Z",
+                "threads": [
+                    {
+                        "thread_id": "py-legal-001",
+                        "subject": "Pricing addendum",
+                        "category": "historical",
+                        "messages": [
+                            {
+                                "message_id": "py-msg-001",
+                                "from": "emma@pycorp.example.com",
+                                "to": "legal@pycorp.example.com",
+                                "subject": "Pricing addendum",
+                                "body_text": "Please review before we send this draft to Redwood.",
+                                "timestamp": "2026-03-01T09:00:00Z",
+                            },
+                            {
+                                "message_id": "py-msg-002",
+                                "from": "legal@pycorp.example.com",
+                                "to": "emma@pycorp.example.com",
+                                "subject": "Re: Pricing addendum",
+                                "body_text": "Hold for one markup round. Counsel wants one more pass.",
+                                "timestamp": "2026-03-01T09:05:00Z",
+                            },
+                            {
+                                "message_id": "py-msg-003",
+                                "from": "emma@pycorp.example.com",
+                                "to": "partner@redwoodcapital.com",
+                                "subject": "Pricing addendum",
+                                "body_text": "Sharing the draft addendum now.",
+                                "timestamp": "2026-03-01T09:10:00Z",
+                                "has_attachment_reference": True,
+                            },
+                        ],
+                    }
+                ],
+                "actors": [
+                    {
+                        "actor_id": "emma@pycorp.example.com",
+                        "email": "emma@pycorp.example.com",
+                        "display_name": "Emma Rowan",
+                    },
+                    {
+                        "actor_id": "legal@pycorp.example.com",
+                        "email": "legal@pycorp.example.com",
+                        "display_name": "Legal Team",
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return archive_path
+
+
 def _make_llm_replay_result(
     *,
     prompt: str,
@@ -376,6 +439,136 @@ def test_materialize_episode_builds_mail_only_workspace_and_replay(
     assert replay.inbox_count >= 3
 
 
+def test_load_mail_archive_world_and_materialize_episode(
+    tmp_path: Path,
+) -> None:
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive")
+    world = load_world(source="auto", source_dir=archive_path)
+
+    search_result = search_events(world, query="Redwood draft", limit=5)
+    workspace_root = tmp_path / "py_episode"
+    materialization = materialize_episode(
+        world,
+        root=workspace_root,
+        thread_id="py-legal-001",
+    )
+    manifest = load_episode_manifest(workspace_root)
+    bundle = load_customer_twin(workspace_root)
+    replay = replay_episode_baseline(workspace_root, tick_ms=400_000)
+
+    assert world.source == "mail_archive"
+    assert world.summary.organization_name == "Py Corp"
+    assert world.summary.organization_domain == "pycorp.example.com"
+    assert world.summary.thread_count == 1
+    assert search_result.match_count >= 1
+    assert materialization.organization_name == "Py Corp"
+    assert materialization.organization_domain == "pycorp.example.com"
+    assert (workspace_root / "whatif_mail_archive.json").exists()
+    assert manifest.source == "mail_archive"
+    assert manifest.branch_event_id == "py-msg-002"
+    assert bundle.organization_name == "Py Corp"
+    assert bundle.organization_domain == "pycorp.example.com"
+    assert replay.scheduled_event_count == 2
+    assert replay.delivered_event_count == 2
+
+
+def test_load_mail_archive_world_prefers_sender_domain_for_company_inference(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "domain_inference_archive"
+    root.mkdir(parents=True, exist_ok=True)
+    archive_path = root / "mail_archive.json"
+    archive_path.write_text(
+        json.dumps(
+            {
+                "threads": [
+                    {
+                        "thread_id": "py-legal-002",
+                        "subject": "Draft policy",
+                        "messages": [
+                            {
+                                "message_id": "sender-001",
+                                "from": "owner@pycorp.example.com",
+                                "to": [
+                                    "person1@outside.example.com",
+                                    "person2@outside.example.com",
+                                    "person3@outside.example.com",
+                                ],
+                                "subject": "Draft policy",
+                                "body_text": "Please review.",
+                                "timestamp": "2026-03-02T10:00:00Z",
+                            },
+                            {
+                                "message_id": "sender-002",
+                                "from": "legal@pycorp.example.com",
+                                "to": "owner@pycorp.example.com",
+                                "subject": "Re: Draft policy",
+                                "body_text": "One internal legal pass first.",
+                                "timestamp": "2026-03-02T10:05:00Z",
+                            },
+                        ],
+                    }
+                ]
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    world = load_world(source="auto", source_dir=archive_path)
+
+    assert world.summary.organization_domain == "pycorp.example.com"
+
+
+def test_materialize_episode_defaults_to_generic_archive_domain_when_missing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "nameless_archive"
+    root.mkdir(parents=True, exist_ok=True)
+    archive_path = root / "mail_archive.json"
+    archive_path.write_text(
+        json.dumps(
+            {
+                "threads": [
+                    {
+                        "thread_id": "plain-001",
+                        "subject": "Plain text thread",
+                        "messages": [
+                            {
+                                "message_id": "plain-msg-001",
+                                "from": "Legal Team",
+                                "to": "Operations",
+                                "subject": "Plain text thread",
+                                "body_text": "Please hold this internally.",
+                                "timestamp": "2026-03-03T08:00:00Z",
+                            },
+                            {
+                                "message_id": "plain-msg-002",
+                                "from": "Operations",
+                                "to": "Legal Team",
+                                "subject": "Re: Plain text thread",
+                                "body_text": "Holding for review.",
+                                "timestamp": "2026-03-03T08:05:00Z",
+                            },
+                        ],
+                    }
+                ]
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    world = load_world(source="auto", source_dir=archive_path)
+    materialization = materialize_episode(
+        world,
+        root=tmp_path / "plain_episode",
+        thread_id="plain-001",
+    )
+
+    assert materialization.organization_domain == "archive.local"
+
+
 def test_vei_whatif_cli_explore_and_open_episode(tmp_path: Path) -> None:
     rosetta_dir = tmp_path / "rosetta"
     _write_rosetta_fixture(rosetta_dir)
@@ -450,6 +643,123 @@ def test_vei_whatif_cli_explore_and_open_episode(tmp_path: Path) -> None:
     events_payload = json.loads(events_result.output)
     assert events_payload["match_count"] == 1
     assert events_payload["matches"][0]["event"]["event_id"] == "evt-005"
+
+
+def test_vei_whatif_cli_supports_generic_mail_archive_source(tmp_path: Path) -> None:
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive_cli")
+    runner = CliRunner()
+
+    explore_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "explore",
+            "--source-dir",
+            str(archive_path),
+            "--scenario",
+            "external_dlp",
+        ],
+    )
+    assert explore_result.exit_code == 0, explore_result.output
+    explore_payload = json.loads(explore_result.output)
+    assert explore_payload["world_summary"]["organization_name"] == "Py Corp"
+
+    workspace_root = tmp_path / "py_episode_cli"
+    open_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "open-episode",
+            "--source-dir",
+            str(archive_path),
+            "--root",
+            str(workspace_root),
+            "--thread-id",
+            "py-legal-001",
+        ],
+    )
+    assert open_result.exit_code == 0, open_result.output
+    open_payload = json.loads(open_result.output)
+    assert open_payload["organization_name"] == "Py Corp"
+    assert open_payload["branch_event"]["event_id"] == "py-msg-002"
+
+    replay_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "replay",
+            "--root",
+            str(workspace_root),
+            "--tick-ms",
+            "400000",
+        ],
+    )
+    assert replay_result.exit_code == 0, replay_result.output
+    replay_payload = json.loads(replay_result.output)
+    assert replay_payload["scheduled_event_count"] == 2
+    assert replay_payload["delivered_event_count"] == 2
+
+    events_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "events",
+            "--source-dir",
+            str(archive_path),
+            "--query",
+            "Redwood draft",
+        ],
+    )
+    assert events_result.exit_code == 0, events_result.output
+    events_payload = json.loads(events_result.output)
+    assert events_payload["match_count"] >= 1
+    assert events_payload["matches"][0]["event"]["thread_id"] == "py-legal-001"
+
+
+def test_vei_whatif_cli_rejects_enron_research_pack_for_generic_archive(
+    tmp_path: Path,
+) -> None:
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive_cli_pack")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "pack",
+            "run",
+            "--source-dir",
+            str(archive_path),
+            "--label",
+            "generic-pack",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "requires an Enron historical source" in result.output
+
+
+def test_vei_whatif_cli_rejects_enron_benchmark_for_generic_archive(
+    tmp_path: Path,
+) -> None:
+    archive_path = _write_mail_archive_fixture(tmp_path / "mail_archive_cli_benchmark")
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "benchmark",
+            "build",
+            "--source-dir",
+            str(archive_path),
+            "--label",
+            "generic-benchmark",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "requires an Enron historical source" in result.output
 
 
 def test_search_events_finds_exact_branch_points(tmp_path: Path) -> None:
