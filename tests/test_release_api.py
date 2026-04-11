@@ -7,6 +7,7 @@ import typer.testing
 
 from vei.benchmark.api import run_benchmark_batch
 from vei.benchmark.models import BenchmarkCaseSpec
+from vei.cli.vei import app as vei_app
 from vei.cli.vei_release import app as release_app
 from vei.data.rollout import rollout_procurement
 from vei.release.api import (
@@ -116,4 +117,34 @@ def test_vei_release_cli_nightly(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert (
         tmp_path / "releases" / "nightly" / "nightly-cli" / "manifest.json"
+    ).exists()
+
+
+def test_root_vei_cli_exposes_release_command(tmp_path: Path) -> None:
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        vei_app,
+        [
+            "release",
+            "nightly",
+            "--release-root",
+            str(tmp_path / "releases"),
+            "--workspace-root",
+            str(tmp_path / "workspace"),
+            "--version",
+            "nightly-root-cli",
+            "--environments",
+            "2",
+            "--scenarios-per-environment",
+            "2",
+            "--rollout-episodes",
+            "1",
+            "--benchmark-scenario",
+            "multi_channel",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (
+        tmp_path / "releases" / "nightly" / "nightly-root-cli" / "manifest.json"
     ).exists()

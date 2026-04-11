@@ -12,6 +12,7 @@ from vei.cli.vei_inspect import app as inspect_app
 from vei.cli.vei_llm_test import app as llm_test_app
 from vei.cli.vei_project import app as project_app
 from vei.cli.vei_quickstart import app as quickstart_app
+from vei.cli.vei_release import app as release_app
 from vei.cli.vei_report import app as report_app
 from vei.cli.vei_run import app as run_app
 from vei.cli.vei_smoke import app as smoke_app
@@ -31,6 +32,7 @@ app = typer.Typer(
 
 app.add_typer(project_app, name="project")
 app.add_typer(quickstart_app, name="quickstart")
+app.add_typer(release_app, name="release")
 app.add_typer(run_app, name="run")
 app.add_typer(eval_app, name="eval")
 app.add_typer(inspect_app, name="inspect")
