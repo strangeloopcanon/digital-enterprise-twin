@@ -141,6 +141,7 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - `get_service_ops_policy_bundle()` / `replay_service_ops_with_policy_delta()` — service-ops-only what-if replay over four named policy knobs from the initial snapshot
 - `vei.whatif`
   - `load_world()` — build a typed historical world from an archive-backed source such as Enron Rosetta
+  - packaged Enron public-context loader and slicer — attaches dated financial and public-news facts that fit the email window and branch date
   - `search_events()` — find exact branch points by actor, participant, thread, event type, or subject text before materializing a replay workspace
   - `run_whatif()` — deterministic whole-history policy analysis over the imported event corpus
   - `materialize_episode()` — turn one selected historical event into a strict mail-first replay workspace that branches just before that event
@@ -154,8 +155,9 @@ For the canonical product demo, `vei project identity-demo` wraps that ladder in
   - `GET /api/runs/diff-cross` — HTTP endpoint for cross-run snapshot comparison
   - `POST /api/missions/{run_id}/branch` with optional `snapshot_id` — fork from any snapshot via the UI
   - `GET /api/runs/{run_id}/policy-knobs` / `POST /api/runs/{run_id}/replay-with-policy` — service-ops policy replay endpoints used by the Studio outcome flow
-  - `GET /api/workspace/whatif` / `POST /api/workspace/whatif/search` / `POST /api/workspace/whatif/open` / `POST /api/workspace/whatif/run` — search-first historical what-if flow used by the Studio workspace view
-  - Studio browser code is loaded as ordered plain scripts (`studio-core.js`, `studio-compare.js`, `studio-company.js`, `studio-outcome.js`, `studio-bootstrap.js`) rather than one giant frontend file
+  - `GET /api/workspace/whatif` / `POST /api/workspace/whatif/search` / `POST /api/workspace/whatif/scene` / `POST /api/workspace/whatif/open` / `POST /api/workspace/whatif/run` / `POST /api/workspace/whatif/rank` — search-first historical what-if flow used by the Studio workspace view
+  - `GET /api/workspace/whatif/audit` / `POST /api/workspace/whatif/audit/{case_id}/{objective_pack_id}` — benchmark audit workflow used by the Studio audit view
+  - Studio browser code is loaded as ordered plain scripts (`studio-core.js`, `studio-compare.js`, `studio-company.js`, `studio-outcome.js`, `studio-whatif.js`, `studio-audit.js`, `studio-bootstrap.js`) rather than one giant frontend file
 
 ## Context and Synthesis Layer
 

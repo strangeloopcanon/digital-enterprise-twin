@@ -311,6 +311,14 @@ The experiment command writes a bundle with JSON and Markdown summaries plus per
 
 In Studio, the same flow is available as a search-first loop: find a real historical event, materialize it, then run the counterfactual and inspect the saved comparison.
 
+The Enron flow now carries a packaged public-company context pack alongside the mail archive. That pack lives under `vei/whatif/fixtures/enron_public_context`, can be refreshed with `python scripts/prepare_enron_public_context.py`, and contains 7 dated financial checkpoints plus 7 dated public news events drawn from 7 archived public source files. Those public facts span December 31, 1998 through December 2, 2001. VEI filters that public context twice: once to the loaded Enron email window, and again to the chosen branch date. The saved manifest, the Studio decision scene, the LLM counterfactual prompt, and the held-out benchmark dossiers all use that same pre-branch slice.
+
+![Enron historical what-if flow](docs/assets/enron-whatif/enron-whatif-flow.gif)
+
+Later 2001 branch points now show the combined mail-plus-public-context view directly in Studio.
+
+![Enron decision scene with public context](docs/assets/enron-whatif/enron-decision-scene-top.png)
+
 When you want the screen to show Enron itself, serve the saved Enron workspace directly:
 
 ```bash
@@ -338,9 +346,9 @@ The LLM path does not rewrite the whole company. It generates a bounded continua
 
 The E-JEPA path does not write emails. When the local JEPA runtime is available, VEI trains a local forecast around the selected branch point and predicts how the rest of the thread changes in structure, such as outside sharing and risk. If that runtime is unavailable, VEI falls back to the proxy forecast described above.
 
-**What the result showed**
+**What the current combined dataset shows before you branch**
 
-In the final saved run, the historical path had 84 follow-up events after the branch point. The LLM path produced 3 internal follow-up emails: Debra asked Gerald for review, Gerald replied with legal edits, and Debra told internal teammates the Cargill send was on hold. In that same run, the real E-JEPA path predicted lower risk (`1.0 -> 0.983`) and 29 fewer outside-addressed sends. The saved bundle for that example lives under `_vei_out/whatif_live_runs_20260405_final/master_agreement_internal_review`.
+Opening that branch point against the current combined dataset creates a workspace with 6 prior messages and 84 recorded future events. Because the branch date is September 27, 2000, the public-company panel shows the 1998 and 1999 annual checkpoints and no public-news items yet. Later 2001 branch points pick up both the financial and public-news columns automatically.
 </details>
 
 ### Enron business-outcome benchmark
@@ -356,6 +364,8 @@ This benchmark uses only the history before the chosen decision point plus a str
 - `execution_drag`
 
 The held-out Enron pack is judged separately from rollout generation. Each held-out case gets one dossier per business objective, the locked LLM judge ranks the candidate actions from the pre-branch dossier alone, and the benchmark keeps an audit queue for low-confidence or sampled cases.
+
+Those Enron dossiers now also include the dated public-company backdrop that was already known by the branch date. The default held-out pack is `enron_business_outcome_v1`, and it currently covers 24 fixed branch points across 6 case families with 4 candidate actions per case. The models still train on the same pre-branch mail history, summary features, and structured action schema as before. The public context is informational for replay, judging, and inspection in this pass.
 
 ```bash
 # Build the pre-branch Enron benchmark dataset and held-out case pack

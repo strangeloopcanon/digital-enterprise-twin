@@ -30,6 +30,7 @@ Each case produces one **dossier** per business objective. The dossier contains:
 - the objective question, criteria, and decision rule from the rubric
 - branch event details (sender, recipients, subject, excerpt)
 - pre-branch thread history
+- branch-filtered public-company context when the source is Enron and dated public facts were already known
 - candidate decisions with action tags, review path, coordination breadth, and outside sharing posture
 
 The judge does **not** see rollout futures, model predictions, or any post-branch information.

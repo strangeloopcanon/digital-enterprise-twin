@@ -81,6 +81,10 @@ from .corpus import (
 )
 from .ejepa import default_forecast_backend, run_ejepa_counterfactual
 from .interventions import intervention_tags
+from .public_context import (
+    public_context_prompt_lines,
+    slice_public_context_to_branch,
+)
 from .ranking import (
     aggregate_outcome_signals,
     get_objective_pack,
@@ -267,6 +271,10 @@ def materialize_episode(
         thread_id=thread_id,
         event_id=event_id,
     )
+    branch_public_context = slice_public_context_to_branch(
+        world.public_context,
+        branch_timestamp=branch_event.timestamp,
+    )
 
     archive_threads = [
         {
@@ -310,6 +318,11 @@ def materialize_episode(
                 "branch_event_id": branch_event.event_id,
                 "content_notice": str(
                     world.metadata.get("content_notice", CONTENT_NOTICE)
+                ),
+                "public_context": (
+                    branch_public_context.model_dump(mode="json")
+                    if branch_public_context is not None
+                    else None
                 ),
             }
         },
@@ -370,6 +383,7 @@ def materialize_episode(
         ),
         baseline_future_preview=[event_reference(event) for event in future_events[:5]],
         forecast=forecast,
+        public_context=branch_public_context,
     )
     manifest_path = workspace_root / "whatif_episode_manifest.json"
     manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
@@ -388,6 +402,7 @@ def materialize_episode(
         future_event_count=len(future_events),
         baseline_future_preview=list(manifest.baseline_future_preview),
         forecast=forecast,
+        public_context=branch_public_context,
     )
 
 
@@ -414,6 +429,10 @@ def build_decision_scene(
     organization_name = world.summary.organization_name or "Historical Archive"
     organization_domain = world.summary.organization_domain or "archive.local"
     branch_reference = event_reference(branch_event)
+    branch_public_context = slice_public_context_to_branch(
+        world.public_context,
+        branch_timestamp=branch_event.timestamp,
+    )
     forecast = forecast_episode(
         future_events,
         organization_domain=organization_domain,
@@ -458,6 +477,7 @@ def build_decision_scene(
             organization_name=organization_name,
             organization_domain=organization_domain,
         ),
+        public_context=branch_public_context,
     )
 
 
@@ -510,6 +530,7 @@ def build_saved_decision_scene(
             organization_name=manifest.organization_name,
             organization_domain=manifest.organization_domain,
         ),
+        public_context=manifest.public_context,
     )
 
 
@@ -2237,18 +2258,21 @@ def _llm_counterfactual_prompt(
             history_lines.append(
                 f"- From: {sender}\n  To: {recipient}\n  Subject: {subject}\n  Body: {body}"
             )
-    return "\n".join(
+    prompt_lines = [
+        f"Thread subject: {manifest.thread_subject}",
+        f"Branch event id: {manifest.branch_event_id}",
+        "Historical event being changed:",
+        (
+            f"- From: {manifest.branch_event.actor_id}\n"
+            f"  To: {', '.join(manifest.branch_event.to_recipients) or manifest.branch_event.target_id}\n"
+            f"  Type: {manifest.branch_event.event_type}\n"
+            f"  Subject: {manifest.branch_event.subject}\n"
+            f"  Excerpt: {manifest.branch_event.snippet}"
+        ),
+    ]
+    prompt_lines.extend(public_context_prompt_lines(manifest.public_context))
+    prompt_lines.extend(
         [
-            f"Thread subject: {manifest.thread_subject}",
-            f"Branch event id: {manifest.branch_event_id}",
-            "Historical event being changed:",
-            (
-                f"- From: {manifest.branch_event.actor_id}\n"
-                f"  To: {', '.join(manifest.branch_event.to_recipients) or manifest.branch_event.target_id}\n"
-                f"  Type: {manifest.branch_event.event_type}\n"
-                f"  Subject: {manifest.branch_event.subject}\n"
-                f"  Excerpt: {manifest.branch_event.snippet}"
-            ),
             "Allowed actors:",
             ", ".join(allowed_actors),
             "Allowed recipients:",
@@ -2260,6 +2284,7 @@ def _llm_counterfactual_prompt(
             "Generate only what happens on this thread after the divergence.",
         ]
     )
+    return "\n".join(prompt_lines)
 
 
 def _normalize_llm_messages(

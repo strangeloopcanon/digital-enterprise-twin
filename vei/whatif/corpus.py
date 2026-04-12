@@ -20,6 +20,7 @@ from .models import (
     WhatIfWorld,
     WhatIfWorldSummary,
 )
+from .public_context import empty_enron_public_context, load_enron_public_context
 
 ENRON_DOMAIN = "enron.com"
 CONTENT_NOTICE = (
@@ -138,6 +139,14 @@ def load_enron_world(
         event_type_counts=dict(Counter(event.event_type for event in events)),
         key_actor_ids=[actor.actor_id for actor in actors[:5]],
     )
+    public_context = (
+        load_enron_public_context(
+            window_start=summary.first_timestamp,
+            window_end=summary.last_timestamp,
+        )
+        if events
+        else empty_enron_public_context()
+    )
     return WhatIfWorld(
         source="enron",
         source_dir=base,
@@ -147,6 +156,7 @@ def load_enron_world(
         threads=threads,
         events=events,
         metadata={"content_notice": CONTENT_NOTICE},
+        public_context=public_context,
     )
 
 
@@ -237,6 +247,7 @@ def load_mail_archive_world(
         threads=threads,
         events=events,
         metadata={"content_notice": MAIL_ARCHIVE_CONTENT_NOTICE},
+        public_context=None,
     )
 
 
