@@ -143,37 +143,38 @@ The matched-input comparison path uses:
 vei whatif benchmark build \
   --rosetta-dir /path/to/rosetta \
   --artifacts-root _vei_out/whatif_benchmarks/branch_point_ranking_v2 \
-  --label enron_business_outcome_reset
+  --label enron_business_outcome_public_context_20260412
 
 # Train one model family
 vei whatif benchmark train \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent
 
 # Judge the held-out counterfactual cases
 vei whatif benchmark judge \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model gpt-4.1-mini
 
 # Evaluate one trained model
 vei whatif benchmark eval \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent \
-  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
+  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
 
 # Run the matched-input study across models and seeds
 vei whatif benchmark study \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
-  --label matched_input_rerun \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
+  --label matched_input_public_context_20260412 \
   --model-id jepa_latent \
   --model-id full_context_transformer \
   --model-id treatment_transformer \
   --seed 42042 \
   --seed 42043 \
   --seed 42044 \
-  --epochs 2 \
-  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json
+  --seed 42045 \
+  --seed 42046 \
+  --epochs 2
 ```
 
 ## Artifact layout
@@ -222,18 +223,18 @@ Study runs write:
 
 ## Current comparison result
 
-The current headline result is the matched-input multi-seed rerun over the saved Enron reset build. That rerun compares the three aligned models that all read the same pre-branch contract: `jepa_latent`, `full_context_transformer`, and `treatment_transformer`.
+The current headline result is the matched-input multi-seed rerun over the saved Enron public-context build. That rerun compares the three aligned models that all read the same pre-branch contract: `jepa_latent`, `full_context_transformer`, and `treatment_transformer`.
 
 The current saved 5-seed, 2-epoch matched-input study produced these held-out decision scores:
 
 | Model | Mean passed checks | Total checks | Mean pass rate | Seed std |
 |---|---:|---:|---:|---:|
-| `jepa_latent` | `76.6` | `120` | `0.638` | `0.022` |
-| `full_context_transformer` | `75.2` | `120` | `0.627` | `0.025` |
-| `treatment_transformer` | `65.6` | `120` | `0.547` | `0.108` |
+| `jepa_latent` | `80.2` | `120` | `0.668` | `0.012` |
+| `full_context_transformer` | `79.4` | `120` | `0.662` | `0.031` |
+| `treatment_transformer` | `68.2` | `120` | `0.568` | `0.117` |
 
-On the simpler factual task of predicting whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC.
+On the simpler factual task of predicting whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC: `0.981` for `jepa_latent`, `0.982` for `full_context_transformer`, and `0.980` for `treatment_transformer`.
 
-The main point is that the fair rerun changed the ordering. Once the models use the same pre-branch inputs and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the business decision checks, while the treatment transformer drops back and varies much more from seed to seed.
+The main point is that the fair rerun keeps the JEPA-style path in front on the business decision checks even after the held-out dossiers picked up the dated Enron public-company context. The full-context transformer stays close. The treatment transformer varies much more from seed to seed.
 
 An earlier single-run reference comparison is still useful as a historical checkpoint, but it should not be treated as the headline result because it mixed narrower and richer model inputs. Use `vei whatif benchmark study` for the clean comparison path and look under `studies/` for the aggregate report.

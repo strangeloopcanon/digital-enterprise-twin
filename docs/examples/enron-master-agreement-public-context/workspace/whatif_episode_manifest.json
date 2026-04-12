@@ -1,0 +1,233 @@
+{
+  "version": "2",
+  "source": "enron",
+  "source_dir": "not-included-in-repo-example",
+  "workspace_root": "workspace",
+  "organization_name": "Enron Corporation",
+  "organization_domain": "enron.com",
+  "thread_id": "thr_e565b47423d035c9",
+  "thread_subject": "Master Agreement",
+  "branch_event_id": "enron_bcda1b925800af8c",
+  "branch_timestamp": "2000-09-27T13:42:00Z",
+  "branch_event": {
+    "event_id": "enron_bcda1b925800af8c",
+    "timestamp": "2000-09-27T13:42:00Z",
+    "actor_id": "debra.perlingiere@enron.com",
+    "target_id": "kathy_gerken@cargill.com",
+    "event_type": "assignment",
+    "thread_id": "thr_e565b47423d035c9",
+    "subject": "Master Agreement",
+    "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+    "to_recipients": [
+      "kathy_gerken@cargill.com"
+    ],
+    "cc_recipients": [],
+    "has_attachment_reference": true,
+    "is_forward": false,
+    "is_reply": false,
+    "is_escalation": false
+  },
+  "history_message_count": 6,
+  "future_event_count": 84,
+  "baseline_dataset_path": "whatif_baseline_dataset.json",
+  "content_notice": "Historical email bodies are built from Rosetta excerpts and event metadata. They are grounded, but they are not full original messages.",
+  "actor_ids": [
+    ".cooper@enron.com",
+    "aboytinck@email.msn.com",
+    "aboytinck@msn.com",
+    "agriffin@texicannaturalgas.com",
+    "alisha.mahabir@enron.com",
+    "chgarn@ci.long-beach.ca.us",
+    "ctrice@powersrc.com",
+    "debra.perlingiere@enron.com",
+    "dlin@fpcusa.com",
+    "dlin@fpeusa.com",
+    "dverban@wpsenergy.com",
+    "easters@ldng.com",
+    "gerald.nemec@enron.com",
+    "group:0b0b2c51fd38b2fc",
+    "group:6b619b10b059cbc3",
+    "group:6e653538ab02bc2f",
+    "group:9df35075f6e45957",
+    "group:a197097db06cc32d",
+    "group:e53c89b0ba5529fa",
+    "group:f87267c99938e537",
+    "jhunt@nicor.com",
+    "kathy_gerken@cargill.com",
+    "kdirks@utilicorp.com",
+    "kkohler@albchem.com",
+    "laoh@chevron.com",
+    "larrykarl@ftpc.fpcusa.com",
+    "lee.papayoti@enron.com",
+    "linda_woodring@mudnebr.com",
+    "lorvi@aurora-gas.com",
+    "majed.nachawati@enron.com",
+    "marc_rubenstein@cargill.com",
+    "marie.heard@enron.com",
+    "pgraff@reliant.com",
+    "pgraff@reliantenergy.com",
+    "randy.otto@enron.com",
+    "rmasciangelo@duke-energy.com",
+    "rweiss@lehman.com",
+    "sandra.haskins@pgnmail.com",
+    "sara.shackleton@enron.com",
+    "stephanie.panus@enron.com",
+    "tammi.depaolis@enron.com",
+    "tim.neuman@williams.com",
+    "tim.newman@williams.com",
+    "tony@gatherco.com",
+    "vangie.mcgilloway@powersrc.com",
+    "veronica.espinoza@enron.com",
+    "wwilson@arm-ltd.com"
+  ],
+  "baseline_future_preview": [
+    {
+      "event_id": "enron_bcda1b925800af8c",
+      "timestamp": "2000-09-27T13:42:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "kathy_gerken@cargill.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+      "to_recipients": [
+        "kathy_gerken@cargill.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": true,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    {
+      "event_id": "enron_dfc83644a0a54f2d",
+      "timestamp": "2000-09-27T13:42:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "kathy_gerken@cargill.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+      "to_recipients": [
+        "kathy_gerken@cargill.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": true,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    {
+      "event_id": "enron_8bfbb287dfcdabad",
+      "timestamp": "2000-09-29T14:52:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "laoh@chevron.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+      "to_recipients": [
+        "laoh@chevron.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": false,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    {
+      "event_id": "enron_a8119e090e0f2369",
+      "timestamp": "2000-09-29T14:52:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "laoh@chevron.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+      "to_recipients": [
+        "laoh@chevron.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": false,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    {
+      "event_id": "enron_3303415583d68046",
+      "timestamp": "2000-10-02T10:53:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "lee.papayoti@enron.com",
+      "event_type": "escalation",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "RE: Master Agreement",
+      "snippet": "----- Forwarded by Debra Perlingiere/HOU/ECT on 10/02/2000 10:52 AM -----\n\n\t\"Ohr, Leslie (LAOH)\" <LAOH@chevron.com>\n\t10/02/2000 10:21 AM\n\t\t \n\t\t To: \"'Debra.Perlingiere@enron.com'\" <Debra.Perlingiere@enron.com>\n\t\t cc: \n\t\t Subject: RE: Master Agreement\n\n\nDebra-- Martin Dale is the CPC client on this matter.  I'm in the process of\ngetting in touch with him this morning on the confirmation letter.\n\nLeslie\n> -----Original Message-----\n> From: Debra.Perlingiere@enron.com [SMTP:Debra.Perlingiere@enron.com]\n> Sent: Friday, September 29, 2000 2:53 PM\n> To: laoh@chevron.com\n> Subject: Master Agreement\n>",
+      "to_recipients": [
+        "lee.papayoti@enron.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": false,
+      "is_forward": true,
+      "is_reply": true,
+      "is_escalation": true
+    }
+  ],
+  "forecast": {
+    "backend": "historical",
+    "future_event_count": 84,
+    "future_escalation_count": 16,
+    "future_assignment_count": 43,
+    "future_approval_count": 0,
+    "future_external_event_count": 64,
+    "risk_score": 1.0,
+    "summary": "84 future events remain, including 16 escalations and 64 externally addressed messages."
+  },
+  "public_context": {
+    "version": "1",
+    "pack_name": "enron_public_context",
+    "organization_name": "Enron Corporation",
+    "organization_domain": "enron.com",
+    "prepared_at": "2026-04-12T13:42:12Z",
+    "integration_hint": "At integration time, compute the oldest and latest email timestamps from the active Enron slice and keep only financial_snapshots and public_news_events whose dates overlap that email window.",
+    "window_start": "1997-01-01T17:22:03Z",
+    "window_end": "2002-09-23T04:01:33Z",
+    "branch_timestamp": "2000-09-27T13:42:00Z",
+    "financial_snapshots": [
+      {
+        "snapshot_id": "fy1998_selected_financial_data",
+        "as_of": "1998-12-31T00:00:00Z",
+        "kind": "annual",
+        "label": "FY1998 selected financial data",
+        "source_ids": [
+          "enron_2000_financial_highlights"
+        ],
+        "summary": "Operating revenue was $31.26B, net income was $703M, total assets were $29.35B, shareholders' equity was $7.05B, and diluted EPS was $1.01.",
+        "metrics": {
+          "operating_revenue_usd_millions": 31260,
+          "net_income_usd_millions": 703,
+          "total_assets_usd_millions": 29350,
+          "shareholders_equity_usd_millions": 7048,
+          "diluted_eps": 1.01
+        }
+      },
+      {
+        "snapshot_id": "fy1999_selected_financial_data",
+        "as_of": "1999-12-31T00:00:00Z",
+        "kind": "annual",
+        "label": "FY1999 selected financial data",
+        "source_ids": [
+          "enron_2000_financial_highlights"
+        ],
+        "summary": "Operating revenue was $40.11B, net income was $893M, total assets were $33.38B, shareholders' equity was $9.57B, and diluted EPS was $1.10.",
+        "metrics": {
+          "operating_revenue_usd_millions": 40112,
+          "net_income_usd_millions": 893,
+          "total_assets_usd_millions": 33381,
+          "shareholders_equity_usd_millions": 9570,
+          "diluted_eps": 1.1
+        }
+      }
+    ],
+    "public_news_events": []
+  }
+}

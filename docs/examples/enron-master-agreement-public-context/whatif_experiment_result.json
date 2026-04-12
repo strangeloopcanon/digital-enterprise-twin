@@ -1,0 +1,629 @@
+{
+  "version": "2",
+  "mode": "both",
+  "label": "master_agreement_internal_review_public_context_20260412",
+  "intervention": {
+    "label": "master_agreement_internal_review_public_context_20260412",
+    "prompt": "Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+    "objective": "Messages with attachment references to outside recipients are held for review.",
+    "scenario_id": "external_dlp",
+    "thread_id": "thr_e565b47423d035c9",
+    "branch_event_id": "enron_bcda1b925800af8c"
+  },
+  "selection": {
+    "scenario": {
+      "scenario_id": "external_dlp",
+      "title": "External Sharing DLP",
+      "description": "Messages with attachment references to outside recipients are held for review.",
+      "decision_branches": [
+        "Hold the message until DLP review clears it.",
+        "Allow send but retain a mandatory audit trail."
+      ]
+    },
+    "prompt": "Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+    "world_summary": {
+      "source": "enron",
+      "organization_name": "Enron Corporation",
+      "organization_domain": "enron.com",
+      "event_count": 410019,
+      "thread_count": 133218,
+      "actor_count": 82516,
+      "custodian_count": 115,
+      "first_timestamp": "1997-01-01T17:22:03Z",
+      "last_timestamp": "2002-09-23T04:01:33Z",
+      "event_type_counts": {
+        "escalation": 143781,
+        "message": 112721,
+        "assignment": 84270,
+        "message_reply": 60406,
+        "approval": 8841
+      },
+      "key_actor_ids": [
+        "vince.kaminski@enron.com",
+        "jeff.dasovich@enron.com",
+        "tana.jones@enron.com",
+        "sara.shackleton@enron.com",
+        "chris.germany@enron.com"
+      ]
+    },
+    "matched_event_count": 90,
+    "affected_thread_count": 1,
+    "affected_actor_count": 47,
+    "blocked_forward_count": 8,
+    "blocked_escalation_count": 16,
+    "delayed_assignment_count": 43,
+    "timeline_impact": "Counterfactual replay from one explicit historical event.",
+    "top_actors": [
+      {
+        "actor_id": ".cooper@enron.com",
+        "display_name": "Cooper",
+        "affected_event_count": 1,
+        "affected_thread_count": 1,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      },
+      {
+        "actor_id": "aboytinck@email.msn.com",
+        "display_name": "Aboytinck",
+        "affected_event_count": 1,
+        "affected_thread_count": 1,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      },
+      {
+        "actor_id": "aboytinck@msn.com",
+        "display_name": "Aboytinck",
+        "affected_event_count": 2,
+        "affected_thread_count": 1,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      },
+      {
+        "actor_id": "agriffin@texicannaturalgas.com",
+        "display_name": "Agriffin",
+        "affected_event_count": 1,
+        "affected_thread_count": 1,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      },
+      {
+        "actor_id": "alisha.mahabir@enron.com",
+        "display_name": "Alisha Mahabir",
+        "affected_event_count": 1,
+        "affected_thread_count": 1,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      }
+    ],
+    "top_threads": [
+      {
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "affected_event_count": 90,
+        "participant_count": 47,
+        "reasons": [
+          "explicit_branch_point"
+        ]
+      }
+    ],
+    "top_consequences": [
+      {
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "actor_id": "",
+        "detail": "This experiment was pinned to one explicit branch point.",
+        "severity": "medium"
+      }
+    ],
+    "decision_branches": [
+      "Hold the message until DLP review clears it.",
+      "Allow send but retain a mandatory audit trail."
+    ]
+  },
+  "materialization": {
+    "manifest_path": "workspace/whatif_episode_manifest.json",
+    "bundle_path": "not-included-in-repo-example",
+    "context_snapshot_path": "workspace/context_snapshot.json",
+    "baseline_dataset_path": "workspace/whatif_baseline_dataset.json",
+    "workspace_root": "workspace",
+    "organization_name": "Enron Corporation",
+    "organization_domain": "enron.com",
+    "thread_id": "thr_e565b47423d035c9",
+    "branch_event_id": "enron_bcda1b925800af8c",
+    "branch_event": {
+      "event_id": "enron_bcda1b925800af8c",
+      "timestamp": "2000-09-27T13:42:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "kathy_gerken@cargill.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+      "to_recipients": [
+        "kathy_gerken@cargill.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": true,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    "history_message_count": 6,
+    "future_event_count": 84,
+    "baseline_future_preview": [
+      {
+        "event_id": "enron_bcda1b925800af8c",
+        "timestamp": "2000-09-27T13:42:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "kathy_gerken@cargill.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "kathy_gerken@cargill.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": true,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_dfc83644a0a54f2d",
+        "timestamp": "2000-09-27T13:42:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "kathy_gerken@cargill.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "kathy_gerken@cargill.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": true,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_8bfbb287dfcdabad",
+        "timestamp": "2000-09-29T14:52:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "laoh@chevron.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "laoh@chevron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_a8119e090e0f2369",
+        "timestamp": "2000-09-29T14:52:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "laoh@chevron.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "laoh@chevron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_3303415583d68046",
+        "timestamp": "2000-10-02T10:53:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "lee.papayoti@enron.com",
+        "event_type": "escalation",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "RE: Master Agreement",
+        "snippet": "----- Forwarded by Debra Perlingiere/HOU/ECT on 10/02/2000 10:52 AM -----\n\n\t\"Ohr, Leslie (LAOH)\" <LAOH@chevron.com>\n\t10/02/2000 10:21 AM\n\t\t \n\t\t To: \"'Debra.Perlingiere@enron.com'\" <Debra.Perlingiere@enron.com>\n\t\t cc: \n\t\t Subject: RE: Master Agreement\n\n\nDebra-- Martin Dale is the CPC client on this matter.  I'm in the process of\ngetting in touch with him this morning on the confirmation letter.\n\nLeslie\n> -----Original Message-----\n> From: Debra.Perlingiere@enron.com [SMTP:Debra.Perlingiere@enron.com]\n> Sent: Friday, September 29, 2000 2:53 PM\n> To: laoh@chevron.com\n> Subject: Master Agreement\n>",
+        "to_recipients": [
+          "lee.papayoti@enron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": true,
+        "is_reply": true,
+        "is_escalation": true
+      }
+    ],
+    "forecast": {
+      "backend": "historical",
+      "future_event_count": 84,
+      "future_escalation_count": 16,
+      "future_assignment_count": 43,
+      "future_approval_count": 0,
+      "future_external_event_count": 64,
+      "risk_score": 1.0,
+      "summary": "84 future events remain, including 16 escalations and 64 externally addressed messages."
+    },
+    "public_context": {
+      "version": "1",
+      "pack_name": "enron_public_context",
+      "organization_name": "Enron Corporation",
+      "organization_domain": "enron.com",
+      "prepared_at": "2026-04-12T13:42:12Z",
+      "integration_hint": "At integration time, compute the oldest and latest email timestamps from the active Enron slice and keep only financial_snapshots and public_news_events whose dates overlap that email window.",
+      "window_start": "1997-01-01T17:22:03Z",
+      "window_end": "2002-09-23T04:01:33Z",
+      "branch_timestamp": "2000-09-27T13:42:00Z",
+      "financial_snapshots": [
+        {
+          "snapshot_id": "fy1998_selected_financial_data",
+          "as_of": "1998-12-31T00:00:00Z",
+          "kind": "annual",
+          "label": "FY1998 selected financial data",
+          "source_ids": [
+            "enron_2000_financial_highlights"
+          ],
+          "summary": "Operating revenue was $31.26B, net income was $703M, total assets were $29.35B, shareholders' equity was $7.05B, and diluted EPS was $1.01.",
+          "metrics": {
+            "operating_revenue_usd_millions": 31260,
+            "net_income_usd_millions": 703,
+            "total_assets_usd_millions": 29350,
+            "shareholders_equity_usd_millions": 7048,
+            "diluted_eps": 1.01
+          }
+        },
+        {
+          "snapshot_id": "fy1999_selected_financial_data",
+          "as_of": "1999-12-31T00:00:00Z",
+          "kind": "annual",
+          "label": "FY1999 selected financial data",
+          "source_ids": [
+            "enron_2000_financial_highlights"
+          ],
+          "summary": "Operating revenue was $40.11B, net income was $893M, total assets were $33.38B, shareholders' equity was $9.57B, and diluted EPS was $1.10.",
+          "metrics": {
+            "operating_revenue_usd_millions": 40112,
+            "net_income_usd_millions": 893,
+            "total_assets_usd_millions": 33381,
+            "shareholders_equity_usd_millions": 9570,
+            "diluted_eps": 1.1
+          }
+        }
+      ],
+      "public_news_events": []
+    }
+  },
+  "baseline": {
+    "workspace_root": "workspace",
+    "baseline_dataset_path": "workspace/whatif_baseline_dataset.json",
+    "scheduled_event_count": 84,
+    "delivered_event_count": 84,
+    "current_time_ms": 33209389000,
+    "pending_events": {
+      "tool": 0,
+      "calendar": 0,
+      "campaign_ops": 0,
+      "crm": 0,
+      "db": 0,
+      "database": 0,
+      "datadog": 0,
+      "docs": 0,
+      "erp": 0,
+      "feature_flags": 0,
+      "google_admin": 0,
+      "hris": 0,
+      "okta": 0,
+      "inventory_ops": 0,
+      "jira": 0,
+      "mail": 0,
+      "notes": 0,
+      "pagerduty": 0,
+      "property_ops": 0,
+      "service_ops": 0,
+      "servicedesk": 0,
+      "siem": 0,
+      "slack": 0,
+      "spreadsheet": 0,
+      "tickets": 0,
+      "total": 0
+    },
+    "inbox_count": 22,
+    "top_subjects": [
+      "Master Agreement",
+      "FW: Master Agreement",
+      "Re: Master Agreement",
+      "RE: Master Agreement",
+      "RE: Master Agreement"
+    ],
+    "baseline_future_preview": [
+      {
+        "event_id": "enron_bcda1b925800af8c",
+        "timestamp": "2000-09-27T13:42:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "kathy_gerken@cargill.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "kathy_gerken@cargill.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": true,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_dfc83644a0a54f2d",
+        "timestamp": "2000-09-27T13:42:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "kathy_gerken@cargill.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "Attached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "kathy_gerken@cargill.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": true,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_8bfbb287dfcdabad",
+        "timestamp": "2000-09-29T14:52:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "laoh@chevron.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "laoh@chevron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_a8119e090e0f2369",
+        "timestamp": "2000-09-29T14:52:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "laoh@chevron.com",
+        "event_type": "assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "Master Agreement",
+        "snippet": "\n\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490",
+        "to_recipients": [
+          "laoh@chevron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": false,
+        "is_reply": false,
+        "is_escalation": false
+      },
+      {
+        "event_id": "enron_3303415583d68046",
+        "timestamp": "2000-10-02T10:53:00Z",
+        "actor_id": "debra.perlingiere@enron.com",
+        "target_id": "lee.papayoti@enron.com",
+        "event_type": "escalation",
+        "thread_id": "thr_e565b47423d035c9",
+        "subject": "RE: Master Agreement",
+        "snippet": "----- Forwarded by Debra Perlingiere/HOU/ECT on 10/02/2000 10:52 AM -----\n\n\t\"Ohr, Leslie (LAOH)\" <LAOH@chevron.com>\n\t10/02/2000 10:21 AM\n\t\t \n\t\t To: \"'Debra.Perlingiere@enron.com'\" <Debra.Perlingiere@enron.com>\n\t\t cc: \n\t\t Subject: RE: Master Agreement\n\n\nDebra-- Martin Dale is the CPC client on this matter.  I'm in the process of\ngetting in touch with him this morning on the confirmation letter.\n\nLeslie\n> -----Original Message-----\n> From: Debra.Perlingiere@enron.com [SMTP:Debra.Perlingiere@enron.com]\n> Sent: Friday, September 29, 2000 2:53 PM\n> To: laoh@chevron.com\n> Subject: Master Agreement\n>",
+        "to_recipients": [
+          "lee.papayoti@enron.com"
+        ],
+        "cc_recipients": [],
+        "has_attachment_reference": false,
+        "is_forward": true,
+        "is_reply": true,
+        "is_escalation": true
+      }
+    ],
+    "forecast": {
+      "backend": "historical",
+      "future_event_count": 84,
+      "future_escalation_count": 16,
+      "future_assignment_count": 43,
+      "future_approval_count": 0,
+      "future_external_event_count": 64,
+      "risk_score": 1.0,
+      "summary": "84 future events remain, including 16 escalations and 64 externally addressed messages."
+    }
+  },
+  "llm_result": {
+    "status": "ok",
+    "provider": "openai",
+    "model": "gpt-5-mini",
+    "prompt": "Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+    "summary": "Rather than sending the draft Master Firm Purchase/Sale Agreement outside to Cargill, Debra retains the draft inside Enron, loops in Enron legal (Gerald Nemec) and credit/legal support (Sara Shackleton) for review, and explicitly instructs the team to hold any external transmission until a clean, legally approved version is circulated. Gerald acknowledges, flags specific legal points, and commits to legal sign-off; Debra issues an internal status update confirming the hold.",
+    "messages": [
+      {
+        "actor_id": "debra.perlingiere@enron.com",
+        "to": "gerald.nemec@enron.com",
+        "subject": "Master Agreement (Internal draft \u2014 DO NOT SEND)",
+        "body_text": "Attached is the draft Master Firm Purchase/Sale Agreement prepared for Cargill. Please review internally. Gerald, please lead the legal review; Sara, please review credit provisions. Do NOT send this outside Enron (to Cargill or any third party) until we have a clean, approved version. Please return comments by end of next week so I can circulate a redline.",
+        "delay_ms": 1000,
+        "rationale": "Keeps the draft inside Enron and formally loops in legal and credit reviewers while explicitly instructing to hold external transmission."
+      },
+      {
+        "actor_id": "gerald.nemec@enron.com",
+        "to": "debra.perlingiere@enron.com",
+        "subject": "Re: Master Agreement (Internal draft \u2014 DO NOT SEND)",
+        "body_text": "Thanks, Debra. I'll review for legal issues and return marked-up comments by Thursday. Initial flags: tighten indemnity/limitation language, clarify force majeure and termination triggers, and confirm any credit carve-outs with Sara. I will not clear any external sending until I sign off on the final clean copy.",
+        "delay_ms": 1800000,
+        "rationale": "Legal acknowledges review, identifies key clauses to address, and reiterates the hold on external distribution pending legal sign-off."
+      },
+      {
+        "actor_id": "debra.perlingiere@enron.com",
+        "to": "marie.heard@enron.com",
+        "subject": "Re: Master Agreement \u2014 internal status",
+        "body_text": "Quick update: Holding the draft internally pending Gerald's legal review and Sara's credit input. I will circulate a clean, approved version for final sign-off before any outreach to Cargill.",
+        "delay_ms": 3600000,
+        "rationale": "Notifies internal stakeholders that external send is on hold and outlines next steps for internal approval."
+      }
+    ],
+    "usage": {
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "prompt_tokens": 1783,
+      "completion_tokens": 4896,
+      "total_tokens": 6679,
+      "estimated_cost_usd": 0.01023775
+    },
+    "scheduled_event_count": 3,
+    "delivered_event_count": 3,
+    "inbox_count": 5,
+    "top_subjects": [
+      "Re: Master Agreement \u2014 internal status",
+      "Re: Master Agreement (Internal draft \u2014 DO NOT SEND)",
+      "Master Agreement (Internal draft \u2014 DO NOT SEND)",
+      "Master Agreement",
+      "Master Agreement"
+    ],
+    "notes": [
+      "Recipient scope was clamped to internal Enron participants.",
+      "Message 1 used a non-thread recipient; it was clamped to gerald.nemec@enron.com.",
+      "Message 2 used a non-thread recipient; it was clamped to debra.perlingiere@enron.com."
+    ],
+    "error": null
+  },
+  "forecast_result": {
+    "status": "ok",
+    "backend": "e_jepa",
+    "prompt": "Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+    "summary": "E-JEPA predicts 84 follow-up events from the branch point, with risk moving from 1.000 to 0.983.",
+    "baseline": {
+      "backend": "historical",
+      "future_event_count": 84,
+      "future_escalation_count": 16,
+      "future_assignment_count": 43,
+      "future_approval_count": 0,
+      "future_external_event_count": 64,
+      "risk_score": 1.0,
+      "summary": "84 future events remain, including 16 escalations and 64 external sends."
+    },
+    "predicted": {
+      "backend": "e_jepa",
+      "future_event_count": 84,
+      "future_escalation_count": 18,
+      "future_assignment_count": 39,
+      "future_approval_count": 1,
+      "future_external_event_count": 35,
+      "risk_score": 0.983,
+      "summary": "Predicted 84 follow-up events, 18 escalations, and 35 external sends."
+    },
+    "delta": {
+      "risk_score_delta": -0.017,
+      "future_event_delta": 0,
+      "escalation_delta": 2,
+      "assignment_delta": -4,
+      "approval_delta": 1,
+      "external_event_delta": -29
+    },
+    "branch_event": {
+      "event_id": "enron_bcda1b925800af8c",
+      "timestamp": "2000-09-27T13:42:00Z",
+      "actor_id": "debra.perlingiere@enron.com",
+      "target_id": "kathy_gerken@cargill.com",
+      "event_type": "assignment",
+      "thread_id": "thr_e565b47423d035c9",
+      "subject": "Master Agreement",
+      "snippet": "",
+      "to_recipients": [
+        "kathy_gerken@cargill.com"
+      ],
+      "cc_recipients": [],
+      "has_attachment_reference": true,
+      "is_forward": false,
+      "is_reply": false,
+      "is_escalation": false
+    },
+    "horizon_event_count": 84,
+    "surprise_score": 571.8433,
+    "current_state_summary": {
+      "history_event_count": 6.0,
+      "unique_participant_count": 4.0,
+      "external_event_count": 4.0,
+      "forward_event_count": 0.0,
+      "escalation_event_count": 0.0,
+      "assignment_event_count": 0.0,
+      "approval_event_count": 0.0,
+      "legal_event_count": 0.0,
+      "trading_event_count": 0.0,
+      "attachment_event_count": 0.0,
+      "reply_event_count": 2.0,
+      "current_risk_score": 0.72
+    },
+    "predicted_state_summary": {
+      "history_event_count": 51.78852369063099,
+      "unique_participant_count": 39.261749037922826,
+      "external_event_count": 38.966906754345146,
+      "forward_event_count": 3.445792802607305,
+      "escalation_event_count": 18.03245116164465,
+      "assignment_event_count": 38.51984872324435,
+      "approval_event_count": 0.9559072168437347,
+      "legal_event_count": 2.366243650733166,
+      "trading_event_count": 6.0666247589744575,
+      "attachment_event_count": 16.9159953467102,
+      "reply_event_count": 24.069694006971357,
+      "current_risk_score": 0.9832395544441013
+    },
+    "actual_state_summary": {
+      "history_event_count": 90.0,
+      "unique_participant_count": 4.0,
+      "external_event_count": 68.0,
+      "forward_event_count": 0.0,
+      "escalation_event_count": 16.0,
+      "assignment_event_count": 43.0,
+      "approval_event_count": 0.0,
+      "legal_event_count": 0.0,
+      "trading_event_count": 0.0,
+      "attachment_event_count": 0.0,
+      "reply_event_count": 2.0,
+      "current_risk_score": 1.0
+    },
+    "artifacts": {
+      "cache_root": "not-included-in-repo-example",
+      "dataset_root": "not-included-in-repo-example",
+      "checkpoint_path": "not-included-in-repo-example",
+      "decoder_path": "not-included-in-repo-example"
+    },
+    "notes": [
+      "Branch prompt: Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+      "Baseline external sends: 64",
+      "Predicted external sends: 35",
+      "Forecast was conditioned on 3 generated counterfactual messages.",
+      "E-JEPA eval: surprise=0.0001, latent_mse=0.0001.",
+      "Training slice: 96 threads around the branch point."
+    ],
+    "error": null
+  },
+  "artifacts": {
+    "root": ".",
+    "result_json_path": "whatif_experiment_result.json",
+    "overview_markdown_path": "whatif_experiment_overview.md",
+    "llm_json_path": "whatif_llm_result.json",
+    "forecast_json_path": "whatif_ejepa_result.json"
+  }
+}

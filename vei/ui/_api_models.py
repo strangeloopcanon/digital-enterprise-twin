@@ -266,14 +266,9 @@ def resolve_whatif_rosetta_dir(workspace_root: Path) -> Path | None:
 
 def resolve_whatif_mail_archive_path(workspace_root: Path) -> Path | None:
     candidates: list[Path] = []
-    candidates.extend(
-        [
-            workspace_root / "whatif_mail_archive.json",
-            workspace_root / "historical_mail_archive.json",
-            workspace_root / "mail_archive.json",
-            workspace_root / "context_snapshot.json",
-        ]
-    )
+    saved_workspace_archive = _workspace_saved_mail_archive_path(workspace_root)
+    if saved_workspace_archive is not None:
+        candidates.append(saved_workspace_archive)
     manifest_source_dir = _resolve_manifest_mail_archive_source(workspace_root)
     if manifest_source_dir is not None:
         candidates.append(manifest_source_dir)
@@ -382,6 +377,18 @@ def _resolve_manifest_rosetta_dir(workspace_root: Path) -> Path | None:
     return candidate
 
 
+def _workspace_saved_mail_archive_path(workspace_root: Path) -> Path | None:
+    for path in (
+        workspace_root / "whatif_mail_archive.json",
+        workspace_root / "historical_mail_archive.json",
+        workspace_root / "mail_archive.json",
+        workspace_root / "context_snapshot.json",
+    ):
+        if _looks_like_mail_archive_payload(path):
+            return path
+    return None
+
+
 def _workspace_whatif_source_hint(workspace_root: Path) -> str | None:
     manifest_path = workspace_root / "whatif_episode_manifest.json"
     if manifest_path.exists():
@@ -390,15 +397,15 @@ def _workspace_whatif_source_hint(workspace_root: Path) -> str | None:
         except ValueError:
             manifest = None
         if manifest is not None and manifest.source:
-            return str(manifest.source).strip().lower()
-    for path in (
-        workspace_root / "whatif_mail_archive.json",
-        workspace_root / "historical_mail_archive.json",
-        workspace_root / "mail_archive.json",
-        workspace_root / "context_snapshot.json",
-    ):
-        if _looks_like_mail_archive_payload(path):
-            return "mail_archive"
+            normalized_source = str(manifest.source).strip().lower()
+            if normalized_source == "enron":
+                if _resolve_manifest_rosetta_dir(workspace_root) is not None:
+                    return "enron"
+                if _workspace_saved_mail_archive_path(workspace_root) is not None:
+                    return "mail_archive"
+            return normalized_source
+    if _workspace_saved_mail_archive_path(workspace_root) is not None:
+        return "mail_archive"
     if (workspace_root / "rosetta" / "enron_rosetta_events_metadata.parquet").exists():
         return "enron"
     return None

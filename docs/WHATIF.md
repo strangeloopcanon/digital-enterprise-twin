@@ -135,17 +135,24 @@ The public-company panel is its own dated slice. Earlier branches only show the 
 
 ## Live Enron display in Studio
 
-Use the saved Enron workspace directly when you want the screen to show Enron itself.
+Use the repo-owned saved Enron example directly when you want the screen to show Enron itself from a fresh clone.
 
 ```bash
-VEI_WHATIF_ROSETTA_DIR=/path/to/rosetta \
 vei ui serve \
-  --root /path/to/saved-enron-result/workspace \
+  --root docs/examples/enron-master-agreement-public-context/workspace \
   --host 127.0.0.1 \
   --port 3055
 ```
 
 Open `http://127.0.0.1:3055` and stay inside that workspace. This keeps the display tied to the actual Enron branch point and the actual saved result.
+
+The committed example bundle also carries:
+
+- `whatif_experiment_overview.md`
+- `whatif_llm_result.json`
+- `whatif_ejepa_result.json`
+
+Those files live under `docs/examples/enron-master-agreement-public-context/` beside the saved workspace. The branch date is September 27, 2000, so the saved scene shows 2 financial checkpoints and 0 public-news items. Use the real Rosetta archive when you want whole-history Enron search or a new run from the full corpus.
 
 ## Enron business-outcome benchmark
 
@@ -192,36 +199,37 @@ The matched-input benchmark study now gives `jepa_latent` and `full_context_tran
 vei whatif benchmark build \
   --rosetta-dir /path/to/rosetta \
   --artifacts-root _vei_out/whatif_benchmarks/branch_point_ranking_v2 \
-  --label enron_business_outcome_reset
+  --label enron_business_outcome_public_context_20260412
 
 # Train one model family
 vei whatif benchmark train \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent
 
 # Judge the held-out counterfactual cases from dossiers only
 vei whatif benchmark judge \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model gpt-4.1-mini
 
 # Evaluate the trained model against factual futures and judged rankings
 vei whatif benchmark eval \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent \
-  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
+  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
 
 # Run the matched-input study across multiple models and seeds
 vei whatif benchmark study \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
-  --label matched_input_rerun \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
+  --label matched_input_public_context_20260412 \
   --model-id jepa_latent \
   --model-id full_context_transformer \
   --model-id treatment_transformer \
   --seed 42042 \
   --seed 42043 \
   --seed 42044 \
-  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
+  --seed 42045 \
+  --seed 42046 \
   --epochs 2
 ```
 
@@ -255,17 +263,19 @@ vei whatif benchmark study \
 
 ### Current model state
 
-The current saved Enron reset build uses 24 held-out cases with 4 candidate actions each. The headline result now comes from the matched-input study rerun over that build rather than from the older single-run comparison.
+The current saved Enron public-context build uses 24 held-out cases with 4 candidate actions each. The headline result now comes from the matched-input study rerun over that build rather than from the older single-run comparison.
+
+The held-out dossiers now also carry the dated Enron public-company backdrop that was already public by each branch date. That richer context is for replay, judging, and audit review. The model-training inputs stay the same in this pass.
 
 On the current 5-seed, 2-epoch matched-input rerun, the held-out decision checks came out like this:
 
-- `jepa_latent`: `76.6/120` mean, `0.638 +/- 0.022`
-- `full_context_transformer`: `75.2/120` mean, `0.627 +/- 0.025`
-- `treatment_transformer`: `65.6/120` mean, `0.547 +/- 0.108`
+- `jepa_latent`: `80.2/120` mean, `0.668 +/- 0.012`
+- `full_context_transformer`: `79.4/120` mean, `0.662 +/- 0.031`
+- `treatment_transformer`: `68.2/120` mean, `0.568 +/- 0.117`
 
-On the factual question of whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC.
+On the factual question of whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC: `0.981` for `jepa_latent`, `0.982` for `full_context_transformer`, and `0.980` for `treatment_transformer`.
 
-The main point is that the fair rerun changed the story. Once the models read the same pre-branch contract and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the Enron decision checks, while the treatment transformer shows the widest spread from seed to seed.
+The main point is that the fair rerun still favors the JEPA-style path on the Enron decision checks once the models read the same pre-branch contract and the result is averaged across seeds, while the treatment transformer shows the widest spread from seed to seed.
 
 ### Important constraint
 

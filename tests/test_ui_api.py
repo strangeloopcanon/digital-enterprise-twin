@@ -231,6 +231,46 @@ def _write_mail_archive_fixture(root: Path) -> Path:
     return archive_path
 
 
+def _write_saved_context_snapshot(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    snapshot_path = root / "context_snapshot.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "organization_name": "Enron Corporation",
+                "organization_domain": "enron.com",
+                "threads": [
+                    {
+                        "thread_id": "thr-master-agreement",
+                        "subject": "Master Agreement",
+                        "messages": [
+                            {
+                                "message_id": "msg-001",
+                                "timestamp": "2000-09-26T15:00:00Z",
+                                "from": "debra.perlingiere@enron.com",
+                                "to": "marie.heard@enron.com",
+                                "subject": "Master Agreement",
+                                "body_text": "Draft is attached for internal prep before any outside send.",
+                            },
+                            {
+                                "message_id": "msg-002",
+                                "timestamp": "2000-09-27T13:42:00Z",
+                                "from": "debra.perlingiere@enron.com",
+                                "to": "kathy_gerken@cargill.com",
+                                "subject": "Master Agreement",
+                                "body_text": "Historical branch point.",
+                            },
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return snapshot_path
+
+
 def _write_benchmark_audit_fixture(
     root: Path,
     *,
@@ -801,6 +841,90 @@ def test_ui_api_historical_workspace_prefers_manifest_rosetta_dir(
     status_payload = status_response.json()
     assert status_payload["source"] == "enron"
     assert status_payload["source_dir"] == str(primary_rosetta.resolve())
+
+
+def test_ui_api_saved_enron_workspace_without_rosetta_uses_saved_context_snapshot(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "saved_enron_workspace"
+    create_workspace_from_template(
+        root=workspace_root,
+        source_kind="vertical",
+        source_ref="b2b_saas",
+    )
+    snapshot_path = _write_saved_context_snapshot(workspace_root)
+    episode = WhatIfEpisodeManifest(
+        source="enron",
+        source_dir="/missing/rosetta",
+        workspace_root=workspace_root,
+        organization_name="Enron Corporation",
+        organization_domain="enron.com",
+        thread_id="thr-master-agreement",
+        thread_subject="Master Agreement",
+        branch_event_id="enron_bcda1b925800af8c",
+        branch_timestamp="2000-09-27T13:42:00Z",
+        branch_event=WhatIfEventReference(
+            event_id="enron_bcda1b925800af8c",
+            timestamp="2000-09-27T13:42:00Z",
+            actor_id="debra.perlingiere@enron.com",
+            target_id="kathy_gerken@cargill.com",
+            event_type="assignment",
+            thread_id="thr-master-agreement",
+            subject="Master Agreement",
+            snippet="Historical branch point.",
+            to_recipients=["kathy_gerken@cargill.com"],
+        ),
+        history_message_count=1,
+        future_event_count=84,
+        baseline_dataset_path="whatif_baseline_dataset.json",
+        content_notice="Historical email bodies are grounded in archive excerpts and metadata.",
+        forecast=WhatIfForecast(backend="historical", risk_score=1.0),
+        public_context=WhatIfPublicContext(
+            pack_name="enron_public_context",
+            organization_name="Enron Corporation",
+            organization_domain="enron.com",
+            window_start="2000-09-26T15:00:00Z",
+            window_end="2000-09-27T13:42:00Z",
+            branch_timestamp="2000-09-27T13:42:00Z",
+            financial_snapshots=[
+                WhatIfPublicFinancialSnapshot(
+                    snapshot_id="fy_1999",
+                    as_of="1999-12-31T00:00:00Z",
+                    kind="annual",
+                    label="1999 Annual",
+                    summary="Revenue and net income improved ahead of the branch date.",
+                )
+            ],
+        ),
+    )
+    (workspace_root / "whatif_episode_manifest.json").write_text(
+        episode.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
+
+    client = TestClient(ui_api.create_ui_app(workspace_root))
+    status_response = client.get("/api/workspace/whatif")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["available"] is True
+    assert status_payload["source"] == "mail_archive"
+    assert status_payload["source_dir"] == str(snapshot_path.resolve())
+
+    scene_response = client.post(
+        "/api/workspace/whatif/scene",
+        json={
+            "source": "auto",
+            "event_id": "enron_bcda1b925800af8c",
+            "thread_id": "thr-master-agreement",
+        },
+    )
+    assert scene_response.status_code == 200
+    scene_payload = scene_response.json()
+    assert scene_payload["organization_name"] == "Enron Corporation"
+    assert scene_payload["branch_event_id"] == "enron_bcda1b925800af8c"
+    assert scene_payload["public_context"]["financial_snapshots"][0]["snapshot_id"] == (
+        "fy_1999"
+    )
 
 
 def test_ui_api_whatif_run_route_returns_experiment_payload(

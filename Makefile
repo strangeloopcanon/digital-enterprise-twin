@@ -18,7 +18,7 @@ $(VENV)/bin/activate:
 
 $(SETUP_STAMP): $(VENV)/bin/activate pyproject.toml
 	. $(VENV)/bin/activate && \
-		pip install --upgrade pip setuptools wheel && \
+		pip install --upgrade pip "setuptools<82" wheel && \
 		pip install -e ".[$(SETUP_EXTRAS)]"
 	@if [ -f .pre-commit-config.yaml ]; then \
 		$(VENV_BIN)/pre-commit install --install-hooks || \

@@ -1,0 +1,111 @@
+{
+  "status": "ok",
+  "backend": "e_jepa",
+  "prompt": "Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+  "summary": "E-JEPA predicts 84 follow-up events from the branch point, with risk moving from 1.000 to 0.983.",
+  "baseline": {
+    "backend": "historical",
+    "future_event_count": 84,
+    "future_escalation_count": 16,
+    "future_assignment_count": 43,
+    "future_approval_count": 0,
+    "future_external_event_count": 64,
+    "risk_score": 1.0,
+    "summary": "84 future events remain, including 16 escalations and 64 external sends."
+  },
+  "predicted": {
+    "backend": "e_jepa",
+    "future_event_count": 84,
+    "future_escalation_count": 18,
+    "future_assignment_count": 39,
+    "future_approval_count": 1,
+    "future_external_event_count": 35,
+    "risk_score": 0.983,
+    "summary": "Predicted 84 follow-up events, 18 escalations, and 35 external sends."
+  },
+  "delta": {
+    "risk_score_delta": -0.017,
+    "future_event_delta": 0,
+    "escalation_delta": 2,
+    "assignment_delta": -4,
+    "approval_delta": 1,
+    "external_event_delta": -29
+  },
+  "branch_event": {
+    "event_id": "enron_bcda1b925800af8c",
+    "timestamp": "2000-09-27T13:42:00Z",
+    "actor_id": "debra.perlingiere@enron.com",
+    "target_id": "kathy_gerken@cargill.com",
+    "event_type": "assignment",
+    "thread_id": "thr_e565b47423d035c9",
+    "subject": "Master Agreement",
+    "snippet": "",
+    "to_recipients": [
+      "kathy_gerken@cargill.com"
+    ],
+    "cc_recipients": [],
+    "has_attachment_reference": true,
+    "is_forward": false,
+    "is_reply": false,
+    "is_escalation": false
+  },
+  "horizon_event_count": 84,
+  "surprise_score": 571.8433,
+  "current_state_summary": {
+    "history_event_count": 6.0,
+    "unique_participant_count": 4.0,
+    "external_event_count": 4.0,
+    "forward_event_count": 0.0,
+    "escalation_event_count": 0.0,
+    "assignment_event_count": 0.0,
+    "approval_event_count": 0.0,
+    "legal_event_count": 0.0,
+    "trading_event_count": 0.0,
+    "attachment_event_count": 0.0,
+    "reply_event_count": 2.0,
+    "current_risk_score": 0.72
+  },
+  "predicted_state_summary": {
+    "history_event_count": 51.78852369063099,
+    "unique_participant_count": 39.261749037922826,
+    "external_event_count": 38.966906754345146,
+    "forward_event_count": 3.445792802607305,
+    "escalation_event_count": 18.03245116164465,
+    "assignment_event_count": 38.51984872324435,
+    "approval_event_count": 0.9559072168437347,
+    "legal_event_count": 2.366243650733166,
+    "trading_event_count": 6.0666247589744575,
+    "attachment_event_count": 16.9159953467102,
+    "reply_event_count": 24.069694006971357,
+    "current_risk_score": 0.9832395544441013
+  },
+  "actual_state_summary": {
+    "history_event_count": 90.0,
+    "unique_participant_count": 4.0,
+    "external_event_count": 68.0,
+    "forward_event_count": 0.0,
+    "escalation_event_count": 16.0,
+    "assignment_event_count": 43.0,
+    "approval_event_count": 0.0,
+    "legal_event_count": 0.0,
+    "trading_event_count": 0.0,
+    "attachment_event_count": 0.0,
+    "reply_event_count": 2.0,
+    "current_risk_score": 1.0
+  },
+  "artifacts": {
+    "cache_root": "not-included-in-repo-example",
+    "dataset_root": "not-included-in-repo-example",
+    "checkpoint_path": "not-included-in-repo-example",
+    "decoder_path": "not-included-in-repo-example"
+  },
+  "notes": [
+    "Branch prompt: Keep the draft inside Enron, loop in Gerald Nemec for legal review, and hold the outside send until the clean version is approved.",
+    "Baseline external sends: 64",
+    "Predicted external sends: 35",
+    "Forecast was conditioned on 3 generated counterfactual messages.",
+    "E-JEPA eval: surprise=0.0001, latent_mse=0.0001.",
+    "Training slice: 96 threads around the branch point."
+  ],
+  "error": null
+}

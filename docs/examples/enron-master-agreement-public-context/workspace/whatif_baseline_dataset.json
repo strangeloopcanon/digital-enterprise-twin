@@ -1,0 +1,1275 @@
+{
+  "metadata": {
+    "name": "whatif-baseline-thr_e565b47423d035c9",
+    "description": "Historical future events scheduled after the branch point.",
+    "tags": [
+      "whatif",
+      "baseline",
+      "historical"
+    ],
+    "source": "enron_rosetta",
+    "transform_hash": null
+  },
+  "events": [
+    {
+      "time_ms": 1,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "kathy_gerken@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 1,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "kathy_gerken@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your review, is a draft of a Master Firm Purchase/Sale Agreement \nbetween Cargill, Incorporated and Enron North America Corp.  Please do not \nhesitate to give me a call with your questions and or comments regarding this \nmatter.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 177000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "laoh@chevron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 177000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "laoh@chevron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPlease note delivery begins on October 1, 2000 on the confirm.  \n\nPlease do not hesitate to give me a call with your questions and or comments \nregarding this matter.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 421860000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "lee.papayoti@enron.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\n----- Forwarded by Debra Perlingiere/HOU/ECT on 10/02/2000 10:52 AM -----\n\n\t\"Ohr, Leslie (LAOH)\" <LAOH@chevron.com>\n\t10/02/2000 10:21 AM\n\t\t \n\t\t To: \"'Debra.Perlingiere@enron.com'\" <Debra.Perlingiere@enron.com>\n\t\t cc: \n\t\t Subject: RE: Master Agreement\n\n\nDebra-- Martin Dale is the CPC client on this matter.  I'm in the process of\ngetting in touch with him this morning on the confirmation letter.\n\nLeslie\n> -----Original Message-----\n> From: Debra.Perlingiere@enron.com [SMTP:Debra.Perlingiere@enron.com]\n> Sent: Friday, September 29, 2000 2:53 PM\n> To: laoh@chevron.com\n> Subject: Master Agreement\n>\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 421860000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "lee.papayoti@enron.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\n----- Forwarded by Debra Perlingiere/HOU/ECT on 10/02/2000 10:52 AM -----\n\n\t\"Ohr, Leslie (LAOH)\" <LAOH@chevron.com>\n\t10/02/2000 10:21 AM\n\t\t \n\t\t To: \"'Debra.Perlingiere@enron.com'\" <Debra.Perlingiere@enron.com>\n\t\t cc: \n\t\t Subject: RE: Master Agreement\n\n\nDebra-- Martin Dale is the CPC client on this matter.  I'm in the process of\ngetting in touch with him this morning on the confirmation letter.\n\nLeslie\n> -----Original Message-----\n> From: Debra.Perlingiere@enron.com [SMTP:Debra.Perlingiere@enron.com]\n> Sent: Friday, September 29, 2000 2:53 PM\n> To: laoh@chevron.com\n> Subject: Master Agreement\n>\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 4308360000,
+      "actor_id": "gerald.nemec@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "gerald.nemec@enron.com",
+        "to": "bo.barnwell@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical event recorded without body text excerpt]\n\nEvent type: escalation\nEscalation detected in source metadata.\nCC count: 1.\nBCC count: 1.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 4308360000,
+      "actor_id": "gerald.nemec@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "gerald.nemec@enron.com",
+        "to": "bo.barnwell@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical event recorded without body text excerpt]\n\nEvent type: escalation\nEscalation detected in source metadata.\nCC count: 1.\nBCC count: 1.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5451000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tony@gatherco.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5451000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tony@gatherco.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5457180000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "veronica.espinoza@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5457180000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "veronica.espinoza@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5616300000,
+      "actor_id": "rweiss@lehman.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "rweiss@lehman.com",
+        "to": "prosica@lehman.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAll of your comments in regard to the guarantee are fine.  I am enclosing a\ncopy of the legal opinion that we will provide.\n\n <<LBF-Opinion5.doc>>\n\nPlease forward an execution copy of the master agreement.  We are ready to\nsign.\n\n\n\nregards,\nRichard\n\n - LBF-Opinion5.doc\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5616300000,
+      "actor_id": "rweiss@lehman.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "rweiss@lehman.com",
+        "to": "prosica@lehman.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAll of your comments in regard to the guarantee are fine.  I am enclosing a\ncopy of the legal opinion that we will provide.\n\n <<LBF-Opinion5.doc>>\n\nPlease forward an execution copy of the master agreement.  We are ready to\nsign.\n\n\n\nregards,\nRichard\n\n - LBF-Opinion5.doc\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5855640000,
+      "actor_id": "sara.shackleton@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "sara.shackleton@enron.com",
+        "to": "stephanie.panus@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\n\"Weiss, Richard\" <rweiss@lehman.COM>\n\t12/01/2000 12:47 PM\n\t\t \n\t\t To: \"'sara.shackleton@enron.com'\" <sara.shackleton@enron.com>, \"Rosica, \nPaul\" <prosica@lehman.com>\n\t\t cc: \n\t\t Subject: Master Agreement\n\n\nSara:\n\nAll of your comments in regard to the guarantee are fine.  I am enclosing a\ncopy of the legal opinion that we will provide.\n\n <<LBF-Opinion5.doc>>\n\nPlease forward an execution copy of the master agreement.  We are ready to\nsign.\n\n\n\nregards,\nRichard\n\n - LBF-Opinion5.doc\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5855640000,
+      "actor_id": "sara.shackleton@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "sara.shackleton@enron.com",
+        "to": "stephanie.panus@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\n\"Weiss, Richard\" <rweiss@lehman.COM>\n\t12/01/2000 12:47 PM\n\t\t \n\t\t To: \"'sara.shackleton@enron.com'\" <sara.shackleton@enron.com>, \"Rosica, \nPaul\" <prosica@lehman.com>\n\t\t cc: \n\t\t Subject: Master Agreement\n\n\nSara:\n\nAll of your comments in regard to the guarantee are fine.  I am enclosing a\ncopy of the legal opinion that we will provide.\n\n <<LBF-Opinion5.doc>>\n\nPlease forward an execution copy of the master agreement.  We are ready to\nsign.\n\n\n\nregards,\nRichard\n\n - LBF-Opinion5.doc\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5860560000,
+      "actor_id": "stephanie.panus@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "stephanie.panus@enron.com",
+        "to": "rweiss@lehman.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nCan you please send us the finalized version of the form of Lehman guaranty \nto include as Exhibit A with the execution copy of the Master Agreement?\n\nThanks,\nStephanie Panus\nSr. Legal Specialist\nEnron North America Corp.\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nLegal specialist signal present.\nCC count: 1.\nBCC count: 1.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 5860560000,
+      "actor_id": "stephanie.panus@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "stephanie.panus@enron.com",
+        "to": "rweiss@lehman.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nCan you please send us the finalized version of the form of Lehman guaranty \nto include as Exhibit A with the execution copy of the Master Agreement?\n\nThanks,\nStephanie Panus\nSr. Legal Specialist\nEnron North America Corp.\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nLegal specialist signal present.\nCC count: 1.\nBCC count: 1.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 6728940000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tony@gatherco.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 6728940000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tony@gatherco.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 10116300000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "wwilson@arm-ltd.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nIn response to your fax of 1/12,  a draft of a Master between HPL and Admas \nwas previously sent in 1999.  I have attached this same draft for your \nreview.  Please give me a call after you have had an opportunity to reivew \nthis draft.    No additional  agreements are necessary for online trades.   \n\n\n\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 10116300000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "wwilson@arm-ltd.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nIn response to your fax of 1/12,  a draft of a Master between HPL and Admas \nwas previously sent in 1999.  I have attached this same draft for your \nreview.  Please give me a call after you have had an opportunity to reivew \nthis draft.    No additional  agreements are necessary for online trades.   \n\n\n\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 11499000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "sandra.haskins@pgnmail.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 11499000000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "sandra.haskins@pgnmail.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 12172920000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "marc_rubenstein@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nThank you for your e-mail concerning the Master Firm Purchase/Sale \nAgreement,  kindly forward your comments to my attention by e-mail or fax \n(see # below) and I will review same.  on an expedited basis.\n\nThank you for your attention to the foregoing.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 12172920000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "marc_rubenstein@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nThank you for your e-mail concerning the Master Firm Purchase/Sale \nAgreement,  kindly forward your comments to my attention by e-mail or fax \n(see # below) and I will review same.  on an expedited basis.\n\nThank you for your attention to the foregoing.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 13830060000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 13830060000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 15538620000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "kathy_gerken@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPlease give me a call at your convenience to discuss Cargill's comments to \nour Master draft.\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 15538620000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "kathy_gerken@cargill.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPlease give me a call at your convenience to discuss Cargill's comments to \nour Master draft.\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16154160000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nI have just received comments to your response to the Master.   I will \nredline these and forward same to you in a few days.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16154160000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nI have just received comments to your response to the Master.   I will \nredline these and forward same to you in a few days.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16412280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "larrykarl@ftpc.fpcusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your review is a draft of a Master Agreement with Enron North \nAmerica Corp.\nPlease do not hesitate to give me a call with any questions and or comments \nyou may have regarding this matter.\n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16412280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "larrykarl@ftpc.fpcusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your review is a draft of a Master Agreement with Enron North \nAmerica Corp.\nPlease do not hesitate to give me a call with any questions and or comments \nyou may have regarding this matter.\n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16414980000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "dlin@fpeusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your consideration is a draft of a Master Agreement with Enron \nNorth America Crop.  Please give me a call with any questions and or comments \nyou may have regarding the attached.\n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16414980000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "dlin@fpeusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached for your consideration is a draft of a Master Agreement with Enron \nNorth America Crop.  Please give me a call with any questions and or comments \nyou may have regarding the attached.\n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16415220000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "dlin@fpcusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nEnclosed for your review is a draft of a Master Agreement with Enron North \nAmerica Corp.  Please do not hesitate to give me a call with any questions \nand or comments you may have regarding this matter.\n\n\n\nBest regards, \nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 16415220000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "dlin@fpcusa.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nEnclosed for your review is a draft of a Master Agreement with Enron North \nAmerica Corp.  Please do not hesitate to give me a call with any questions \nand or comments you may have regarding this matter.\n\n\n\nBest regards, \nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 17360280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 17360280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliantenergy.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 17439240000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "easters@ldng.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nFurther to our conversation, please see the attached draft of a Master Firm \nPurchase/Sale Agreement.    Upon your review,  please give me a call to \ndiscuss any questions and or comments you have regarding this matter.  \n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 17439240000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "easters@ldng.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nFurther to our conversation, please see the attached draft of a Master Firm \nPurchase/Sale Agreement.    Upon your review,  please give me a call to \ndiscuss any questions and or comments you have regarding this matter.  \n\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 18221940000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "sandra.haskins@pgnmail.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThank you for your e-mail,  Pamela and I have just concluded discussions \nregarding FPC's comments to our Master Agreement.   The only outstanding \nissues relate to credit and arbitration.  I will keep you apprised of our \nprogress.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 18221940000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "sandra.haskins@pgnmail.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThank you for your e-mail,  Pamela and I have just concluded discussions \nregarding FPC's comments to our Master Agreement.   The only outstanding \nissues relate to credit and arbitration.  I will keep you apprised of our \nprogress.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 19443720000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "chgarn@ci.long-beach.ca.us",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAt the request of Kim Ward, I am forwarding to you for review the attached \ndraft of a Master Firm Purchase/Sale Agreement.  Please do not hesitate to \ngive me a call with any questions you may have regarding the enclosed.\n\n\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 19443720000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "chgarn@ci.long-beach.ca.us",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAt the request of Kim Ward, I am forwarding to you for review the attached \ndraft of a Master Firm Purchase/Sale Agreement.  Please do not hesitate to \ngive me a call with any questions you may have regarding the enclosed.\n\n\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20479080000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "ctrice@powersrc.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached is a draft of a Master Firm Purchase/Sale Agreement between \nConstellation Power Source and ENA.   Please give me a call with any \nquestions you may have regarding the enclosed.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20479080000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "ctrice@powersrc.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached is a draft of a Master Firm Purchase/Sale Agreement between \nConstellation Power Source and ENA.   Please give me a call with any \nquestions you may have regarding the enclosed.\n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20481060000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "vangie.mcgilloway@powersrc.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached is a draft of our Master Agreement for your review.  Upon your \nreview, please give me a call to discuss.  \n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20481060000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "vangie.mcgilloway@powersrc.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached is a draft of our Master Agreement for your review.  Upon your \nreview, please give me a call to discuss.  \n\n\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20482740000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tammi.depaolis@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20482740000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tammi.depaolis@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20741280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nMany thanks for your assistance.  I anticipate a return to you next week.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 20741280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nMany thanks for your assistance.  I anticipate a return to you next week.\n\n\nBest regards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 21587100000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 21587100000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\n\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 21591420000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "majed.nachawati@enron.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n----- Forwarded by Debra Perlingiere/HOU/ECT on 06/04/2001 11:18 AM -----\n\n\tpgraff@reliant.com\n\t06/04/2001 10:14 AM\n\t\t \n\t\t To: Debra.Perlingiere@enron.com\n\t\t cc: \n\t\t Subject: Re: Master Agreement\n\n\n\nDebra,\n\nTry using the clean version to edit from.  It should work.  If not, let me\nknow.\n\nThanks\nParamy\n\n(See attached file: Enron-Canada-2-16-01-RESC Redline.doc)(See attached\nfile: Enron-Canada-2-16-01-clean copy.doc)\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 21591420000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "majed.nachawati@enron.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n----- Forwarded by Debra Perlingiere/HOU/ECT on 06/04/2001 11:18 AM -----\n\n\tpgraff@reliant.com\n\t06/04/2001 10:14 AM\n\t\t \n\t\t To: Debra.Perlingiere@enron.com\n\t\t cc: \n\t\t Subject: Re: Master Agreement\n\n\n\nDebra,\n\nTry using the clean version to edit from.  It should work.  If not, let me\nknow.\n\nThanks\nParamy\n\n(See attached file: Enron-Canada-2-16-01-RESC Redline.doc)(See attached\nfile: Enron-Canada-2-16-01-clean copy.doc)\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 24890184000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\n-----Original Message-----\nFrom: \tpgraff@reliant.com@ENRON [mailto:IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@ENRON.com] \nSent:\tThursday, July 12, 2001 10:22 AM\nTo:\tPerlingiere, Debra\nSubject:\tMaster Agreement\n\nDebra,\n\nHope you vacation was a good one.  Are you caught up with your work while\nyou were out? (Of course, not).  Just wanted to drop you a quick note and\ncheck the status of our partially executed Master Agreement.\n\nThanks\nParamy\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 24893280000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\nI hope to be out from under the pile by early next week say Monday or Tuesday?\n\n -----Original Message-----\nFrom: \tpgraff@reliant.com@ENRON [mailto:IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@ENRON.com] \nSent:\tThursday, July 12, 2001 10:46 AM\nTo:\tPerlingiere, Debra\nSubject:\tRE: Master Agreement\n\n\nThanks for the update.  When are you coming to visit me?\n\nParamy\n\n\n\n\n                    Debra.Perlingiere\n                    @enron.com               To:     IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@enron.com\n                                             cc:\n                    07/12/01 10:38 AM\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 24909154000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\n-----Original Message-----\nFrom: \tpgraff@reliant.com@ENRON [mailto:IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@ENRON.com] \nSent:\tThursday, July 12, 2001 11:33 AM\nTo:\tPerlingiere, Debra\nSubject:\tRE: Master Agreement\n\n\nJust let me know.\n\nPG\n\n\n\n\n                    Debra.Perlingiere\n                    @enron.com               To:     IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@enron.com\n                                             cc:\n                    07/12/01 11:30 AM        Subject:     RE: Master Agreement\n\n\n\n\n\n\n\n  I hope to be out from under the pile by early next week say Monday or\nTuesday?\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 24996615000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tim.newman@williams.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nTim:\n\n  At you request,  we are pleased to provide you an additional draft of\nthe Master Agreement originaly sent September of 2000. Please do not\nhesitate to give me a call should you have any questions regarding this\nmatter.\n\n \n\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 24997419000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "tim.neuman@williams.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nTim:\n\nAt you request,  we are pleased to provide you an additional draft of\nthe Master Agreement originaly sent September of 2000. Please do not\nhesitate to give me a call should you have any questions regarding this\nmatter.\n \n\nRegards,\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 25003016000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "agriffin@texicannaturalgas.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAlan:\t\t\n\nVeronica Espinoza has made changes to Section 4.6 of the Master Agreement regarding thresholds and rounding as well as the Material Adverse section found in the definition section.  I have attached a redlined version for your consideration.\n\nPlease review the attached and let me have your thoughts regarding the enclosed.\n\n \nRegards,\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 25231821000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "veronica.espinoza@enron.com",
+        "subj": "FW: Master Agreement",
+        "body_text": "[Historical email excerpt]\n-----Original Message-----\nFrom: \t\"Neuman, Tim\" <Tim.Neuman@Williams.com>@ENRON [mailto:IMCEANOTES-+22Neuman+2C+20Tim+22+20+3CTim+2ENeuman+40Williams+2Ecom+3E+40ENRON@ENRON.com] \nSent:\tMonday, July 16, 2001 7:31 AM\nTo:\tPerlingiere, Debra\nSubject:\tRE: Master Agreement\n\n\nDebra, \nI received your contract language on Friday - I have forwarded it to Kelly Knowlton who is the Senior NG Analyst.  He can be reached at (918) 573-5278 or email at Kelly.Knowlton@williams.com  Let me know if you have any questions.  Thanks Tim\n-----Original Message----- \nFrom: Perlingiere, Debra [mailto:Debra.Perlingier\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 25496746000,
+      "actor_id": "alisha.mahabir@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "alisha.mahabir@enron.com",
+        "to": "gerald.nemec@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nHere is the master that you wanted.  If you want me to do more on it, just let me know.\n\nAlisha\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 25499950000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message_reply",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "pgraff@reliant.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\n-----Original Message-----\nFrom: \tpgraff@reliant.com@ENRON [mailto:IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@ENRON.com] \nSent:\tThursday, July 12, 2001 11:33 AM\nTo:\tPerlingiere, Debra\nSubject:\tRE: Master Agreement\n\n\nJust let me know.\n\nPG\n\n\n\n\n                    Debra.Perlingiere\n                    @enron.com               To:     IMCEANOTES-pgraff+40reliant+2Ecom+40ENRON@enron.com\n                                             cc:\n                    07/12/01 11:30 AM        Subject:     RE: Master Agreement\n\n\n\n\n\n\n\n  I hope to be out from under the pile by early next week say Monday or\nTuesday?\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 25840015000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "aboytinck@msn.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPursuant to Jason Biever's request, I am attaching, for your review, a draft Master Agreement between Garden City Plaza Ltd. and Enron Canada Corp.  Please do not hesitate to contact either Anne Koehler, Senior Counsel (713/853-3448; anne.koehler@enron.com) or me with any questions or comments.  We look forward to hearing your comments.\n\nMarie Heard\nSenior Legal Specialist\nEnron North America Corp.\nPhone:  (713) 853-3907\nFax:  (713) 646-3490\nmarie.heard@enron.com\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nLegal specialist signal present.\nCC count: 3.\nBCC count: 3.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 26611435000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "kkohler@albchem.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nMichael Law has asked us to finalize execution copies of the Master Agreement between Enron Canada Corp. and Albchem, Industries Ltd.  In order to complete the documentation, we will need the following information:\n\n1.\tExhibit A - Notice -- please provide me with the name and fax number for the individual or group who should receive notices under the Master Agreement.\n\n2.\tPage 2 of the Enron Corp. Guaranty - please provide me with the name and fax number for the individual or group who should receive notices under the guaranty.\n\nOnce I have this information, I will finalize execution copies of\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nCC count: 1.\nBCC count: 1.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 27228408000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "dverban@wpsenergy.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nFurther to our conversation regarding long term deals extending into 2004, please see the attached draft of a Master Agreement between Enron North America Corp. and WPS Energy Services, Inc.  We would like to have the three transactions at issue confirmed under a Master.  Please give me a call at your earliest convenience to discuss any questions you may have regarding this matter.\n\n\n \n\nRegards,\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 27670582000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "asill@uecomm.com.au",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nPursuant to your request, attached is the execution copy of the Master Agreement between Enron Broadband Services Asia/Pacific Pte. Ltd. and Uecomm Operations Pty Limited.\n\nPlease print two (2) copies of the document and have an authorized officer sign both copies on Page 6 of the agreement.\n\nWhen executed, please forward both original signed copies by overnight courier to Mr. David Minns at Level 21, 9 Castlereagh St., Sydney, NSW  2000, Australia, Telephone No. (612) 9229 2310\n\nI will process the Enron Corp. Guaranty and will forward it to you when completed.\n\nThank you for your assistance a\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nCC count: 5.\nBCC count: 5.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 27670983000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "david.minns@enron.com",
+        "subj": "FW: Master Agreement",
+        "body_text": "[Historical email excerpt]\nAs you can see, I have forwarded the master agreement to Mr. Sill for execution.  When you receive the executed copies, please complete the notice information on the Schedule.  I'm sure Pat can assist in the technical contacts if you aren't familiar with them.  In addition, please initial both copies and have John Suttle initial both copies before they are signed by EBS Asia/Pacific Pte Ltd.  Upon execution, please forward one fully signed copy to Mr. Sill and forward the other original copy to me in Houston.\n\nI am processing the original Enron Corp. guaranty and will forward it to Uecomm when\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nForward detected in source metadata.\nEscalation detected in source metadata.\nCC count: 4.\nBCC count: 4.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 27672334000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": ".cooper@enron.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\n -----Original Message-----\nFrom: \tCooper, Tracy J. (EBS)  \nSent:\tMonday, August 13, 2001 3:18 PM\nTo:\tHeard, Marie\nSubject:\tRE: Master Agreement\n\nThanks Marie.\n\nTracy\n\n -----Original Message-----\nFrom: \tHeard, Marie  \nSent:\tMonday, August 13, 2001 3:05 PM\nTo:\tMinns, David\nCc:\tRossi, Robbi; Suttle, John; Cooper, Tracy J. (EBS); Leahy, Patrick\nSubject:\tFW: Master Agreement\nImportance:\tHigh\n\nHi, David:\n\nAs you can see, I have forwarded the master agreement to Mr. Sill for execution.  When you receive the executed copies, please complete the notice information on the Schedule.  I'm sure P\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 28885418000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "aboytinck@msn.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nI am sending this e-mail to check on the status of the Master Agreement for Garden City Plaza Ltd. that was forwarded to you for execution.  It would be appreciated if you would let me know the status.\n\nThank you!\n\nMarie Heard\nSenior Legal Specialist\nEnron North America Corp.\nPhone:  (713) 853-3907\nFax:  (713) 646-3490\nmarie.heard@enron.com\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 29039585000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "kkohler@albchem.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nJust a follow-up to check on the status of the Master Agreement forwarded to you by our Calgary office for execution.\n\nThanks!\n\nMarie Heard\nSenior Legal Specialist\nEnron North America Corp.\nPhone:  (713) 853-3907\nFax:  (713) 646-3490\nmarie.heard@enron.com\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 31308350000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "rmasciangelo@duke-energy.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nRobin, I have redlined changes to Thresholds in section 11.  Please review and let me know.  Thanks !!\n\n \n\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 31373843000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "veronica.espinoza@enron.com",
+        "subj": "RE: Master Agreement",
+        "body_text": "[Historical email excerpt]\nThanks!\n\n -----Original Message-----\nFrom: \tEspinoza, Veronica  \nSent:\tTuesday, September 25, 2001 10:30 AM\nTo:\tPerlingiere, Debra\nCc:\tVanek, Darren; Williams, Jason R (Credit)\nSubject:\tRE: Master Agreement\n\nDebra--\n\nThe attached contract has reciprocal $10MM thresholds.  I did not agree to that with the counteraparty when I spoke to them on Friday afternoon.  I went ahead and only agreed to raise Duke's threshold to $5MM (and to keep ours at $10MM).\n\nPlease send a revised contract draft to the counterparty.\n\nThanks,\n\nVeronica\n\n -----Original Message-----\nFrom: \tPerlingiere, Debra  \nSent:\tMon\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 31568174000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "kdirks@utilicorp.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nKathy, attached is a redline from our previous discussion. The only remaining issue is  Section 4.2, please give me a call to discuss.  \n\n \n\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 32508715000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "aboytinck@msn.com",
+        "subj": "FW: Master Agreement",
+        "body_text": "[Historical email excerpt]\nAnother follow-up message re status of execution of master agreement.  Please advise.\n\nThanks!\n\nMarie Heard\nSenior Legal Specialist\nEnron North America Corp.\nPhone:  (713) 853-3907\nFax:  (713) 646-3490\nmarie.heard@enron.com\n\n -----Original Message-----\nFrom: \tHeard, Marie  \nSent:\tMonday, August 27, 2001 4:26 PM\nTo:\t'aboytinck@msn.com'\nSubject:\tMaster Agreement\n\nMr. Boytinck:\n\nI am sending this e-mail to check on the status of the Master Agreement for Garden City Plaza Ltd. that was forwarded to you for execution.  It would be appreciated if you would let me know the status.\n\nThank you!\n\nMarie\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nForward detected in source metadata.\nEscalation detected in source metadata.\nLegal specialist signal present.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 32598430000,
+      "actor_id": "aboytinck@email.msn.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "aboytinck@email.msn.com",
+        "to": "marie.heard@enron.com",
+        "subj": "Re: Master Agreement",
+        "body_text": "[Historical email excerpt]\n----- Original Message -----\nFrom: \"Heard, Marie\" <Marie.Heard@ENRON.com>\nTo: <aboytinck@msn.com>\nSent: October 8, 2001 1:53 PM\nSubject: FW: Master Agreement\n\n\n\nAnother follow-up message re status of execution of master agreement.\nPlease advise.\n\nThanks!\n\nMarie Heard\nSenior Legal Specialist\nEnron North America Corp.\nPhone:  (713) 853-3907\nFax:  (713) 646-3490\nmarie.heard@enron.com\n\n>  -----Original Message-----\n> From: Heard, Marie\n> Sent: Monday, August 27, 2001 4:26 PM\n> To: 'aboytinck@msn.com'\n> Subject: Master Agreement\n>\n> Mr. Boytinck:\n>\n> I am sending this e-mail to check on the status\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment\nEscalation detected in source metadata.\nLegal specialist signal present.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 32600989000,
+      "actor_id": "marie.heard@enron.com",
+      "channel": "mail",
+      "type": "escalation",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "marie.heard@enron.com",
+        "to": "randy.otto@enron.com",
+        "subj": "FW: Master Agreement",
+        "body_text": "[Historical email excerpt]\nArthur has surfaced!  But why he's plodding through it is beyond me.  He said he was ready to sign so that's why we sent execution copies.  Obviously he hadn't even reviewed the draft.  Go figure!\n\nMarie\n\n\n -----Original Message-----\nFrom: \t\"Arthur Boytinck\" <aboytinck@email.msn.com>@ENRON  \nSent:\tTuesday, October 09, 2001 3:49 PM\nTo:\tHeard, Marie\nSubject:\tRe: Master Agreement\n\nThis document is very complicated and contains so much fine print that I am\nprocratinating in my efforts to plod through the document.\n\n\n----- Original Message -----\nFrom: \"Heard, Marie\" <Marie.Heard@ENRON.com>\nTo: <abo\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: escalation\nForward detected in source metadata.\nEscalation detected in source metadata.",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 33113900000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "jhunt@nicor.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nAttached is the draft incorporating issues as agreed.  You should also be aware of changes I have redlined to sections 4.2, 4.6, and the Material Adverse Change in the Appendix.  These revisions concern credit terms.  As the original draft in its inception was created for  Enerchange Energy, L.L.C. the credit terms differ slightly from those for Nicor Energy, L.L.C. Finally,  I  await a response from Dynegy regarding the guaranty.  \n\nDebra\n\n    \n\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 33204550000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "message",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "linda_woodring@mudnebr.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nBest regards,\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    },
+    {
+      "time_ms": 33209388000,
+      "actor_id": "debra.perlingiere@enron.com",
+      "channel": "mail",
+      "type": "assignment",
+      "correlation_id": "thr_e565b47423d035c9",
+      "payload": {
+        "from": "debra.perlingiere@enron.com",
+        "to": "veronica.espinoza@enron.com",
+        "subj": "Master Agreement",
+        "body_text": "[Historical email excerpt]\nStacy and I will be discussing changes to the Master Agreement on Friday.  Please send me an email and cc Jeff, and  Stacy,  requesting changes to Section 4.1,4.2  to delete \"on a monthly basis\" re the call for a letter of credit.\n\nDp\n\nDebra Perlingiere\nEnron North America Legal\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron\n713-853-7658\n713-646-3490 Fax\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: assignment",
+        "thread_id": "thr_e565b47423d035c9",
+        "category": "historical"
+      }
+    }
+  ]
+}

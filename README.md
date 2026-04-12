@@ -319,15 +319,16 @@ Later 2001 branch points now show the combined mail-plus-public-context view dir
 
 ![Enron decision scene with public context](docs/assets/enron-whatif/enron-decision-scene-top.png)
 
-When you want the screen to show Enron itself, serve the saved Enron workspace directly:
+This repo now ships a saved Enron example workspace directly under `docs/examples`, so a fresh clone can open the historical branch without first rebuilding the run locally:
 
 ```bash
-VEI_WHATIF_ROSETTA_DIR=/path/to/rosetta \
 vei ui serve \
-  --root /path/to/saved-enron-result/workspace \
+  --root docs/examples/enron-master-agreement-public-context/workspace \
   --host 127.0.0.1 \
   --port 3055
 ```
+
+That repo-owned bundle also includes the saved experiment overview, the LLM path result, and the JEPA forecast result under `docs/examples/enron-master-agreement-public-context/`. Use the real Rosetta archive when you want whole-history Enron search or a fresh rerun from the full corpus.
 
 <details>
 <summary>Concrete Enron example: Debra Perlingiere -> Cargill Master Agreement</summary>
@@ -349,6 +350,10 @@ The E-JEPA path does not write emails. When the local JEPA runtime is available,
 **What the current combined dataset shows before you branch**
 
 Opening that branch point against the current combined dataset creates a workspace with 6 prior messages and 84 recorded future events. Because the branch date is September 27, 2000, the public-company panel shows the 1998 and 1999 annual checkpoints and no public-news items yet. Later 2001 branch points pick up both the financial and public-news columns automatically.
+
+**What the saved repo example says about the counterfactual**
+
+The committed example bundle shows both compare paths. The bounded LLM path keeps the draft inside Enron, loops in Gerald Nemec for legal review, and sends an internal status update instead of sending the attachment to Cargill. The JEPA forecast keeps the same 84-event horizon but predicts risk moving from `1.000` to `0.983` and the outside-send count dropping by `29`.
 </details>
 
 ### Enron business-outcome benchmark
@@ -372,35 +377,37 @@ Those Enron dossiers now also include the dated public-company backdrop that was
 vei whatif benchmark build \
   --rosetta-dir /path/to/rosetta \
   --artifacts-root _vei_out/whatif_benchmarks/branch_point_ranking_v2 \
-  --label enron_business_outcome_reset
+  --label enron_business_outcome_public_context_20260412
 
 # Train one model family on observed Enron futures
 vei whatif benchmark train \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent
 
 # Judge the held-out counterfactual cases
 vei whatif benchmark judge \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model gpt-4.1-mini
 
 # Evaluate one trained model against factual futures and judged rankings
 vei whatif benchmark eval \
-  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412 \
   --model-id jepa_latent \
-  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
+  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_public_context_20260412/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
 ```
 
 The current Enron business-outcome benchmark uses 24 held-out cases with 4 candidate actions each. The clean comparison now comes from the matched-input study path, where `jepa_latent`, `full_context_transformer`, and `treatment_transformer` all see the same pre-branch history, summary features, and structured action.
 
-On the current 5-seed, 2-epoch matched-input rerun over the saved `enron_business_outcome_reset_smoke` build, the held-out decision checks came out like this:
+The current saved build also carries the dated Enron public-company backdrop that was already known by each branch date. The held-out dossiers include those financial checkpoints and public news items, while the model-training inputs stay the same. The current study report lives under `studies/matched_input_public_context_20260412/`.
 
-- `jepa_latent`: `76.6/120` mean, `0.638 +/- 0.022`
-- `full_context_transformer`: `75.2/120` mean, `0.627 +/- 0.025`
-- `treatment_transformer`: `65.6/120` mean, `0.547 +/- 0.108`
+On the current 5-seed, 2-epoch matched-input rerun over the saved `enron_business_outcome_public_context_20260412` build, the held-out decision checks came out like this:
 
-On the simpler factual task of predicting whether anything goes outside after the branch point, all three stayed tightly grouped around `0.98` AUROC. The main point is that once the model inputs are aligned and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the business decision checks while the treatment transformer becomes much less stable.
+- `jepa_latent`: `80.2/120` mean, `0.668 +/- 0.012`
+- `full_context_transformer`: `79.4/120` mean, `0.662 +/- 0.031`
+- `treatment_transformer`: `68.2/120` mean, `0.568 +/- 0.117`
+
+On the simpler factual task of predicting whether anything goes outside after the branch point, all three stayed tightly grouped around `0.98` AUROC: `0.981` for `jepa_latent`, `0.982` for `full_context_transformer`, and `0.980` for `treatment_transformer`. The main point is that once the model inputs are aligned, the richer Enron dossiers are in place, and the result is averaged across seeds, the JEPA-style path still leads the business decision checks while the treatment transformer remains much less stable.
 
 ## Use It As A Library
 
@@ -470,6 +477,7 @@ make all      # check → test → llm-live, stops on first failure
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — module structure and data flow
 - **[WHATIF.md](docs/WHATIF.md)** — historical replay, ranked what-if, and Enron benchmark flows
 - **[ENRON_BUSINESS_OUTCOME_BENCHMARK.md](docs/ENRON_BUSINESS_OUTCOME_BENCHMARK.md)** — Enron benchmark setup, objectives, judge loop, and artifact layout
+- **[Enron Example](docs/examples/enron-master-agreement-public-context/README.md)** — repo-owned saved Enron branch with current public-context results
 - **[SERVICE_OPS_WALKTHROUGH.md](docs/SERVICE_OPS_WALKTHROUGH.md)** — visual walkthrough of the control plane
 
 ## License

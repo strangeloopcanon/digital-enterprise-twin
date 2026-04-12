@@ -1,0 +1,372 @@
+{
+  "version": "1",
+  "organization_name": "Enron Corporation",
+  "organization_domain": "enron.com",
+  "captured_at": "2026-04-12T16:32:33+00:00",
+  "sources": [
+    {
+      "provider": "mail_archive",
+      "captured_at": "2026-04-12T16:32:33+00:00",
+      "status": "ok",
+      "record_counts": {
+        "threads": 1,
+        "messages": 6,
+        "actors": 47
+      },
+      "data": {
+        "threads": [
+          {
+            "thread_id": "thr_e565b47423d035c9",
+            "subject": "Master Agreement",
+            "category": "historical",
+            "messages": [
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "marie.heard@enron.com",
+                "subject": "Master Agreement",
+                "body_text": "[Historical email excerpt]\nDp\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+                "unread": false,
+                "time_ms": 0
+              },
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "marie.heard@enron.com",
+                "subject": "Master Agreement",
+                "body_text": "[Historical email excerpt]\nDp\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+                "unread": false,
+                "time_ms": 1000
+              },
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "pgraff@reliantenergy.com",
+                "subject": "Re: Master Agreement",
+                "body_text": "[Historical email excerpt]\nI did receive your e-mails and apologize for my late response.  Yes, I will \nbe the negotiating person for the agreement with the exception of credit \nterms and issues, but will also be involved in the background with credit.  \n\nI hope to  e-mail you my comments by the end of next week.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+                "unread": false,
+                "time_ms": 2000
+              },
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "pgraff@reliantenergy.com",
+                "subject": "Re: Master Agreement",
+                "body_text": "[Historical email excerpt]\nI did receive your e-mails and apologize for my late response.  Yes, I will \nbe the negotiating person for the agreement with the exception of credit \nterms and issues, but will also be involved in the background with credit.  \n\nI hope to  e-mail you my comments by the end of next week.\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message_reply",
+                "unread": false,
+                "time_ms": 3000
+              },
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "lorvi@aurora-gas.com",
+                "subject": "Master Agreement",
+                "body_text": "[Historical email excerpt]\nMany thanks!\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+                "unread": false,
+                "time_ms": 4000
+              },
+              {
+                "from": "debra.perlingiere@enron.com",
+                "to": "lorvi@aurora-gas.com",
+                "subject": "Master Agreement",
+                "body_text": "[Historical email excerpt]\nMany thanks!\n\nRegards,\nDebra Perlingiere\nEnron North America Corp.\nLegal Department\n1400 Smith Street, EB 3885\nHouston, Texas 77002\ndperlin@enron.com\nPhone 713-853-7658\nFax  713-646-3490\n\n[Excerpt limited by source data. Original body may be longer.]\n\nEvent type: message",
+                "unread": false,
+                "time_ms": 5000
+              }
+            ]
+          }
+        ],
+        "actors": [
+          {
+            "actor_id": "sara.shackleton@enron.com",
+            "email": "sara.shackleton@enron.com",
+            "display_name": "Sara Shackleton"
+          },
+          {
+            "actor_id": "gerald.nemec@enron.com",
+            "email": "gerald.nemec@enron.com",
+            "display_name": "Gerald Nemec"
+          },
+          {
+            "actor_id": "debra.perlingiere@enron.com",
+            "email": "debra.perlingiere@enron.com",
+            "display_name": "Debra Perlingiere"
+          },
+          {
+            "actor_id": "marie.heard@enron.com",
+            "email": "marie.heard@enron.com",
+            "display_name": "Marie Heard"
+          },
+          {
+            "actor_id": "stephanie.panus@enron.com",
+            "email": "stephanie.panus@enron.com",
+            "display_name": "Stephanie Panus"
+          },
+          {
+            "actor_id": "veronica.espinoza@enron.com",
+            "email": "veronica.espinoza@enron.com",
+            "display_name": "Veronica Espinoza"
+          },
+          {
+            "actor_id": "lee.papayoti@enron.com",
+            "email": "lee.papayoti@enron.com",
+            "display_name": "Lee Papayoti"
+          },
+          {
+            "actor_id": "tammi.depaolis@enron.com",
+            "email": "tammi.depaolis@enron.com",
+            "display_name": "Tammi Depaolis"
+          },
+          {
+            "actor_id": "majed.nachawati@enron.com",
+            "email": "majed.nachawati@enron.com",
+            "display_name": "Majed Nachawati"
+          },
+          {
+            "actor_id": "alisha.mahabir@enron.com",
+            "email": "alisha.mahabir@enron.com",
+            "display_name": "Alisha Mahabir"
+          },
+          {
+            "actor_id": "kdirks@utilicorp.com",
+            "email": "kdirks@utilicorp.com",
+            "display_name": "Kdirks"
+          },
+          {
+            "actor_id": "rmasciangelo@duke-energy.com",
+            "email": "rmasciangelo@duke-energy.com",
+            "display_name": "Rmasciangelo"
+          },
+          {
+            "actor_id": "pgraff@reliantenergy.com",
+            "email": "pgraff@reliantenergy.com",
+            "display_name": "Pgraff"
+          },
+          {
+            "actor_id": "sandra.haskins@pgnmail.com",
+            "email": "sandra.haskins@pgnmail.com",
+            "display_name": "Sandra Haskins"
+          },
+          {
+            "actor_id": "randy.otto@enron.com",
+            "email": "randy.otto@enron.com",
+            "display_name": "Randy Otto"
+          },
+          {
+            "actor_id": ".cooper@enron.com",
+            "email": ".cooper@enron.com",
+            "display_name": "Cooper"
+          },
+          {
+            "actor_id": "pgraff@reliant.com",
+            "email": "pgraff@reliant.com",
+            "display_name": "Pgraff"
+          },
+          {
+            "actor_id": "jhunt@nicor.com",
+            "email": "jhunt@nicor.com",
+            "display_name": "Jhunt"
+          },
+          {
+            "actor_id": "kathy_gerken@cargill.com",
+            "email": "kathy_gerken@cargill.com",
+            "display_name": "Kathy Gerken"
+          },
+          {
+            "actor_id": "vangie.mcgilloway@powersrc.com",
+            "email": "vangie.mcgilloway@powersrc.com",
+            "display_name": "Vangie Mcgilloway"
+          },
+          {
+            "actor_id": "group:6b619b10b059cbc3",
+            "email": "group:6b619b10b059cbc3",
+            "display_name": "Group:6b619b10b059cbc3"
+          },
+          {
+            "actor_id": "group:f87267c99938e537",
+            "email": "group:f87267c99938e537",
+            "display_name": "Group:f87267c99938e537"
+          },
+          {
+            "actor_id": "laoh@chevron.com",
+            "email": "laoh@chevron.com",
+            "display_name": "Laoh"
+          },
+          {
+            "actor_id": "larrykarl@ftpc.fpcusa.com",
+            "email": "larrykarl@ftpc.fpcusa.com",
+            "display_name": "Larrykarl"
+          },
+          {
+            "actor_id": "marc_rubenstein@cargill.com",
+            "email": "marc_rubenstein@cargill.com",
+            "display_name": "Marc Rubenstein"
+          },
+          {
+            "actor_id": "tony@gatherco.com",
+            "email": "tony@gatherco.com",
+            "display_name": "Tony"
+          },
+          {
+            "actor_id": "wwilson@arm-ltd.com",
+            "email": "wwilson@arm-ltd.com",
+            "display_name": "Wwilson"
+          },
+          {
+            "actor_id": "aboytinck@msn.com",
+            "email": "aboytinck@msn.com",
+            "display_name": "Aboytinck"
+          },
+          {
+            "actor_id": "linda_woodring@mudnebr.com",
+            "email": "linda_woodring@mudnebr.com",
+            "display_name": "Linda Woodring"
+          },
+          {
+            "actor_id": "chgarn@ci.long-beach.ca.us",
+            "email": "chgarn@ci.long-beach.ca.us",
+            "display_name": "Chgarn"
+          },
+          {
+            "actor_id": "ctrice@powersrc.com",
+            "email": "ctrice@powersrc.com",
+            "display_name": "Ctrice"
+          },
+          {
+            "actor_id": "dlin@fpcusa.com",
+            "email": "dlin@fpcusa.com",
+            "display_name": "Dlin"
+          },
+          {
+            "actor_id": "dlin@fpeusa.com",
+            "email": "dlin@fpeusa.com",
+            "display_name": "Dlin"
+          },
+          {
+            "actor_id": "easters@ldng.com",
+            "email": "easters@ldng.com",
+            "display_name": "Easters"
+          },
+          {
+            "actor_id": "group:a197097db06cc32d",
+            "email": "group:a197097db06cc32d",
+            "display_name": "Group:a197097db06cc32d"
+          },
+          {
+            "actor_id": "group:e53c89b0ba5529fa",
+            "email": "group:e53c89b0ba5529fa",
+            "display_name": "Group:e53c89b0ba5529fa"
+          },
+          {
+            "actor_id": "lorvi@aurora-gas.com",
+            "email": "lorvi@aurora-gas.com",
+            "display_name": "Lorvi"
+          },
+          {
+            "actor_id": "rweiss@lehman.com",
+            "email": "rweiss@lehman.com",
+            "display_name": "Rweiss"
+          },
+          {
+            "actor_id": "aboytinck@email.msn.com",
+            "email": "aboytinck@email.msn.com",
+            "display_name": "Aboytinck"
+          },
+          {
+            "actor_id": "agriffin@texicannaturalgas.com",
+            "email": "agriffin@texicannaturalgas.com",
+            "display_name": "Agriffin"
+          },
+          {
+            "actor_id": "dverban@wpsenergy.com",
+            "email": "dverban@wpsenergy.com",
+            "display_name": "Dverban"
+          },
+          {
+            "actor_id": "group:0b0b2c51fd38b2fc",
+            "email": "group:0b0b2c51fd38b2fc",
+            "display_name": "Group:0b0b2c51fd38b2fc"
+          },
+          {
+            "actor_id": "group:6e653538ab02bc2f",
+            "email": "group:6e653538ab02bc2f",
+            "display_name": "Group:6e653538ab02bc2f"
+          },
+          {
+            "actor_id": "group:9df35075f6e45957",
+            "email": "group:9df35075f6e45957",
+            "display_name": "Group:9df35075f6e45957"
+          },
+          {
+            "actor_id": "kkohler@albchem.com",
+            "email": "kkohler@albchem.com",
+            "display_name": "Kkohler"
+          },
+          {
+            "actor_id": "tim.neuman@williams.com",
+            "email": "tim.neuman@williams.com",
+            "display_name": "Tim Neuman"
+          },
+          {
+            "actor_id": "tim.newman@williams.com",
+            "email": "tim.newman@williams.com",
+            "display_name": "Tim Newman"
+          }
+        ],
+        "profile": {}
+      },
+      "error": null
+    }
+  ],
+  "metadata": {
+    "whatif": {
+      "source": "enron",
+      "thread_id": "thr_e565b47423d035c9",
+      "branch_event_id": "enron_bcda1b925800af8c",
+      "content_notice": "Historical email bodies are built from Rosetta excerpts and event metadata. They are grounded, but they are not full original messages.",
+      "public_context": {
+        "version": "1",
+        "pack_name": "enron_public_context",
+        "organization_name": "Enron Corporation",
+        "organization_domain": "enron.com",
+        "prepared_at": "2026-04-12T13:42:12Z",
+        "integration_hint": "At integration time, compute the oldest and latest email timestamps from the active Enron slice and keep only financial_snapshots and public_news_events whose dates overlap that email window.",
+        "window_start": "1997-01-01T17:22:03Z",
+        "window_end": "2002-09-23T04:01:33Z",
+        "branch_timestamp": "2000-09-27T13:42:00Z",
+        "financial_snapshots": [
+          {
+            "snapshot_id": "fy1998_selected_financial_data",
+            "as_of": "1998-12-31T00:00:00Z",
+            "kind": "annual",
+            "label": "FY1998 selected financial data",
+            "source_ids": [
+              "enron_2000_financial_highlights"
+            ],
+            "summary": "Operating revenue was $31.26B, net income was $703M, total assets were $29.35B, shareholders' equity was $7.05B, and diluted EPS was $1.01.",
+            "metrics": {
+              "operating_revenue_usd_millions": 31260,
+              "net_income_usd_millions": 703,
+              "total_assets_usd_millions": 29350,
+              "shareholders_equity_usd_millions": 7048,
+              "diluted_eps": 1.01
+            }
+          },
+          {
+            "snapshot_id": "fy1999_selected_financial_data",
+            "as_of": "1999-12-31T00:00:00Z",
+            "kind": "annual",
+            "label": "FY1999 selected financial data",
+            "source_ids": [
+              "enron_2000_financial_highlights"
+            ],
+            "summary": "Operating revenue was $40.11B, net income was $893M, total assets were $33.38B, shareholders' equity was $9.57B, and diluted EPS was $1.10.",
+            "metrics": {
+              "operating_revenue_usd_millions": 40112,
+              "net_income_usd_millions": 893,
+              "total_assets_usd_millions": 33381,
+              "shareholders_equity_usd_millions": 9570,
+              "diluted_eps": 1.1
+            }
+          }
+        ],
+        "public_news_events": []
+      }
+    }
+  }
+}
