@@ -38,6 +38,7 @@ WhatIfResearchHypothesisLabel = Literal[
 WhatIfBackendScoreStatus = Literal["ok", "skipped", "error", "fallback"]
 WhatIfBenchmarkModelId = Literal[
     "jepa_latent",
+    "full_context_transformer",
     "ft_transformer",
     "sequence_transformer",
     "treatment_transformer",
@@ -964,6 +965,14 @@ class WhatIfDominanceSummary(BaseModel):
     pass_rate: float = 0.0
 
 
+class WhatIfBenchmarkMetricSummary(BaseModel):
+    count: int = 0
+    mean: float = 0.0
+    std: float = 0.0
+    min: float = 0.0
+    max: float = 0.0
+
+
 class WhatIfPanelSummary(BaseModel):
     available: bool = False
     judgment_count: int = 0
@@ -1016,6 +1025,73 @@ class WhatIfBenchmarkEvalArtifacts(BaseModel):
     root: Path
     eval_result_path: Path
     prediction_jsonl_path: Path
+
+
+class WhatIfBenchmarkStudyRun(BaseModel):
+    model_id: WhatIfBenchmarkModelId
+    seed: int
+    train_loss: float = 0.0
+    validation_loss: float = 0.0
+    observed_auroc_any_external_spread: float = 0.0
+    dominance_passed_checks: int = 0
+    dominance_total_checks: int = 0
+    dominance_pass_rate: float = 0.0
+    judge_top1_agreement: float | None = None
+    judge_pairwise_accuracy: float | None = None
+    business_head_mae: dict[str, float] = Field(default_factory=dict)
+    objective_pass_rates: dict[WhatIfBusinessObjectivePackId, float] = Field(
+        default_factory=dict
+    )
+    train_result_path: Path
+    eval_result_path: Path
+
+
+class WhatIfBenchmarkStudyModelSummary(BaseModel):
+    model_id: WhatIfBenchmarkModelId
+    run_count: int = 0
+    seeds: list[int] = Field(default_factory=list)
+    train_loss: WhatIfBenchmarkMetricSummary = Field(
+        default_factory=WhatIfBenchmarkMetricSummary
+    )
+    validation_loss: WhatIfBenchmarkMetricSummary = Field(
+        default_factory=WhatIfBenchmarkMetricSummary
+    )
+    observed_auroc_any_external_spread: WhatIfBenchmarkMetricSummary = Field(
+        default_factory=WhatIfBenchmarkMetricSummary
+    )
+    dominance_passed_checks: WhatIfBenchmarkMetricSummary = Field(
+        default_factory=WhatIfBenchmarkMetricSummary
+    )
+    dominance_pass_rate: WhatIfBenchmarkMetricSummary = Field(
+        default_factory=WhatIfBenchmarkMetricSummary
+    )
+    judge_top1_agreement: WhatIfBenchmarkMetricSummary | None = None
+    judge_pairwise_accuracy: WhatIfBenchmarkMetricSummary | None = None
+    business_head_mae: dict[str, WhatIfBenchmarkMetricSummary] = Field(
+        default_factory=dict
+    )
+    objective_pass_rates: dict[
+        WhatIfBusinessObjectivePackId, WhatIfBenchmarkMetricSummary
+    ] = Field(default_factory=dict)
+
+
+class WhatIfBenchmarkStudyArtifacts(BaseModel):
+    root: Path
+    result_path: Path
+    overview_path: Path
+
+
+class WhatIfBenchmarkStudyResult(BaseModel):
+    version: Literal["1"] = "1"
+    label: str
+    build_root: Path
+    models: list[WhatIfBenchmarkModelId] = Field(default_factory=list)
+    seeds: list[int] = Field(default_factory=list)
+    runs: list[WhatIfBenchmarkStudyRun] = Field(default_factory=list)
+    summaries: list[WhatIfBenchmarkStudyModelSummary] = Field(default_factory=list)
+    ranked_model_ids: list[WhatIfBenchmarkModelId] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    artifacts: WhatIfBenchmarkStudyArtifacts
 
 
 class WhatIfBenchmarkEvalResult(BaseModel):

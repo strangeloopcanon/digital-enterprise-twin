@@ -21,10 +21,16 @@ def run_branch_point_benchmark_training(
     epochs: int = 12,
     batch_size: int = 64,
     learning_rate: float = 1e-3,
+    seed: int = 42042,
     device: str | None = None,
     runtime_root: str | Path | None = None,
+    output_root: str | Path | None = None,
 ) -> WhatIfBenchmarkTrainResult:
-    model_root = Path(build_root).expanduser().resolve() / "model_runs" / str(model_id)
+    model_root = (
+        Path(output_root).expanduser().resolve()
+        if output_root is not None
+        else Path(build_root).expanduser().resolve() / "model_runs" / str(model_id)
+    )
     model_root.mkdir(parents=True, exist_ok=True)
     request = {
         "build_root": str(Path(build_root).expanduser().resolve()),
@@ -33,6 +39,7 @@ def run_branch_point_benchmark_training(
         "epochs": int(epochs),
         "batch_size": int(batch_size),
         "learning_rate": float(learning_rate),
+        "seed": int(seed),
         "device": device or "",
     }
     response_path = _run_bridge_command(
@@ -52,8 +59,13 @@ def run_branch_point_benchmark_evaluation(
     model_id: WhatIfBenchmarkModelId,
     device: str | None = None,
     runtime_root: str | Path | None = None,
+    output_root: str | Path | None = None,
 ) -> WhatIfBenchmarkEvalResult:
-    model_root = Path(build_root).expanduser().resolve() / "model_runs" / str(model_id)
+    model_root = (
+        Path(output_root).expanduser().resolve()
+        if output_root is not None
+        else Path(build_root).expanduser().resolve() / "model_runs" / str(model_id)
+    )
     model_root.mkdir(parents=True, exist_ok=True)
     request = {
         "build_root": str(Path(build_root).expanduser().resolve()),

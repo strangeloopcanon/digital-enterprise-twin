@@ -21,6 +21,7 @@ from vei.whatif import (
     load_branch_point_benchmark_build_result,
     load_branch_point_benchmark_eval_result,
     load_branch_point_benchmark_judge_result,
+    load_branch_point_benchmark_study_result,
     load_branch_point_benchmark_train_result,
     load_ranked_experiment_result,
     load_research_pack_run_result,
@@ -32,6 +33,7 @@ from vei.whatif import (
     materialize_episode,
     replay_episode_baseline,
     run_research_pack,
+    run_branch_point_benchmark_study,
     search_events,
     train_branch_point_benchmark_model,
     run_counterfactual_experiment,
@@ -47,6 +49,10 @@ from vei.whatif.models import (
     WhatIfBenchmarkEvalResult,
     WhatIfBenchmarkJudgeArtifacts,
     WhatIfBenchmarkJudgeResult,
+    WhatIfBenchmarkMetricSummary,
+    WhatIfBenchmarkStudyArtifacts,
+    WhatIfBenchmarkStudyModelSummary,
+    WhatIfBenchmarkStudyResult,
     WhatIfBenchmarkTrainArtifacts,
     WhatIfBenchmarkTrainResult,
     WhatIfCounterfactualCandidatePrediction,
@@ -1999,6 +2005,7 @@ def test_branch_point_benchmark_build_writes_prebranch_dataset_and_dossiers(
 
     assert list_branch_point_benchmark_models() == [
         "jepa_latent",
+        "full_context_transformer",
         "ft_transformer",
         "sequence_transformer",
         "treatment_transformer",
@@ -2414,6 +2421,159 @@ def test_branch_point_benchmark_train_and_eval_round_trip_with_stub_runtime(
     assert eval_result.artifacts.eval_result_path.exists()
 
 
+def test_branch_point_benchmark_study_writes_seeded_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    rosetta_dir = tmp_path / "rosetta"
+    _write_rosetta_fixture(rosetta_dir)
+    world = load_world(source="enron", rosetta_dir=rosetta_dir)
+    pack = _make_research_pack()
+
+    monkeypatch.setattr(
+        "vei.whatif.benchmark.get_research_pack",
+        lambda _pack_id: pack,
+    )
+    build = build_branch_point_benchmark(
+        world,
+        artifacts_root=tmp_path / "benchmark_artifacts",
+        label="fixture_benchmark_study",
+        heldout_pack_id="fixture_pack",
+    )
+
+    def fake_train_runtime(**kwargs) -> WhatIfBenchmarkTrainResult:
+        model_root = Path(kwargs["output_root"])
+        model_root.mkdir(parents=True, exist_ok=True)
+        seed = int(kwargs["seed"])
+        model_bonus = 0.05 if kwargs["model_id"] == "full_context_transformer" else 0.0
+        result = WhatIfBenchmarkTrainResult(
+            model_id=kwargs["model_id"],
+            dataset_root=build.dataset.root,
+            train_loss=round(0.30 - model_bonus + ((seed - 42042) * 0.01), 3),
+            validation_loss=round(0.40 - model_bonus + ((seed - 42042) * 0.01), 3),
+            epoch_count=kwargs["epochs"],
+            train_row_count=1,
+            validation_row_count=0,
+            notes=[f"seed={seed}"],
+            artifacts=WhatIfBenchmarkTrainArtifacts(
+                root=model_root,
+                model_path=model_root / "model.pt",
+                metadata_path=model_root / "metadata.json",
+                train_result_path=model_root / "train_result.json",
+            ),
+        )
+        result.artifacts.model_path.write_text("stub", encoding="utf-8")
+        result.artifacts.metadata_path.write_text("{}", encoding="utf-8")
+        result.artifacts.train_result_path.write_text(
+            result.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return result
+
+    def fake_eval_runtime(**kwargs) -> WhatIfBenchmarkEvalResult:
+        model_root = Path(kwargs["output_root"])
+        model_root.mkdir(parents=True, exist_ok=True)
+        case = build.cases[0]
+        expected_order_ok = kwargs["model_id"] == "full_context_transformer"
+        objective_results: list[WhatIfCounterfactualObjectiveEvaluation] = []
+        for objective_pack in list_business_objective_packs():
+            candidate_predictions: list[WhatIfCounterfactualCandidatePrediction] = []
+            for index, candidate in enumerate(case.candidates, start=1):
+                evidence = WhatIfObservedEvidenceHeads(
+                    outside_recipient_count=index - 1,
+                    review_loop_count=index,
+                    participant_fanout=index + 1,
+                    time_to_first_follow_up_ms=500 * index,
+                    time_to_thread_end_ms=1_000 * index,
+                    review_delay_burden_ms=750 * index,
+                    commitment_clarity_count=index,
+                )
+                business = evidence_to_business_outcomes(evidence)
+                candidate_predictions.append(
+                    WhatIfCounterfactualCandidatePrediction(
+                        candidate=candidate,
+                        rank=index,
+                        predicted_evidence_heads=evidence,
+                        predicted_business_outcomes=business,
+                        predicted_objective_score=score_business_objective(
+                            pack=objective_pack,
+                            outcomes=business,
+                            evidence=evidence,
+                        ),
+                    )
+                )
+            objective_results.append(
+                WhatIfCounterfactualObjectiveEvaluation(
+                    objective_pack=objective_pack,
+                    recommended_candidate_label=candidate_predictions[
+                        0
+                    ].candidate.label,
+                    candidates=candidate_predictions,
+                    expected_order_ok=expected_order_ok,
+                )
+            )
+        result = WhatIfBenchmarkEvalResult(
+            model_id=kwargs["model_id"],
+            dataset_root=build.dataset.root,
+            observed_metrics=WhatIfObservedForecastMetrics(
+                auroc_any_external_spread=(
+                    0.74 if kwargs["model_id"] == "full_context_transformer" else 0.68
+                ),
+                brier_any_external_spread=0.11,
+                calibration_error_any_external_spread=0.07,
+                business_head_mae={
+                    "enterprise_risk": (
+                        0.12
+                        if kwargs["model_id"] == "full_context_transformer"
+                        else 0.18
+                    )
+                },
+            ),
+            cases=[
+                WhatIfBenchmarkCaseEvaluation(
+                    case=case,
+                    objectives=objective_results,
+                )
+            ],
+            artifacts=WhatIfBenchmarkEvalArtifacts(
+                root=model_root,
+                eval_result_path=model_root / "eval_result.json",
+                prediction_jsonl_path=model_root / "predictions.jsonl",
+            ),
+        )
+        result.artifacts.prediction_jsonl_path.write_text("", encoding="utf-8")
+        result.artifacts.eval_result_path.write_text(
+            result.model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        return result
+
+    monkeypatch.setattr(
+        "vei.whatif.benchmark.run_branch_point_benchmark_training",
+        fake_train_runtime,
+    )
+    monkeypatch.setattr(
+        "vei.whatif.benchmark.run_branch_point_benchmark_evaluation",
+        fake_eval_runtime,
+    )
+
+    result = run_branch_point_benchmark_study(
+        build.artifacts.root,
+        label="matched_input_fixture",
+        model_ids=["jepa_latent", "full_context_transformer"],
+        seeds=[42042, 42043],
+        epochs=3,
+    )
+    loaded = load_branch_point_benchmark_study_result(result.artifacts.root)
+
+    assert result.artifacts.result_path.exists()
+    assert result.artifacts.overview_path.exists()
+    assert len(result.runs) == 4
+    assert result.ranked_model_ids[0] == "full_context_transformer"
+    assert loaded.label == "matched_input_fixture"
+    assert loaded.summaries[0].run_count == 2
+
+
 def test_jepa_benchmark_model_uses_prebranch_sequence_signal() -> None:
     torch = pytest.importorskip("torch")
     torch.manual_seed(42042)
@@ -2470,6 +2630,79 @@ def test_jepa_benchmark_model_uses_prebranch_sequence_signal() -> None:
     )
     assert (
         torch.abs(base_outputs["regression"] - changed_outputs["regression"]).max()
+        > 1e-6
+    )
+
+
+def test_full_context_transformer_uses_summary_action_and_sequence_signal() -> None:
+    torch = pytest.importorskip("torch")
+    torch.manual_seed(42042)
+    preprocessor = _BenchmarkPreprocessor(
+        summary_feature_names=["history_event_count"],
+        summary_mean=[0.0],
+        summary_std=[1.0],
+        action_tag_names=["hold"],
+        event_type_names=["__summary__", "message"],
+        target_mean=[0.0] * len(_EVIDENCE_TARGET_NAMES),
+        target_std=[1.0] * len(_EVIDENCE_TARGET_NAMES),
+    )
+    trainer = _TorchTrainer(
+        model_id="full_context_transformer",
+        preprocessor=preprocessor,
+    )
+    model = trainer.build_model(device="cpu")
+    model.eval()
+
+    summary = torch.zeros((1, 1), dtype=torch.float32)
+    action = torch.zeros(
+        (1, _action_vector_width(preprocessor)),
+        dtype=torch.float32,
+    )
+    token_categorical = torch.zeros(
+        (1, _SEQUENCE_TOKEN_LIMIT, 3),
+        dtype=torch.long,
+    )
+    token_numeric = torch.zeros(
+        (1, _SEQUENCE_TOKEN_LIMIT, _SEQUENCE_NUMERIC_WIDTH),
+        dtype=torch.float32,
+    )
+
+    changed_summary = summary.clone()
+    changed_summary[0, 0] = 3.0
+    changed_action = action.clone()
+    changed_action[0, 0] = 1.0
+    changed_categorical = token_categorical.clone()
+    changed_numeric = token_numeric.clone()
+    changed_categorical[0, 0, 0] = 1
+    changed_categorical[0, 0, 1] = 1
+    changed_categorical[0, 0, 2] = 1
+    changed_numeric[0, 0, 0] = 2.0
+
+    with torch.no_grad():
+        base_outputs = model(summary, action, token_categorical, token_numeric)
+        changed_summary_outputs = model(
+            changed_summary,
+            changed_action,
+            token_categorical,
+            token_numeric,
+        )
+        changed_sequence_outputs = model(
+            summary,
+            action,
+            changed_categorical,
+            changed_numeric,
+        )
+
+    assert (
+        torch.abs(
+            base_outputs["binary_logits"] - changed_summary_outputs["binary_logits"]
+        ).max()
+        > 1e-6
+    )
+    assert (
+        torch.abs(
+            base_outputs["binary_logits"] - changed_sequence_outputs["binary_logits"]
+        ).max()
         > 1e-6
     )
 
@@ -2577,6 +2810,46 @@ def test_vei_whatif_cli_benchmark_commands(tmp_path: Path, monkeypatch) -> None:
             / "predictions.jsonl",
         ),
     )
+    study_result = WhatIfBenchmarkStudyResult(
+        label="fixture_study",
+        build_root=build.artifacts.root,
+        models=["jepa_latent", "full_context_transformer"],
+        seeds=[42042, 42043],
+        runs=[],
+        summaries=[
+            WhatIfBenchmarkStudyModelSummary(
+                model_id="full_context_transformer",
+                run_count=2,
+                seeds=[42042, 42043],
+                dominance_pass_rate=WhatIfBenchmarkMetricSummary(
+                    count=2,
+                    mean=0.9,
+                    std=0.0,
+                    min=0.9,
+                    max=0.9,
+                ),
+                observed_auroc_any_external_spread=WhatIfBenchmarkMetricSummary(
+                    count=2,
+                    mean=0.8,
+                    std=0.0,
+                    min=0.8,
+                    max=0.8,
+                ),
+            )
+        ],
+        ranked_model_ids=["full_context_transformer", "jepa_latent"],
+        artifacts=WhatIfBenchmarkStudyArtifacts(
+            root=build.artifacts.root / "studies" / "fixture_study",
+            result_path=build.artifacts.root
+            / "studies"
+            / "fixture_study"
+            / "benchmark_study_result.json",
+            overview_path=build.artifacts.root
+            / "studies"
+            / "fixture_study"
+            / "benchmark_study_overview.md",
+        ),
+    )
 
     monkeypatch.setattr(
         "vei.cli.vei_whatif.build_branch_point_benchmark",
@@ -2620,6 +2893,14 @@ def test_vei_whatif_cli_benchmark_commands(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         "vei.cli.vei_whatif.load_branch_point_benchmark_judge_result",
         lambda *_args, **_kwargs: judge_result,
+    )
+    monkeypatch.setattr(
+        "vei.cli.vei_whatif.run_branch_point_benchmark_study",
+        lambda *args, **kwargs: study_result,
+    )
+    monkeypatch.setattr(
+        "vei.cli.vei_whatif.load_branch_point_benchmark_study_result",
+        lambda *_args, **_kwargs: study_result,
     )
 
     runner = CliRunner()
@@ -2692,6 +2973,23 @@ def test_vei_whatif_cli_benchmark_commands(tmp_path: Path, monkeypatch) -> None:
     assert eval_cli_result.exit_code == 0, eval_cli_result.output
     assert "Observed Future Forecasting" in eval_cli_result.output
 
+    study_cli_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "benchmark",
+            "study",
+            "--root",
+            str(build.artifacts.root),
+            "--label",
+            "fixture_study",
+            "--format",
+            "markdown",
+        ],
+    )
+    assert study_cli_result.exit_code == 0, study_cli_result.output
+    assert "Ranked Models" in study_cli_result.output
+
     show_judge_result = runner.invoke(
         cli_app,
         [
@@ -2706,3 +3004,18 @@ def test_vei_whatif_cli_benchmark_commands(tmp_path: Path, monkeypatch) -> None:
     )
     assert show_judge_result.exit_code == 0, show_judge_result.output
     assert "Judged case-objectives" in show_judge_result.output
+
+    show_study_result = runner.invoke(
+        cli_app,
+        [
+            "whatif",
+            "benchmark",
+            "show-study",
+            "--root",
+            str(study_result.artifacts.root),
+            "--format",
+            "markdown",
+        ],
+    )
+    assert show_study_result.exit_code == 0, show_study_result.output
+    assert "fixture_study" in show_study_result.output

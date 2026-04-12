@@ -160,7 +160,7 @@ All trained model families use the same boundary for this benchmark:
 - pre-branch thread history only
 - structured candidate action only
 
-The current JEPA benchmark path now reads the pre-branch event sequence as well as the summary features and action schema. That keeps the JEPA comparison aligned with the stronger history-based transformer baselines instead of leaving JEPA on a weaker compressed input.
+The matched-input benchmark study now gives `jepa_latent` and `full_context_transformer` the same pre-branch event sequence, summary features, and action schema. That makes the main rerun a clean model comparison instead of a mixed input comparison.
 
 ### Benchmark commands
 
@@ -187,6 +187,18 @@ vei whatif benchmark eval \
   --model-id jepa_latent \
   --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
+
+# Run the matched-input study across multiple models and seeds
+vei whatif benchmark study \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --label matched_input_rerun \
+  --model-id jepa_latent \
+  --model-id full_context_transformer \
+  --model-id treatment_transformer \
+  --seed 42042 \
+  --seed 42043 \
+  --seed 42044 \
+  --epochs 2
 ```
 
 ### What gets written
@@ -211,16 +223,25 @@ vei whatif benchmark eval \
 - audit coverage and agreement metrics
 - rollout stress metrics only as a separate section
 
+`vei whatif benchmark study` writes:
+
+- one aggregate JSON result
+- one Markdown overview
+- one seeded run folder per model under `studies/<label>/runs/...`
+
 ### Current model state
 
-The current saved Enron reset build uses 24 held-out cases with 4 candidate actions each. On the current 2-epoch comparison run, the held-out decision checks came out like this:
+The current saved Enron reset build uses 24 held-out cases with 4 candidate actions each. The current headline result is the matched-input study rerun over that build, not the older single-run comparison.
 
-- `treatment_transformer`: `83/120`
-- `sequence_transformer`: `75/120`
-- `jepa_latent`: `73/120`
-- `ft_transformer`: `30/120`
+On the current 5-seed, 2-epoch matched-input rerun, the held-out decision checks came out like this:
 
-On the factual question of whether anything goes outside after the branch point, all four models stayed close at about `0.98` AUROC.
+- `jepa_latent`: `76.6/120` mean, `0.638 +/- 0.022`
+- `full_context_transformer`: `75.2/120` mean, `0.627 +/- 0.025`
+- `treatment_transformer`: `65.6/120` mean, `0.547 +/- 0.108`
+
+On the factual question of whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC.
+
+The practical read is that the fair rerun changed the story. Once the models read the same pre-branch contract and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the Enron decision checks, while the treatment transformer shows the widest spread from seed to seed.
 
 ### Important constraint
 

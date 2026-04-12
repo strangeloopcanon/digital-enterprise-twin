@@ -97,22 +97,23 @@ The judge does not see rollout futures.
 
 ## Model families
 
-The benchmark currently trains four model families on the same pre-branch contract:
+The benchmark currently supports five model families:
 
 - `jepa_latent`
+- `full_context_transformer`
 - `ft_transformer`
 - `sequence_transformer`
 - `treatment_transformer`
 
 They all predict the same later-email evidence heads and the same business proxy scores.
 
-The JEPA benchmark path now reads:
+The matched-input comparison path uses:
 
 - the pre-branch event sequence
 - the pre-branch summary features
 - the structured action schema
 
-That keeps the JEPA comparison on the same historical information as the stronger history-based baselines.
+`jepa_latent` and `full_context_transformer` both read that full bundle. The older tabular and narrower transformer baselines stay available as reference points.
 
 ## CLI
 
@@ -139,6 +140,19 @@ vei whatif benchmark eval \
   --model-id jepa_latent \
   --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
   --audit-records-path /path/to/completed_audit_records.json
+
+# Run the matched-input study across models and seeds
+vei whatif benchmark study \
+  --root _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset \
+  --label matched_input_rerun \
+  --model-id jepa_latent \
+  --model-id full_context_transformer \
+  --model-id treatment_transformer \
+  --seed 42042 \
+  --seed 42043 \
+  --seed 42044 \
+  --epochs 2 \
+  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json
 ```
 
 ## Artifact layout
@@ -179,17 +193,26 @@ Evaluation writes:
 - `model_runs/<model_id>/eval_result.json`
 - `model_runs/<model_id>/predictions.jsonl`
 
+Study runs write:
+
+- `studies/<label>/benchmark_study_result.json`
+- `studies/<label>/benchmark_study_overview.md`
+- `studies/<label>/runs/<model_id>/seed_<seed>/...`
+
 ## Current comparison result
 
-The current saved 2-epoch comparison run over the Enron reset build produced these held-out decision scores:
+The current headline result is the matched-input multi-seed rerun over the saved Enron reset build. That rerun compares the three aligned models that all read the same pre-branch contract: `jepa_latent`, `full_context_transformer`, and `treatment_transformer`.
 
-| Model | Passed checks | Total checks | Pass rate |
-|---|---:|---:|---:|
-| `treatment_transformer` | `83` | `120` | `0.692` |
-| `sequence_transformer` | `75` | `120` | `0.625` |
-| `jepa_latent` | `73` | `120` | `0.608` |
-| `ft_transformer` | `30` | `120` | `0.250` |
+The current saved 5-seed, 2-epoch matched-input study produced these held-out decision scores:
 
-On the simpler factual task of predicting whether anything goes outside after the branch point, all four models stayed close at about `0.98` AUROC.
+| Model | Mean passed checks | Total checks | Mean pass rate | Spread |
+|---|---:|---:|---:|---:|
+| `jepa_latent` | `76.6` | `120` | `0.638` | `0.022` |
+| `full_context_transformer` | `75.2` | `120` | `0.627` | `0.025` |
+| `treatment_transformer` | `65.6` | `120` | `0.547` | `0.108` |
 
-The practical read is that the earlier JEPA gap was partly a benchmark-shape problem. Once JEPA reads the real pre-branch event history as well as the summary features and action schema, it lands close to the history-based sequence model and well ahead of the tabular baseline on this Enron benchmark.
+On the simpler factual task of predicting whether anything goes outside after the branch point, all three models stayed tightly grouped around `0.98` AUROC.
+
+The practical read is that the fair rerun changed the ordering. Once the models use the same pre-branch inputs and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the business decision checks, while the treatment transformer drops back and varies much more from seed to seed.
+
+An earlier single-run reference comparison is still useful as a historical checkpoint, but it should not be treated as the headline result because it mixed narrower and richer model inputs. Use `vei whatif benchmark study` for the clean comparison path and look under `studies/` for the aggregate report.

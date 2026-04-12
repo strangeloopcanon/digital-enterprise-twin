@@ -4,6 +4,7 @@ from .models import (
     WhatIfBenchmarkBuildResult,
     WhatIfBenchmarkEvalResult,
     WhatIfBenchmarkJudgeResult,
+    WhatIfBenchmarkStudyResult,
     WhatIfBenchmarkTrainResult,
     WhatIfEpisodeMaterialization,
     WhatIfEventSearchResult,
@@ -596,6 +597,52 @@ def render_benchmark_eval(result: WhatIfBenchmarkEvalResult) -> str:
             "## Artifacts",
             f"- Eval result: {result.artifacts.eval_result_path}",
             f"- Predictions: {result.artifacts.prediction_jsonl_path}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_benchmark_study(result: WhatIfBenchmarkStudyResult) -> str:
+    lines = [
+        f"# {result.label}",
+        "",
+        f"- Build root: {result.build_root}",
+        f"- Models: {', '.join(result.models)}",
+        f"- Seeds: {', '.join(str(seed) for seed in result.seeds)}",
+        f"- Total runs: {len(result.runs)}",
+    ]
+    if result.ranked_model_ids:
+        lines.extend(
+            [
+                "",
+                "## Ranked Models",
+                f"- {', '.join(result.ranked_model_ids)}",
+            ]
+        )
+    lines.extend(["", "## Summary"])
+    for summary in result.summaries:
+        lines.extend(
+            [
+                f"- `{summary.model_id}` runs={summary.run_count} "
+                f"dominance={summary.dominance_pass_rate.mean:.3f}"
+                f"+/-{summary.dominance_pass_rate.std:.3f} "
+                f"auroc={summary.observed_auroc_any_external_spread.mean:.3f}",
+            ]
+        )
+        if summary.judge_top1_agreement is not None:
+            lines.append(f"  judge_top1={summary.judge_top1_agreement.mean:.3f}")
+        if summary.objective_pass_rates:
+            objective_bits = ", ".join(
+                f"{name}={metric.mean:.3f}"
+                for name, metric in sorted(summary.objective_pass_rates.items())
+            )
+            lines.append(f"  objectives: {objective_bits}")
+    lines.extend(
+        [
+            "",
+            "## Artifacts",
+            f"- Study result: {result.artifacts.result_path}",
+            f"- Study overview: {result.artifacts.overview_path}",
         ]
     )
     return "\n".join(lines)

@@ -4,6 +4,7 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from hashlib import sha256
+from math import sqrt
 from pathlib import Path
 from typing import Sequence
 
@@ -37,8 +38,13 @@ from .models import (
     WhatIfBenchmarkEvalResult,
     WhatIfBenchmarkJudgeArtifacts,
     WhatIfBenchmarkJudgeResult,
+    WhatIfBenchmarkMetricSummary,
     WhatIfBenchmarkModelId,
     WhatIfBenchmarkSplit,
+    WhatIfBenchmarkStudyArtifacts,
+    WhatIfBenchmarkStudyModelSummary,
+    WhatIfBenchmarkStudyResult,
+    WhatIfBenchmarkStudyRun,
     WhatIfBenchmarkTrainResult,
     WhatIfBusinessObjectivePackId,
     WhatIfBranchSummaryFeature,
@@ -66,6 +72,7 @@ from .research import get_research_pack
 
 _BENCHMARK_MODELS: tuple[WhatIfBenchmarkModelId, ...] = (
     "jepa_latent",
+    "full_context_transformer",
     "ft_transformer",
     "sequence_transformer",
     "treatment_transformer",
@@ -491,6 +498,20 @@ def load_branch_point_benchmark_judge_result(
     )
 
 
+def load_branch_point_benchmark_study_result(
+    root: str | Path,
+) -> WhatIfBenchmarkStudyResult:
+    resolved = Path(root).expanduser().resolve()
+    result_path = (
+        resolved
+        if resolved.name == "benchmark_study_result.json"
+        else resolved / "benchmark_study_result.json"
+    )
+    return WhatIfBenchmarkStudyResult.model_validate_json(
+        result_path.read_text(encoding="utf-8")
+    )
+
+
 def train_branch_point_benchmark_model(
     root: str | Path,
     *,
@@ -498,8 +519,10 @@ def train_branch_point_benchmark_model(
     epochs: int = 12,
     batch_size: int = 64,
     learning_rate: float = 1e-3,
+    seed: int = 42042,
     device: str | None = None,
     runtime_root: str | Path | None = None,
+    output_root: str | Path | None = None,
 ) -> WhatIfBenchmarkTrainResult:
     return run_branch_point_benchmark_training(
         build_root=root,
@@ -507,8 +530,10 @@ def train_branch_point_benchmark_model(
         epochs=epochs,
         batch_size=batch_size,
         learning_rate=learning_rate,
+        seed=seed,
         device=device,
         runtime_root=runtime_root,
+        output_root=output_root,
     )
 
 
@@ -567,14 +592,15 @@ def evaluate_branch_point_benchmark_model(
     research_pack_root: str | Path | None = None,
     device: str | None = None,
     runtime_root: str | Path | None = None,
+    output_root: str | Path | None = None,
 ) -> WhatIfBenchmarkEvalResult:
     result = run_branch_point_benchmark_evaluation(
         build_root=root,
         model_id=model_id,
         device=device,
         runtime_root=runtime_root,
+        output_root=output_root,
     )
-    build = load_branch_point_benchmark_build_result(root)
     judged_rankings = list_judged_rankings(judged_rankings_path)
     audit_records = list_audit_records(audit_records_path)
     result = result.model_copy(
@@ -598,8 +624,97 @@ def evaluate_branch_point_benchmark_model(
             ),
         }
     )
-    eval_path = build.artifacts.root / "model_runs" / str(model_id) / "eval_result.json"
+    eval_path = result.artifacts.eval_result_path
     eval_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    return result
+
+
+def run_branch_point_benchmark_study(
+    root: str | Path,
+    *,
+    label: str,
+    model_ids: Sequence[WhatIfBenchmarkModelId],
+    seeds: Sequence[int],
+    epochs: int = 12,
+    batch_size: int = 64,
+    learning_rate: float = 1e-3,
+    judged_rankings_path: str | Path | None = None,
+    audit_records_path: str | Path | None = None,
+    panel_judgments_path: str | Path | None = None,
+    research_pack_root: str | Path | None = None,
+    device: str | None = None,
+    runtime_root: str | Path | None = None,
+) -> WhatIfBenchmarkStudyResult:
+    build = load_branch_point_benchmark_build_result(root)
+    study_root = build.artifacts.root / "studies" / _slug(label)
+    runs_root = study_root / "runs"
+    runs_root.mkdir(parents=True, exist_ok=True)
+
+    runs: list[WhatIfBenchmarkStudyRun] = []
+    for model_id in model_ids:
+        for seed in seeds:
+            run_root = runs_root / str(model_id) / f"seed_{seed}"
+            run_root.mkdir(parents=True, exist_ok=True)
+            train_result = train_branch_point_benchmark_model(
+                build.artifacts.root,
+                model_id=model_id,
+                epochs=epochs,
+                batch_size=batch_size,
+                learning_rate=learning_rate,
+                seed=seed,
+                device=device,
+                runtime_root=runtime_root,
+                output_root=run_root,
+            )
+            eval_result = evaluate_branch_point_benchmark_model(
+                build.artifacts.root,
+                model_id=model_id,
+                judged_rankings_path=judged_rankings_path,
+                audit_records_path=audit_records_path,
+                panel_judgments_path=panel_judgments_path,
+                research_pack_root=research_pack_root,
+                device=device,
+                runtime_root=runtime_root,
+                output_root=run_root,
+            )
+            runs.append(
+                _benchmark_study_run(
+                    model_id=model_id,
+                    seed=seed,
+                    train_result=train_result,
+                    eval_result=eval_result,
+                )
+            )
+
+    summaries = [
+        _study_model_summary(model_id=model_id, runs=runs) for model_id in model_ids
+    ]
+    result_path = study_root / "benchmark_study_result.json"
+    overview_path = study_root / "benchmark_study_overview.md"
+    result = WhatIfBenchmarkStudyResult(
+        label=label,
+        build_root=build.artifacts.root,
+        models=list(model_ids),
+        seeds=list(seeds),
+        runs=runs,
+        summaries=summaries,
+        ranked_model_ids=_rank_study_models(summaries),
+        notes=[
+            f"run_count={len(runs)}",
+            f"model_count={len(model_ids)}",
+            f"seed_count={len(seeds)}",
+            "ranking_metric=dominance_pass_rate_mean",
+        ],
+        artifacts=WhatIfBenchmarkStudyArtifacts(
+            root=study_root,
+            result_path=result_path,
+            overview_path=overview_path,
+        ),
+    )
+    result_path.write_text(result.model_dump_json(indent=2), encoding="utf-8")
+    from .render import render_benchmark_study
+
+    overview_path.write_text(render_benchmark_study(result), encoding="utf-8")
     return result
 
 
@@ -2240,6 +2355,151 @@ def _rollout_stress_summary(
     )
 
 
+def _benchmark_study_run(
+    *,
+    model_id: WhatIfBenchmarkModelId,
+    seed: int,
+    train_result: WhatIfBenchmarkTrainResult,
+    eval_result: WhatIfBenchmarkEvalResult,
+) -> WhatIfBenchmarkStudyRun:
+    return WhatIfBenchmarkStudyRun(
+        model_id=model_id,
+        seed=seed,
+        train_loss=train_result.train_loss,
+        validation_loss=train_result.validation_loss,
+        observed_auroc_any_external_spread=(
+            eval_result.observed_metrics.auroc_any_external_spread or 0.0
+        ),
+        dominance_passed_checks=eval_result.dominance_summary.passed_checks,
+        dominance_total_checks=eval_result.dominance_summary.total_checks,
+        dominance_pass_rate=eval_result.dominance_summary.pass_rate,
+        judge_top1_agreement=eval_result.judge_summary.top1_agreement,
+        judge_pairwise_accuracy=eval_result.judge_summary.pairwise_accuracy,
+        business_head_mae=dict(eval_result.observed_metrics.business_head_mae),
+        objective_pass_rates=_objective_pass_rates(eval_result.cases),
+        train_result_path=train_result.artifacts.train_result_path,
+        eval_result_path=eval_result.artifacts.eval_result_path,
+    )
+
+
+def _objective_pass_rates(
+    cases: Sequence[WhatIfBenchmarkCaseEvaluation],
+) -> dict[WhatIfBusinessObjectivePackId, float]:
+    totals: defaultdict[str, int] = defaultdict(int)
+    passed: defaultdict[str, int] = defaultdict(int)
+    for case in cases:
+        for objective in case.objectives:
+            pack_id = objective.objective_pack.pack_id
+            totals[pack_id] += 1
+            if objective.expected_order_ok:
+                passed[pack_id] += 1
+    return {
+        pack_id: round(passed[pack_id] / max(total, 1), 3)
+        for pack_id, total in sorted(totals.items())
+    }
+
+
+def _study_model_summary(
+    *,
+    model_id: WhatIfBenchmarkModelId,
+    runs: Sequence[WhatIfBenchmarkStudyRun],
+) -> WhatIfBenchmarkStudyModelSummary:
+    model_runs = [run for run in runs if run.model_id == model_id]
+    business_head_names = sorted(
+        {name for run in model_runs for name in run.business_head_mae}
+    )
+    objective_pack_ids = sorted(
+        {pack_id for run in model_runs for pack_id in run.objective_pass_rates}
+    )
+    return WhatIfBenchmarkStudyModelSummary(
+        model_id=model_id,
+        run_count=len(model_runs),
+        seeds=sorted(run.seed for run in model_runs),
+        train_loss=_metric_summary([run.train_loss for run in model_runs]),
+        validation_loss=_metric_summary([run.validation_loss for run in model_runs]),
+        observed_auroc_any_external_spread=_metric_summary(
+            [run.observed_auroc_any_external_spread for run in model_runs]
+        ),
+        dominance_passed_checks=_metric_summary(
+            [float(run.dominance_passed_checks) for run in model_runs]
+        ),
+        dominance_pass_rate=_metric_summary(
+            [run.dominance_pass_rate for run in model_runs]
+        ),
+        judge_top1_agreement=_optional_metric_summary(
+            [run.judge_top1_agreement for run in model_runs]
+        ),
+        judge_pairwise_accuracy=_optional_metric_summary(
+            [run.judge_pairwise_accuracy for run in model_runs]
+        ),
+        business_head_mae={
+            name: _metric_summary(
+                [
+                    run.business_head_mae[name]
+                    for run in model_runs
+                    if name in run.business_head_mae
+                ]
+            )
+            for name in business_head_names
+        },
+        objective_pass_rates={
+            pack_id: _metric_summary(
+                [
+                    run.objective_pass_rates[pack_id]
+                    for run in model_runs
+                    if pack_id in run.objective_pass_rates
+                ]
+            )
+            for pack_id in objective_pack_ids
+        },
+    )
+
+
+def _metric_summary(values: Sequence[float]) -> WhatIfBenchmarkMetricSummary:
+    cleaned = [float(value) for value in values]
+    if not cleaned:
+        return WhatIfBenchmarkMetricSummary()
+    mean = sum(cleaned) / len(cleaned)
+    variance = sum((value - mean) ** 2 for value in cleaned) / len(cleaned)
+    return WhatIfBenchmarkMetricSummary(
+        count=len(cleaned),
+        mean=round(mean, 6),
+        std=round(sqrt(variance), 6),
+        min=round(min(cleaned), 6),
+        max=round(max(cleaned), 6),
+    )
+
+
+def _optional_metric_summary(
+    values: Sequence[float | None],
+) -> WhatIfBenchmarkMetricSummary | None:
+    cleaned = [float(value) for value in values if value is not None]
+    if not cleaned:
+        return None
+    return _metric_summary(cleaned)
+
+
+def _rank_study_models(
+    summaries: Sequence[WhatIfBenchmarkStudyModelSummary],
+) -> list[WhatIfBenchmarkModelId]:
+    return [
+        summary.model_id
+        for summary in sorted(
+            summaries,
+            key=lambda summary: (
+                -summary.dominance_pass_rate.mean,
+                -(
+                    summary.judge_top1_agreement.mean
+                    if summary.judge_top1_agreement is not None
+                    else -1.0
+                ),
+                -summary.observed_auroc_any_external_spread.mean,
+                summary.model_id,
+            ),
+        )
+    ]
+
+
 def _pairwise_hits(
     predicted_order: Sequence[str],
     judged_order: Sequence[str],
@@ -2507,10 +2767,12 @@ __all__ = [
     "load_branch_point_benchmark_build_result",
     "load_branch_point_benchmark_eval_result",
     "load_branch_point_benchmark_judge_result",
+    "load_branch_point_benchmark_study_result",
     "load_branch_point_benchmark_train_result",
     "list_audit_records",
     "list_judged_rankings",
     "outcome_targets_to_signals",
+    "run_branch_point_benchmark_study",
     "summarize_observed_targets",
     "train_branch_point_benchmark_model",
 ]

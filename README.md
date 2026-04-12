@@ -349,16 +349,15 @@ vei whatif benchmark eval \
   --audit-records-path /path/to/completed_audit_records.json
 ```
 
-The current Enron business-outcome benchmark uses 24 held-out cases with 4 candidate actions each. All model families now see only the pre-branch history plus the structured action. The JEPA benchmark path now reads the pre-branch event sequence as well as the summary features and action schema, so the comparison is on the same historical signal instead of on a weaker compressed input.
+The current Enron business-outcome benchmark uses 24 held-out cases with 4 candidate actions each. The clean comparison now runs through the matched-input study path, where `jepa_latent`, `full_context_transformer`, and `treatment_transformer` all see the same pre-branch history, summary features, and structured action.
 
-On the current 2-epoch comparison run over the saved `enron_business_outcome_reset_smoke` build, the held-out decision checks came out like this:
+On the current 5-seed, 2-epoch matched-input rerun over the saved `enron_business_outcome_reset_smoke` build, the held-out decision checks came out like this:
 
-- `treatment_transformer`: `83/120`
-- `sequence_transformer`: `75/120`
-- `jepa_latent`: `73/120`
-- `ft_transformer`: `30/120`
+- `jepa_latent`: `76.6/120` mean, `0.638 +/- 0.022`
+- `full_context_transformer`: `75.2/120` mean, `0.627 +/- 0.025`
+- `treatment_transformer`: `65.6/120` mean, `0.547 +/- 0.108`
 
-On the simpler factual task of predicting whether anything goes outside after the branch point, all four stayed close at about `0.98` AUROC. The important read is that the earlier JEPA gap was partly a setup problem. Once JEPA reads the real pre-branch history too, it lands close to the sequence model and well ahead of the tabular baseline on this Enron benchmark.
+On the simpler factual task of predicting whether anything goes outside after the branch point, all three stayed tightly grouped around `0.98` AUROC. The important read is that once the model inputs are aligned and the result is averaged across seeds, the JEPA-style path slightly leads the matched full-context transformer on the business decision checks while the treatment transformer becomes much less stable.
 
 ## Use It As A Library
 

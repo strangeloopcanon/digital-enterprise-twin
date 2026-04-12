@@ -90,6 +90,7 @@ class _TrainConfig:
     epochs: int
     batch_size: int
     learning_rate: float
+    seed: int
     device: str
 
 
@@ -168,6 +169,7 @@ def _train_from_request(path: Path) -> WhatIfBenchmarkTrainResult:
         epochs=int(request.get("epochs", 12)),
         batch_size=int(request.get("batch_size", 64)),
         learning_rate=float(request.get("learning_rate", 1e-3)),
+        seed=int(request.get("seed", _RANDOM_SEED)),
         device=_resolve_device(str(request.get("device", "") or "")),
     )
     trainer = _TorchTrainer(model_id=request["model_id"], preprocessor=preprocessor)
@@ -202,6 +204,7 @@ def _train_from_request(path: Path) -> WhatIfBenchmarkTrainResult:
         validation_row_count=len(validation_rows),
         notes=[
             f"device={config.device}",
+            f"seed={config.seed}",
             f"summary_features={len(preprocessor.summary_feature_names)}",
             f"action_tags={len(preprocessor.action_tag_names)}",
             f"event_types={len(preprocessor.event_type_names)}",
@@ -726,12 +729,16 @@ class _TorchTrainer:
     def build_model(self, *, device: str) -> Any:
         if self.model_id == "jepa_latent":
             model = self._build_jepa_model()
+        elif self.model_id == "full_context_transformer":
+            model = self._build_full_context_model()
         elif self.model_id == "ft_transformer":
             model = self._build_ft_model()
         elif self.model_id == "sequence_transformer":
             model = self._build_sequence_model()
-        else:
+        elif self.model_id == "treatment_transformer":
             model = self._build_treatment_model()
+        else:
+            raise ValueError(f"unsupported benchmark model id: {self.model_id}")
         model.to(device)
         return model
 
@@ -743,7 +750,7 @@ class _TorchTrainer:
         config: _TrainConfig,
     ) -> Any:
         torch = self.torch
-        _seed_everything(torch)
+        _seed_everything(torch, config.seed)
         model = self.build_model(device=config.device)
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -939,6 +946,75 @@ class _TorchTrainer:
                 return importlib.import_module("torch").cat(values, dim=dim)
 
         return JEPAOutcomeModel()
+
+    def _build_full_context_model(self) -> Any:
+        nn = self.nn
+        summary_dim = len(self.preprocessor.summary_feature_names)
+        action_dim = _action_vector_width(self.preprocessor)
+        target_dim = len(_EVIDENCE_TARGET_NAMES)
+        model_dim = 96
+        event_type_count = max(len(self.preprocessor.event_type_names), 1)
+
+        class FullContextTransformerModel(nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.phase_embedding = nn.Embedding(len(_PHASE_VALUES), model_dim)
+                self.event_embedding = nn.Embedding(event_type_count, model_dim)
+                self.scope_embedding = nn.Embedding(
+                    len(_RECIPIENT_SCOPE_VALUES),
+                    model_dim,
+                )
+                self.numeric_projection = nn.Linear(
+                    _SEQUENCE_NUMERIC_WIDTH,
+                    model_dim,
+                )
+                self.summary_action_projection = nn.Sequential(
+                    nn.Linear(summary_dim + action_dim, 192),
+                    nn.ReLU(),
+                    nn.Linear(192, model_dim),
+                )
+                encoder_layer = nn.TransformerEncoderLayer(
+                    d_model=model_dim,
+                    nhead=4,
+                    dim_feedforward=192,
+                    batch_first=True,
+                    dropout=0.1,
+                )
+                self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
+                self.binary_head = nn.Linear(model_dim, 1)
+                self.regression_head = nn.Linear(model_dim, target_dim)
+
+            def forward(
+                self,
+                summary: Any,
+                action: Any,
+                token_categorical: Any,
+                token_numeric: Any,
+            ) -> dict[str, Any]:
+                summary_action_token = self.summary_action_projection(
+                    self._concat([summary, action], dim=1)
+                ).unsqueeze(1)
+                sequence_tokens = (
+                    self.phase_embedding(token_categorical[:, :, 0])
+                    + self.event_embedding(token_categorical[:, :, 1])
+                    + self.scope_embedding(token_categorical[:, :, 2])
+                    + self.numeric_projection(token_numeric)
+                )
+                encoded = self.encoder(
+                    self._concat([summary_action_token, sequence_tokens], dim=1)
+                )
+                pooled = encoded[:, 0, :]
+                return {
+                    "binary_logits": self.binary_head(pooled).squeeze(-1),
+                    "regression": self.regression_head(pooled),
+                    "latent_loss": None,
+                }
+
+            @staticmethod
+            def _concat(values: Sequence[Any], *, dim: int) -> Any:
+                return importlib.import_module("torch").cat(values, dim=dim)
+
+        return FullContextTransformerModel()
 
     def _build_ft_model(self) -> Any:
         nn = self.nn
@@ -1585,12 +1661,12 @@ def _resolve_device(requested: str) -> str:
     return "cpu"
 
 
-def _seed_everything(torch_module: Any) -> None:
-    random.seed(_RANDOM_SEED)
-    np.random.seed(_RANDOM_SEED)
-    torch_module.manual_seed(_RANDOM_SEED)
+def _seed_everything(torch_module: Any, seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch_module.manual_seed(seed)
     if torch_module.cuda.is_available():
-        torch_module.cuda.manual_seed_all(_RANDOM_SEED)
+        torch_module.cuda.manual_seed_all(seed)
 
 
 def _mae(actual: Sequence[float], predicted: Sequence[float]) -> float:
