@@ -15,7 +15,7 @@ VEI is a programmable replica of a company's entire operational software stack. 
 
 Every mode shares the same world session, event spine, contract scoring, and replay model. The world simulation is the substrate; the modes are lenses on top.
 
-**Start with one path:** `quickstart` -> Studio -> `twin status` / `project show` -> `eval`.
+**Start with one path:** `vei doctor` -> `vei quickstart run` -> Studio -> `vei twin status` / `vei project show` -> `vei eval benchmark`.
 That path is the clearest proof that VEI is working as a company twin, not just as a pile of commands.
 
 ## Try It Now
@@ -56,6 +56,13 @@ vei eval benchmark --runner workflow --family security_containment
 Press Ctrl-C to stop.
 
 Options: `--world service_ops`, `--governor-demo`, `--connector-mode live`, `--seed`, `--no-baseline`.
+
+## Pick Your Entry Point
+
+- **I want to see the product:** run `vei quickstart run`, open Studio, and inspect the generated company state.
+- **I want to connect an outside agent:** start with quickstart, then use the Twin Gateway URLs and bearer token from `.vei/quickstart.json`.
+- **I want to run a benchmark:** start a world, then run `vei eval benchmark --runner workflow --family security_containment`.
+- **I want to use VEI as a Python library:** jump to [Use It As A Library](#use-it-as-a-library).
 
 ## What This Looks Like
 
