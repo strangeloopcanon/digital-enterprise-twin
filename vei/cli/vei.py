@@ -2,57 +2,114 @@ from __future__ import annotations
 
 import typer
 
-from vei.cli.vei_blueprint import app as blueprint_app
-from vei.cli.vei_context import app as context_app
-from vei.cli.vei_contract import app as contract_app
-from vei.cli.vei_demo import app as demo_app
-from vei.cli.vei_det_pipeline import app as det_app
-from vei.cli.vei_doctor import app as doctor_app
-from vei.cli.vei_eval import app as eval_app
-from vei.cli.vei_inspect import app as inspect_app
-from vei.cli.vei_llm_test import app as llm_test_app
-from vei.cli.vei_project import app as project_app
-from vei.cli.vei_quickstart import app as quickstart_app
-from vei.cli.vei_release import app as release_app
-from vei.cli.vei_report import app as report_app
-from vei.cli.vei_run import app as run_app
-from vei.cli.vei_smoke import app as smoke_app
-from vei.cli.vei_showcase import app as showcase_app
-from vei.cli.vei_synthesize import app as synthesize_app
-from vei.cli.vei_twin import app as twin_app
-from vei.cli.vei_ui import app as ui_app
-from vei.cli.vei_visualize import app as visualize_app
-from vei.cli.vei_whatif import app as whatif_app
-from vei.cli.vei_world import app as world_app
+from vei.cli._lazy import LazyCommandSpec, LazyTyperGroup
+
+
+class VEILazyGroup(LazyTyperGroup):
+    lazy_commands = {
+        "project": LazyCommandSpec(
+            module_path="vei.cli.vei_project",
+            help="Manage workspace imports, sources, and project scaffolding.",
+        ),
+        "doctor": LazyCommandSpec(
+            module_path="vei.cli.vei_doctor",
+            help="Inspect local setup and surface common workspace issues.",
+        ),
+        "quickstart": LazyCommandSpec(
+            module_path="vei.cli.vei_quickstart",
+            help="Launch guided local demos and twin-backed workspaces.",
+        ),
+        "release": LazyCommandSpec(
+            module_path="vei.cli.vei_release",
+            help="Build release artifacts and nightly snapshots.",
+        ),
+        "run": LazyCommandSpec(
+            module_path="vei.cli.vei_run",
+            help="Launch and inspect workspace runs.",
+        ),
+        "eval": LazyCommandSpec(
+            module_path="vei.cli.vei_eval",
+            help="Run benchmark demos, suites, and comparison flows.",
+        ),
+        "inspect": LazyCommandSpec(
+            module_path="vei.cli.vei_inspect",
+            help="Inspect fidelity, orientation, and workspace state.",
+        ),
+        "twin": LazyCommandSpec(
+            module_path="vei.cli.vei_twin",
+            help="Build and serve customer twin environments.",
+        ),
+        "ui": LazyCommandSpec(
+            module_path="vei.cli.vei_ui",
+            help="Serve the local FastAPI studio surfaces.",
+        ),
+        "whatif": LazyCommandSpec(
+            module_path="vei.cli.vei_whatif",
+            help="Explore counterfactuals and replayable what-if episodes.",
+        ),
+        "world": LazyCommandSpec(
+            module_path="vei.cli.vei_world",
+            help="Inspect world catalogs and blueprint-backed sessions.",
+        ),
+        "blueprint": LazyCommandSpec(
+            module_path="vei.cli.vei_blueprint",
+            help="Inspect, generate, and scaffold blueprint assets.",
+        ),
+        "context": LazyCommandSpec(
+            module_path="vei.cli.vei_context",
+            help="Capture and inspect context bundles.",
+        ),
+        "contract": LazyCommandSpec(
+            module_path="vei.cli.vei_contract",
+            help="Inspect and validate workspace contracts.",
+        ),
+        "demo": LazyCommandSpec(
+            module_path="vei.cli.vei_demo",
+            help="Run lightweight scripted or LLM-driven demos.",
+        ),
+        "det": LazyCommandSpec(
+            module_path="vei.cli.vei_det_pipeline",
+            help="Run the deterministic data and evaluation pipeline.",
+        ),
+        "llm-test": LazyCommandSpec(
+            module_path="vei.cli.vei_llm_test",
+            help="Run the live LLM harness against the MCP world.",
+        ),
+        "report": LazyCommandSpec(
+            module_path="vei.cli.vei_report",
+            help="Render run and benchmark reports.",
+        ),
+        "smoke": LazyCommandSpec(
+            module_path="vei.cli.vei_smoke",
+            help="Run transport and harness smoke checks.",
+        ),
+        "showcase": LazyCommandSpec(
+            module_path="vei.cli.vei_showcase",
+            help="Run curated showcase scenarios.",
+        ),
+        "synthesize": LazyCommandSpec(
+            module_path="vei.cli.vei_synthesize",
+            help="Generate synthesis configs and runbooks.",
+        ),
+        "visualize": LazyCommandSpec(
+            module_path="vei.cli.vei_visualize",
+            help="Render visualization artifacts from runs and traces.",
+        ),
+    }
+
 
 app = typer.Typer(
     add_completion=False,
+    cls=VEILazyGroup,
     no_args_is_help=True,
     help="VEI — programmable enterprise simulation, context capture, and synthesis.",
 )
 
-app.add_typer(project_app, name="project")
-app.add_typer(doctor_app, name="doctor")
-app.add_typer(quickstart_app, name="quickstart")
-app.add_typer(release_app, name="release")
-app.add_typer(run_app, name="run")
-app.add_typer(eval_app, name="eval")
-app.add_typer(inspect_app, name="inspect")
-app.add_typer(twin_app, name="twin")
-app.add_typer(ui_app, name="ui")
-app.add_typer(whatif_app, name="whatif")
-app.add_typer(world_app, name="world")
-app.add_typer(blueprint_app, name="blueprint")
-app.add_typer(context_app, name="context")
-app.add_typer(contract_app, name="contract")
-app.add_typer(demo_app, name="demo")
-app.add_typer(det_app, name="det")
-app.add_typer(llm_test_app, name="llm-test")
-app.add_typer(report_app, name="report")
-app.add_typer(smoke_app, name="smoke")
-app.add_typer(showcase_app, name="showcase")
-app.add_typer(synthesize_app, name="synthesize")
-app.add_typer(visualize_app, name="visualize")
+
+@app.callback()
+def main() -> None:
+    """Expose the lazy top-level VEI command group."""
+    return None
 
 
 if __name__ == "__main__":

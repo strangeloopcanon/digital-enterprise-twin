@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from vei.project_settings import default_model_for_provider
 from vei.whatif import (
     build_branch_point_benchmark,
     default_forecast_backend,
@@ -349,7 +350,7 @@ def experiment_command(
     ),
     provider: str = typer.Option("openai", help="LLM provider for the actor path"),
     model: str = typer.Option(
-        "gpt-5-mini",
+        default_model_for_provider("openai"),
         help="LLM model for the actor path",
     ),
     seed: int = typer.Option(42042, help="Deterministic seed"),
@@ -457,7 +458,7 @@ def rank_command(
     ),
     provider: str = typer.Option("openai", help="LLM provider for the actor path"),
     model: str = typer.Option(
-        "gpt-5-mini",
+        default_model_for_provider("openai"),
         help="LLM model for the actor path",
     ),
     seed: int = typer.Option(42042, help="Deterministic seed"),
@@ -575,7 +576,10 @@ def run_pack_command(
         help="Research pack id",
     ),
     provider: str = typer.Option("openai", help="LLM provider for the actor path"),
-    model: str = typer.Option("gpt-5-mini", help="LLM model for the actor path"),
+    model: str = typer.Option(
+        default_model_for_provider("openai"),
+        help="LLM model for the actor path",
+    ),
     ejepa_epochs: int = typer.Option(4, help="Training epochs for the JEPA backend"),
     ejepa_batch_size: int = typer.Option(
         64,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -28,6 +29,7 @@ from vei.workspace.api import (
     upsert_workspace_run,
 )
 from vei.workspace.models import WorkspaceRunEntry
+from vei.workspace.models import WorkspaceManifest, WorkspaceScenarioSpec
 
 from .events import (
     append_run_event,
@@ -48,6 +50,31 @@ from .reproducibility import (
 )
 
 
+@dataclass(frozen=True)
+class _PreparedRunLaunch:
+    workspace_root: Path
+    workspace_manifest: WorkspaceManifest
+    scenario: WorkspaceScenarioSpec
+    runner: BenchmarkRunner
+    seed: int
+    run_id: str
+    branch: str
+    model: str | None
+    provider: str | None
+    bc_model_path: Path | None
+    task: str | None
+    max_steps: int
+    run_dir: Path
+    artifacts_dir: Path
+    state_dir: Path
+    events_path: Path
+    blueprint_asset_path: Path
+    contract_path: str
+    contract_source_path: Path
+    manifest_stub: RunManifest
+    benchmark_spec: BenchmarkCaseSpec
+
+
 def launch_workspace_run(
     root: str | Path,
     *,
@@ -62,51 +89,179 @@ def launch_workspace_run(
     task: Optional[str] = None,
     max_steps: int = 12,
 ) -> RunManifest:
+    prepared = _prepare_run_launch(
+        root=root,
+        runner=runner,
+        scenario_name=scenario_name,
+        run_id=run_id,
+        seed=seed,
+        branch=branch,
+        model=model,
+        provider=provider,
+        bc_model_path=bc_model_path,
+        task=task,
+        max_steps=max_steps,
+    )
+    _record_run_start(prepared)
+
+    try:
+        with _temporary_env("VEI_STATE_DIR", str(prepared.state_dir)):
+            result = run_benchmark_case(prepared.benchmark_spec)
+        return _finalize_successful_run(prepared, result)
+    except Exception as exc:
+        _finalize_failed_run(prepared, exc)
+        raise
+
+
+def _prepare_run_launch(
+    *,
+    root: str | Path,
+    runner: str,
+    scenario_name: str | None,
+    run_id: str | None,
+    seed: int,
+    branch: str | None,
+    model: str | None,
+    provider: str | None,
+    bc_model_path: str | Path | None,
+    task: str | None,
+    max_steps: int,
+) -> _PreparedRunLaunch:
     workspace_root = Path(root).expanduser().resolve()
     normalized_runner = normalize_runner(runner)
-    resolved_bc_model_path = (
-        Path(bc_model_path).expanduser().resolve()
-        if bc_model_path is not None
-        else None
+    resolved_bc_model_path = _resolve_bc_model_path(
+        normalized_runner,
+        bc_model_path,
     )
-    if normalized_runner == "bc" and resolved_bc_model_path is None:
-        raise ValueError("bc runner requires bc_model_path")
     summary = compile_workspace(workspace_root)
-    manifest = summary.manifest
-    scenario = resolve_workspace_scenario(workspace_root, manifest, scenario_name)
+    workspace_manifest = summary.manifest
+    scenario = resolve_workspace_scenario(
+        workspace_root,
+        workspace_manifest,
+        scenario_name,
+    )
 
     resolved_run_id = run_id or generate_run_id()
-    resolved_branch = branch or f"{manifest.name}.{resolved_run_id}"
-    run_dir = workspace_root / manifest.runs_dir / resolved_run_id
+    resolved_branch = branch or f"{workspace_manifest.name}.{resolved_run_id}"
+    run_dir = workspace_root / workspace_manifest.runs_dir / resolved_run_id
     if run_dir.exists():
         raise ValueError(f"run_id already exists: {resolved_run_id}")
+
     artifacts_dir = run_dir / "artifacts"
     state_dir = run_dir / "state"
     events_path = run_dir / "events.jsonl"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     state_dir.mkdir(parents=True, exist_ok=True)
 
-    scenario_root = workspace_root / manifest.compiled_root / scenario.name
+    scenario_root = workspace_root / workspace_manifest.compiled_root / scenario.name
     blueprint_asset_path = scenario_root / "blueprint_asset.json"
     contract_path = (
         scenario.contract_path
-        or f"{manifest.contracts_dir}/{scenario.name}.contract.json"
+        or f"{workspace_manifest.contracts_dir}/{scenario.name}.contract.json"
     )
     contract_source_path = workspace_root / contract_path
-    manifest_stub = RunManifest(
-        run_id=resolved_run_id,
-        workspace_name=manifest.name,
-        scenario_name=scenario.name,
+
+    manifest_stub = _build_running_manifest(
+        workspace_root=workspace_root,
+        workspace_manifest=workspace_manifest,
+        scenario=scenario,
         runner=normalized_runner,
-        status="running",
-        started_at=_iso_now(),
+        seed=seed,
+        run_id=resolved_run_id,
+        branch=resolved_branch,
+        model=model,
+        provider=provider,
+        bc_model_path=resolved_bc_model_path,
+        run_dir=run_dir,
+        artifacts_dir=artifacts_dir,
+        state_dir=state_dir,
+        events_path=events_path,
+        blueprint_asset_path=blueprint_asset_path,
+        contract_path=contract_path,
+        contract_source_path=contract_source_path,
+    )
+    benchmark_spec = _build_benchmark_case_spec(
+        workspace_manifest=workspace_manifest,
+        scenario=scenario,
+        runner=normalized_runner,
         seed=seed,
         branch=resolved_branch,
         model=model,
         provider=provider,
-        bc_model_path=(
-            str(resolved_bc_model_path) if resolved_bc_model_path is not None else None
-        ),
+        bc_model_path=resolved_bc_model_path,
+        task=task,
+        max_steps=max_steps,
+        blueprint_asset_path=blueprint_asset_path,
+        artifacts_dir=artifacts_dir,
+    )
+    return _PreparedRunLaunch(
+        workspace_root=workspace_root,
+        workspace_manifest=workspace_manifest,
+        scenario=scenario,
+        runner=normalized_runner,
+        seed=seed,
+        run_id=resolved_run_id,
+        branch=resolved_branch,
+        model=model,
+        provider=provider,
+        bc_model_path=resolved_bc_model_path,
+        task=task,
+        max_steps=max_steps,
+        run_dir=run_dir,
+        artifacts_dir=artifacts_dir,
+        state_dir=state_dir,
+        events_path=events_path,
+        blueprint_asset_path=blueprint_asset_path,
+        contract_path=contract_path,
+        contract_source_path=contract_source_path,
+        manifest_stub=manifest_stub,
+        benchmark_spec=benchmark_spec,
+    )
+
+
+def _resolve_bc_model_path(
+    runner: BenchmarkRunner,
+    bc_model_path: str | Path | None,
+) -> Path | None:
+    if bc_model_path is None:
+        if runner == "bc":
+            raise ValueError("bc runner requires bc_model_path")
+        return None
+    return Path(bc_model_path).expanduser().resolve()
+
+
+def _build_running_manifest(
+    *,
+    workspace_root: Path,
+    workspace_manifest: WorkspaceManifest,
+    scenario: WorkspaceScenarioSpec,
+    runner: BenchmarkRunner,
+    seed: int,
+    run_id: str,
+    branch: str,
+    model: str | None,
+    provider: str | None,
+    bc_model_path: Path | None,
+    run_dir: Path,
+    artifacts_dir: Path,
+    state_dir: Path,
+    events_path: Path,
+    blueprint_asset_path: Path,
+    contract_path: str,
+    contract_source_path: Path,
+) -> RunManifest:
+    return RunManifest(
+        run_id=run_id,
+        workspace_name=workspace_manifest.name,
+        scenario_name=scenario.name,
+        runner=runner,
+        status="running",
+        started_at=_iso_now(),
+        seed=seed,
+        branch=branch,
+        model=model,
+        provider=provider,
+        bc_model_path=str(bc_model_path) if bc_model_path is not None else None,
         workflow_name=scenario.workflow_name,
         workflow_variant=scenario.workflow_variant,
         artifacts=RunArtifactIndex(
@@ -120,53 +275,32 @@ def launch_workspace_run(
         metadata=merge_reproducibility_metadata(
             {
                 "workspace_scenario": scenario.name,
-                "bc_model_path": (
-                    str(resolved_bc_model_path) if resolved_bc_model_path else None
-                ),
+                "bc_model_path": str(bc_model_path) if bc_model_path else None,
             },
             seed=seed,
             blueprint_asset_path=blueprint_asset_path,
             contract_path=contract_source_path,
         ),
     )
-    write_run_manifest(workspace_root, manifest_stub)
-    append_run_event(
-        events_path,
-        RunTimelineEvent(
-            index=0,
-            kind="run_started",
-            label=f"{normalized_runner} run started",
-            channel="World",
-            time_ms=0,
-            runner=normalized_runner,
-            status="running",
-            branch=resolved_branch,
-            payload={
-                "workspace_name": manifest.name,
-                "scenario_name": scenario.name,
-                "seed": seed,
-                "model": model,
-                "provider": provider,
-            },
-        ),
-    )
-    upsert_workspace_run(
-        workspace_root,
-        WorkspaceRunEntry(
-            run_id=resolved_run_id,
-            scenario_name=scenario.name,
-            runner=normalized_runner,
-            status="running",
-            manifest_path=str(
-                (run_dir / "run_manifest.json").relative_to(workspace_root)
-            ),
-            started_at=manifest_stub.started_at,
-            branch=resolved_branch,
-        ),
-    )
 
-    spec = BenchmarkCaseSpec(
-        runner=normalized_runner,
+
+def _build_benchmark_case_spec(
+    *,
+    workspace_manifest: WorkspaceManifest,
+    scenario: WorkspaceScenarioSpec,
+    runner: BenchmarkRunner,
+    seed: int,
+    branch: str,
+    model: str | None,
+    provider: str | None,
+    bc_model_path: Path | None,
+    task: str | None,
+    max_steps: int,
+    blueprint_asset_path: Path,
+    artifacts_dir: Path,
+) -> BenchmarkCaseSpec:
+    return BenchmarkCaseSpec(
+        runner=runner,
         scenario_name=scenario.scenario_name or scenario.name,
         family_name=scenario.workflow_name,
         workflow_name=scenario.workflow_name,
@@ -174,203 +308,269 @@ def launch_workspace_run(
         blueprint_asset_path=blueprint_asset_path,
         seed=seed,
         artifacts_dir=artifacts_dir,
-        branch=resolved_branch,
+        branch=branch,
         model=model,
         provider=provider,
-        bc_model_path=resolved_bc_model_path,
+        bc_model_path=bc_model_path,
         task=task,
         max_steps=max_steps,
-        metadata={"workspace_name": manifest.name, "workspace_scenario": scenario.name},
+        metadata={
+            "workspace_name": workspace_manifest.name,
+            "workspace_scenario": scenario.name,
+        },
     )
 
-    try:
-        with _temporary_env("VEI_STATE_DIR", str(state_dir)):
-            result = run_benchmark_case(spec)
 
-        contract_eval = evaluate_run_workspace_contract(
-            workspace_root,
-            run_id=resolved_run_id,
-            scenario_name=scenario.name,
-        )
-        _append_artifact_events(
-            workspace_root, resolved_run_id, runner=normalized_runner
-        )
-        append_run_event(
-            events_path,
-            RunTimelineEvent(
-                index=0,
-                kind="run_completed",
-                label=f"{normalized_runner} run completed",
-                channel="World",
-                time_ms=int(result.metrics.time_ms or result.metrics.elapsed_ms or 0),
-                runner=normalized_runner,
-                status="ok" if result.status == "ok" else "error",
-                branch=result.diagnostics.branch or resolved_branch,
-                payload={
-                    "success": result.success,
-                    "error": result.error,
-                    "metrics": _event_metrics_payload(result.metrics),
-                    "diagnostics": result.diagnostics.model_dump(mode="json"),
-                },
+def _record_run_start(prepared: _PreparedRunLaunch) -> None:
+    write_run_manifest(prepared.workspace_root, prepared.manifest_stub)
+    append_run_event(
+        prepared.events_path,
+        RunTimelineEvent(
+            index=0,
+            kind="run_started",
+            label=f"{prepared.runner} run started",
+            channel="World",
+            time_ms=0,
+            runner=prepared.runner,
+            status="running",
+            branch=prepared.branch,
+            payload={
+                "workspace_name": prepared.workspace_manifest.name,
+                "scenario_name": prepared.scenario.name,
+                "seed": prepared.seed,
+                "model": prepared.model,
+                "provider": prepared.provider,
+            },
+        ),
+    )
+    upsert_workspace_run(
+        prepared.workspace_root,
+        WorkspaceRunEntry(
+            run_id=prepared.run_id,
+            scenario_name=prepared.scenario.name,
+            runner=prepared.runner,
+            status="running",
+            manifest_path=str(
+                (prepared.run_dir / "run_manifest.json").relative_to(
+                    prepared.workspace_root
+                )
             ),
-        )
-        timeline = build_run_timeline(workspace_root, resolved_run_id)
-        write_run_timeline(workspace_root, resolved_run_id, timeline)
+            started_at=prepared.manifest_stub.started_at,
+            branch=prepared.branch,
+        ),
+    )
 
-        snapshots = list_run_snapshots(workspace_root, resolved_run_id)
-        final_manifest = RunManifest(
-            run_id=resolved_run_id,
-            workspace_name=manifest.name,
-            scenario_name=scenario.name,
-            runner=normalized_runner,
-            status=("ok" if result.status == "ok" else "error"),
-            started_at=manifest_stub.started_at,
-            completed_at=_iso_now(),
-            seed=seed,
-            branch=result.diagnostics.branch or resolved_branch,
-            model=model,
-            provider=provider,
-            bc_model_path=(
-                str(resolved_bc_model_path)
-                if resolved_bc_model_path is not None
-                else None
+
+def _finalize_successful_run(
+    prepared: _PreparedRunLaunch,
+    result: Any,
+) -> RunManifest:
+    contract_eval = evaluate_run_workspace_contract(
+        prepared.workspace_root,
+        run_id=prepared.run_id,
+        scenario_name=prepared.scenario.name,
+    )
+    _append_artifact_events(
+        prepared.workspace_root,
+        prepared.run_id,
+        runner=prepared.runner,
+    )
+    append_run_event(
+        prepared.events_path,
+        RunTimelineEvent(
+            index=0,
+            kind="run_completed",
+            label=f"{prepared.runner} run completed",
+            channel="World",
+            time_ms=int(result.metrics.time_ms or result.metrics.elapsed_ms or 0),
+            runner=prepared.runner,
+            status="ok" if result.status == "ok" else "error",
+            branch=result.diagnostics.branch or prepared.branch,
+            payload={
+                "success": result.success,
+                "error": result.error,
+                "metrics": _event_metrics_payload(result.metrics),
+                "diagnostics": result.diagnostics.model_dump(mode="json"),
+            },
+        ),
+    )
+    timeline = build_run_timeline(prepared.workspace_root, prepared.run_id)
+    write_run_timeline(prepared.workspace_root, prepared.run_id, timeline)
+    snapshots = list_run_snapshots(prepared.workspace_root, prepared.run_id)
+
+    final_manifest = RunManifest(
+        run_id=prepared.run_id,
+        workspace_name=prepared.workspace_manifest.name,
+        scenario_name=prepared.scenario.name,
+        runner=prepared.runner,
+        status="ok" if result.status == "ok" else "error",
+        started_at=prepared.manifest_stub.started_at,
+        completed_at=_iso_now(),
+        seed=prepared.seed,
+        branch=result.diagnostics.branch or prepared.branch,
+        model=prepared.model,
+        provider=prepared.provider,
+        bc_model_path=(
+            str(prepared.bc_model_path) if prepared.bc_model_path is not None else None
+        ),
+        workflow_name=result.diagnostics.workflow_name
+        or prepared.scenario.workflow_name,
+        workflow_variant=(
+            result.diagnostics.workflow_variant or prepared.scenario.workflow_variant
+        ),
+        success=result.success,
+        metrics=result.metrics,
+        diagnostics=result.diagnostics,
+        contract=_contract_summary(contract_eval, prepared.run_dir),
+        artifacts=_build_final_artifact_index(prepared),
+        snapshots=snapshots,
+        error=result.error,
+        metadata=merge_reproducibility_metadata(
+            {
+                "workspace_scenario": prepared.scenario.name,
+                "contract_ok": contract_eval.ok if contract_eval is not None else None,
+                "bc_model_path": (
+                    str(prepared.bc_model_path) if prepared.bc_model_path else None
+                ),
+            },
+            seed=prepared.seed,
+            blueprint_asset_path=prepared.blueprint_asset_path,
+            contract_path=prepared.contract_source_path,
+        ),
+    )
+    write_run_manifest(prepared.workspace_root, final_manifest)
+    upsert_workspace_run(
+        prepared.workspace_root,
+        WorkspaceRunEntry(
+            run_id=prepared.run_id,
+            scenario_name=prepared.scenario.name,
+            runner=prepared.runner,
+            status=final_manifest.status,
+            manifest_path=str(
+                (prepared.run_dir / "run_manifest.json").relative_to(
+                    prepared.workspace_root
+                )
             ),
-            workflow_name=result.diagnostics.workflow_name or scenario.workflow_name,
-            workflow_variant=result.diagnostics.workflow_variant
-            or scenario.workflow_variant,
-            success=result.success,
-            metrics=result.metrics,
-            diagnostics=result.diagnostics,
-            contract=_contract_summary(contract_eval, run_dir),
-            artifacts=RunArtifactIndex(
-                run_dir=str(run_dir.relative_to(workspace_root)),
-                artifacts_dir=str(artifacts_dir.relative_to(workspace_root)),
-                state_dir=str(state_dir.relative_to(workspace_root)),
-                events_path=str(events_path.relative_to(workspace_root)),
-                blueprint_asset_path=str(
-                    blueprint_asset_path.relative_to(workspace_root)
-                ),
-                blueprint_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "blueprint.json"
-                ),
-                contract_path=contract_path,
-                timeline_path=str(
-                    (run_dir / "timeline.json").relative_to(workspace_root)
-                ),
-                benchmark_result_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "benchmark_result.json"
-                ),
-                score_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "score.json"
-                ),
-                workflow_result_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "workflow_result.json"
-                ),
-                transcript_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "transcript.json"
-                ),
-                trace_path=_relative_if_exists(
-                    workspace_root, artifacts_dir / "trace.jsonl"
-                ),
-            ),
-            snapshots=snapshots,
-            error=result.error,
-            metadata=merge_reproducibility_metadata(
+            started_at=prepared.manifest_stub.started_at,
+            completed_at=final_manifest.completed_at,
+            success=final_manifest.success,
+            branch=final_manifest.branch,
+        ),
+    )
+    return final_manifest
+
+
+def _build_final_artifact_index(prepared: _PreparedRunLaunch) -> RunArtifactIndex:
+    return RunArtifactIndex(
+        run_dir=str(prepared.run_dir.relative_to(prepared.workspace_root)),
+        artifacts_dir=str(prepared.artifacts_dir.relative_to(prepared.workspace_root)),
+        state_dir=str(prepared.state_dir.relative_to(prepared.workspace_root)),
+        events_path=str(prepared.events_path.relative_to(prepared.workspace_root)),
+        blueprint_asset_path=str(
+            prepared.blueprint_asset_path.relative_to(prepared.workspace_root)
+        ),
+        blueprint_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "blueprint.json",
+        ),
+        contract_path=prepared.contract_path,
+        timeline_path=str(
+            (prepared.run_dir / "timeline.json").relative_to(prepared.workspace_root)
+        ),
+        benchmark_result_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "benchmark_result.json",
+        ),
+        score_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "score.json",
+        ),
+        workflow_result_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "workflow_result.json",
+        ),
+        transcript_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "transcript.json",
+        ),
+        trace_path=_relative_if_exists(
+            prepared.workspace_root,
+            prepared.artifacts_dir / "trace.jsonl",
+        ),
+    )
+
+
+def _finalize_failed_run(
+    prepared: _PreparedRunLaunch,
+    exc: Exception,
+) -> None:
+    _append_artifact_events(
+        prepared.workspace_root,
+        prepared.run_id,
+        runner=prepared.runner,
+    )
+    append_run_event(
+        prepared.events_path,
+        RunTimelineEvent(
+            index=0,
+            kind="run_failed",
+            label=f"{prepared.runner} run failed",
+            channel="World",
+            time_ms=0,
+            runner=prepared.runner,
+            status="error",
+            branch=prepared.branch,
+            payload={"error": str(exc)},
+        ),
+    )
+    timeline = build_run_timeline(prepared.workspace_root, prepared.run_id)
+    if timeline:
+        write_run_timeline(prepared.workspace_root, prepared.run_id, timeline)
+
+    error_manifest = prepared.manifest_stub.model_copy(
+        update={
+            "status": "error",
+            "completed_at": _iso_now(),
+            "error": str(exc),
+            "metadata": merge_reproducibility_metadata(
                 {
-                    "workspace_scenario": scenario.name,
-                    "contract_ok": (
-                        contract_eval.ok if contract_eval is not None else None
-                    ),
-                    "bc_model_path": (
-                        str(resolved_bc_model_path) if resolved_bc_model_path else None
-                    ),
+                    **dict(prepared.manifest_stub.metadata),
+                    "error": str(exc),
                 },
-                seed=seed,
-                blueprint_asset_path=blueprint_asset_path,
-                contract_path=contract_source_path,
+                seed=prepared.seed,
+                blueprint_asset_path=prepared.blueprint_asset_path,
+                contract_path=prepared.contract_source_path,
             ),
-        )
-        write_run_manifest(workspace_root, final_manifest)
-        upsert_workspace_run(
-            workspace_root,
-            WorkspaceRunEntry(
-                run_id=resolved_run_id,
-                scenario_name=scenario.name,
-                runner=normalized_runner,
-                status=final_manifest.status,
-                manifest_path=str(
-                    (run_dir / "run_manifest.json").relative_to(workspace_root)
-                ),
-                started_at=manifest_stub.started_at,
-                completed_at=final_manifest.completed_at,
-                success=final_manifest.success,
-                branch=final_manifest.branch,
+            "artifacts": prepared.manifest_stub.artifacts.model_copy(
+                update={
+                    "timeline_path": _relative_if_exists(
+                        prepared.workspace_root,
+                        prepared.run_dir / "timeline.json",
+                    )
+                }
             ),
-        )
-        return final_manifest
-    except Exception as exc:
-        _append_artifact_events(
-            workspace_root, resolved_run_id, runner=normalized_runner
-        )
-        append_run_event(
-            events_path,
-            RunTimelineEvent(
-                index=0,
-                kind="run_failed",
-                label=f"{normalized_runner} run failed",
-                channel="World",
-                time_ms=0,
-                runner=normalized_runner,
-                status="error",
-                branch=resolved_branch,
-                payload={"error": str(exc)},
+        }
+    )
+    write_run_manifest(prepared.workspace_root, error_manifest)
+    upsert_workspace_run(
+        prepared.workspace_root,
+        WorkspaceRunEntry(
+            run_id=prepared.run_id,
+            scenario_name=prepared.scenario.name,
+            runner=prepared.runner,
+            status="error",
+            manifest_path=str(
+                (prepared.run_dir / "run_manifest.json").relative_to(
+                    prepared.workspace_root
+                )
             ),
-        )
-        timeline = build_run_timeline(workspace_root, resolved_run_id)
-        if timeline:
-            write_run_timeline(workspace_root, resolved_run_id, timeline)
-        error_manifest = manifest_stub.model_copy(
-            update={
-                "status": "error",
-                "completed_at": _iso_now(),
-                "error": str(exc),
-                "metadata": merge_reproducibility_metadata(
-                    {
-                        **dict(manifest_stub.metadata),
-                        "error": str(exc),
-                    },
-                    seed=seed,
-                    blueprint_asset_path=blueprint_asset_path,
-                    contract_path=contract_source_path,
-                ),
-                "artifacts": manifest_stub.artifacts.model_copy(
-                    update={
-                        "timeline_path": _relative_if_exists(
-                            workspace_root, run_dir / "timeline.json"
-                        )
-                    }
-                ),
-            }
-        )
-        write_run_manifest(workspace_root, error_manifest)
-        upsert_workspace_run(
-            workspace_root,
-            WorkspaceRunEntry(
-                run_id=resolved_run_id,
-                scenario_name=scenario.name,
-                runner=normalized_runner,
-                status="error",
-                manifest_path=str(
-                    (run_dir / "run_manifest.json").relative_to(workspace_root)
-                ),
-                started_at=manifest_stub.started_at,
-                completed_at=error_manifest.completed_at,
-                success=False,
-                branch=resolved_branch,
-                metadata={"error": str(exc)},
-            ),
-        )
-        raise
+            started_at=prepared.manifest_stub.started_at,
+            completed_at=error_manifest.completed_at,
+            success=False,
+            branch=prepared.branch,
+            metadata={"error": str(exc)},
+        ),
+    )
 
 
 def generate_run_id(*, prefix: str = "run") -> str:

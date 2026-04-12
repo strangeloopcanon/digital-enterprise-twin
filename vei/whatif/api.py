@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 from typing import Any, Sequence
 
+from vei.project_settings import default_model_for_provider
 from vei.blueprint.api import create_world_session_from_blueprint
 from vei.blueprint.models import BlueprintAsset
 from vei.context.api import ingest_mail_archive_threads
@@ -54,7 +55,6 @@ from .models import (
     WhatIfLLMReplayResult,
     WhatIfLLMUsage,
     WhatIfResult,
-    WhatIfScenario,
     WhatIfScenarioId,
     WhatIfThreadImpact,
     WhatIfThreadSummary,
@@ -91,60 +91,16 @@ from .ranking import (
     summarize_forecast_branch,
     summarize_llm_branch,
 )
-
-_SUPPORTED_SCENARIOS: dict[str, WhatIfScenario] = {
-    "compliance_gateway": WhatIfScenario(
-        scenario_id="compliance_gateway",
-        title="Compliance Gateway",
-        description=(
-            "Threads touching both legal and trading signals require review before "
-            "forwarding or escalation."
-        ),
-        decision_branches=[
-            "Block flagged threads until compliance clears them.",
-            "Allow them through but log them for post-hoc audit.",
-        ],
-    ),
-    "escalation_firewall": WhatIfScenario(
-        scenario_id="escalation_firewall",
-        title="Escalation Firewall",
-        description=(
-            "Direct escalations to senior executives require a department-head gate."
-        ),
-        decision_branches=[
-            "Require sign-off before executive escalation.",
-            "Allow direct escalation but flag the thread for governance review.",
-        ],
-    ),
-    "external_dlp": WhatIfScenario(
-        scenario_id="external_dlp",
-        title="External Sharing DLP",
-        description=(
-            "Messages with attachment references to outside recipients are held for "
-            "review."
-        ),
-        decision_branches=[
-            "Hold the message until DLP review clears it.",
-            "Allow send but retain a mandatory audit trail.",
-        ],
-    ),
-    "approval_chain_enforcement": WhatIfScenario(
-        scenario_id="approval_chain_enforcement",
-        title="Approval Chain Enforcement",
-        description=(
-            "Assignment-heavy threads require explicit approval before the next "
-            "handoff proceeds."
-        ),
-        decision_branches=[
-            "Stop handoffs until an approval is recorded.",
-            "Allow handoff but mark the thread out of policy.",
-        ],
-    ),
-}
-
-
-def list_supported_scenarios() -> list[WhatIfScenario]:
-    return list(_SUPPORTED_SCENARIOS.values())
+from .artifacts import (
+    render_experiment_overview as _render_experiment_overview,
+    render_ranked_experiment_overview as _render_ranked_experiment_overview,
+    slug_artifact_label as _slug,
+)
+from .scenario_registry import (
+    list_supported_scenarios,
+    resolve_scenario as _resolve_scenario,
+    resolve_scenario_from_specific_event as _resolve_scenario_from_specific_event,
+)
 
 
 def list_objective_packs():
@@ -1098,7 +1054,7 @@ def run_llm_counterfactual(
     *,
     prompt: str,
     provider: str = "openai",
-    model: str = "gpt-5-mini",
+    model: str = default_model_for_provider("openai"),
     seed: int = 42042,
 ) -> WhatIfLLMReplayResult:
     load_dotenv(override=True)
@@ -1332,7 +1288,7 @@ def run_counterfactual_experiment(
     forecast_backend: WhatIfForecastBackend | None = None,
     allow_proxy_fallback: bool = True,
     provider: str = "openai",
-    model: str = "gpt-5-mini",
+    model: str = default_model_for_provider("openai"),
     seed: int = 42042,
     ejepa_epochs: int = 4,
     ejepa_batch_size: int = 64,
@@ -1505,7 +1461,7 @@ def run_ranked_counterfactual_experiment(
     event_id: str | None = None,
     rollout_count: int = 4,
     provider: str = "openai",
-    model: str = "gpt-5-mini",
+    model: str = default_model_for_provider("openai"),
     seed: int = 42042,
     shadow_forecast_backend: WhatIfForecastBackend | None = None,
     allow_proxy_fallback: bool = True,
@@ -1906,69 +1862,6 @@ def _selection_for_specific_event(
         ],
         decision_branches=list(scenario.decision_branches),
     )
-
-
-def _resolve_scenario_from_specific_event(
-    *,
-    prompt: str,
-    event: WhatIfEvent | None,
-    organization_domain: str,
-) -> WhatIfScenario:
-    try:
-        return _resolve_scenario(scenario=None, prompt=prompt)
-    except ValueError:
-        if event is None:
-            return _SUPPORTED_SCENARIOS["compliance_gateway"]
-        if event.flags.has_attachment_reference and has_external_recipients(
-            event.flags.to_recipients,
-            organization_domain=organization_domain,
-        ):
-            return _SUPPORTED_SCENARIOS["external_dlp"]
-        if (
-            event.flags.consult_legal_specialist
-            or event.flags.consult_trading_specialist
-        ):
-            return _SUPPORTED_SCENARIOS["compliance_gateway"]
-        if event.flags.is_escalation or event.event_type == "escalation":
-            return _SUPPORTED_SCENARIOS["escalation_firewall"]
-        if event.event_type == "assignment":
-            return _SUPPORTED_SCENARIOS["approval_chain_enforcement"]
-        return _SUPPORTED_SCENARIOS["compliance_gateway"]
-
-
-def _resolve_scenario(
-    *,
-    scenario: str | None,
-    prompt: str | None,
-) -> WhatIfScenario:
-    if scenario:
-        resolved = _SUPPORTED_SCENARIOS.get(scenario.strip().lower())
-        if resolved is None:
-            raise ValueError(f"unsupported what-if scenario: {scenario}")
-        return resolved
-    if not prompt:
-        raise ValueError("provide --scenario or --prompt")
-    lowered = prompt.strip().lower()
-    if "legal" in lowered and "trading" in lowered:
-        return _SUPPORTED_SCENARIOS["compliance_gateway"]
-    if (
-        any(token in lowered for token in ("compliance", "review", "audit"))
-        and "thread" in lowered
-    ):
-        return _SUPPORTED_SCENARIOS["compliance_gateway"]
-    if any(
-        token in lowered
-        for token in ("c-suite", "executive", "skilling", "lay", "fastow", "kean")
-    ):
-        return _SUPPORTED_SCENARIOS["escalation_firewall"]
-    if any(token in lowered for token in ("external", "attachment", "dlp", "outside")):
-        return _SUPPORTED_SCENARIOS["external_dlp"]
-    if any(
-        token in lowered for token in ("approval", "sign-off", "handoff", "assignment")
-    ):
-        return _SUPPORTED_SCENARIOS["approval_chain_enforcement"]
-    supported = ", ".join(sorted(_SUPPORTED_SCENARIOS))
-    raise ValueError(f"could not map prompt to a supported scenario ({supported})")
 
 
 def _matched_events_for_scenario(
@@ -2582,106 +2475,3 @@ def _forecast_delta_summary(delta: WhatIfForecastDelta) -> str:
         f"with escalation delta {delta.escalation_delta} and external-send delta "
         f"{delta.external_event_delta}."
     )
-
-
-def _render_experiment_overview(result: WhatIfExperimentResult) -> str:
-    lines = [
-        f"# {result.label}",
-        "",
-        f"Thread: `{result.intervention.thread_id}`",
-        f"Branch event: `{result.intervention.branch_event_id}`",
-        f"Changed actor: `{result.materialization.branch_event.actor_id}`",
-        f"Historical event type: {result.materialization.branch_event.event_type}",
-        f"Historical subject: {result.materialization.branch_event.subject}",
-        f"Prompt: {result.intervention.prompt}",
-        "",
-        "## Historical Event",
-        f"- Timestamp: {result.materialization.branch_event.timestamp}",
-        f"- To: {', '.join(result.materialization.branch_event.to_recipients) or result.materialization.branch_event.target_id or '(none)'}",
-        f"- Forward: {'yes' if result.materialization.branch_event.is_forward else 'no'}",
-        f"- Escalation: {'yes' if result.materialization.branch_event.is_escalation else 'no'}",
-        f"- Attachment: {'yes' if result.materialization.branch_event.has_attachment_reference else 'no'}",
-        "",
-        "## Baseline",
-        f"- Scheduled historical future events: {result.baseline.scheduled_event_count}",
-        f"- Delivered historical future events: {result.baseline.delivered_event_count}",
-        f"- Baseline forecast risk score: {result.baseline.forecast.risk_score}",
-    ]
-    if result.materialization.baseline_future_preview:
-        lines.extend(["- First baseline events:"])
-        for event in result.materialization.baseline_future_preview[:3]:
-            lines.append(
-                f"  - `{event.event_id}` {event.event_type} from `{event.actor_id}`: {event.subject}"
-            )
-    if result.llm_result is not None:
-        lines.extend(
-            [
-                "",
-                "## LLM Actor",
-                f"- Status: {result.llm_result.status}",
-                f"- Summary: {result.llm_result.summary}",
-                f"- Delivered messages: {result.llm_result.delivered_event_count}",
-                f"- Inbox count: {result.llm_result.inbox_count}",
-            ]
-        )
-        for message in result.llm_result.messages[:3]:
-            lines.append(
-                f"- `{message.actor_id}` -> `{message.to}` after {message.delay_ms} ms: {message.subject}"
-            )
-    if result.forecast_result is not None:
-        lines.extend(
-            [
-                "",
-                "## Forecast",
-                f"- Status: {result.forecast_result.status}",
-                f"- Backend: {result.forecast_result.backend}",
-                f"- Summary: {result.forecast_result.summary}",
-                f"- Baseline risk: {result.forecast_result.baseline.risk_score}",
-                f"- Predicted risk: {result.forecast_result.predicted.risk_score}",
-                f"- External-send delta: {result.forecast_result.delta.external_event_delta}",
-                f"- Escalation delta: {result.forecast_result.delta.escalation_delta}",
-            ]
-        )
-    return "\n".join(lines)
-
-
-def _render_ranked_experiment_overview(result: WhatIfRankedExperimentResult) -> str:
-    branch_event = result.materialization.branch_event
-    lines = [
-        f"# {result.label}",
-        "",
-        f"Objective: {result.objective_pack.title}",
-        f"Selected thread: `{result.materialization.thread_id}`",
-        f"Branch event: `{result.materialization.branch_event_id}`",
-        f"Historical subject: {branch_event.subject}",
-        f"Recommended candidate: {result.recommended_candidate_label or '(none)'}",
-        "",
-        "## Historical Baseline",
-        f"- Delivered historical future events: {result.baseline.delivered_event_count}",
-        f"- Historical risk score: {result.baseline.forecast.risk_score}",
-        "",
-        "## Ranked Candidates",
-    ]
-    for candidate in result.candidates:
-        lines.extend(
-            [
-                f"- Rank {candidate.rank}: {candidate.intervention.label}",
-                f"  - Score: {candidate.outcome_score.overall_score}",
-                f"  - Prompt: {candidate.intervention.prompt}",
-                f"  - Reason: {candidate.reason}",
-                (
-                    f"  - Signals: exposure={candidate.average_outcome_signals.exposure_risk}, "
-                    f"delay={candidate.average_outcome_signals.delay_risk}, "
-                    f"relationship={candidate.average_outcome_signals.relationship_protection}"
-                ),
-            ]
-        )
-        if candidate.shadow is not None:
-            lines.append(
-                f"  - Shadow ({candidate.shadow.backend}): {candidate.shadow.outcome_score.overall_score}"
-            )
-    return "\n".join(lines)
-
-
-def _slug(value: str) -> str:
-    return "_".join(part for part in value.strip().lower().replace("-", " ").split())

@@ -8,12 +8,15 @@ import pytest
 import typer.testing
 
 from vei.cli.vei_llm_test import (
+    _episode_failure_exit_code,
     _full_flow_progress,
+    _is_infrastructure_failure_message,
     _normalize_result,
     _select_progress_action,
     _should_bypass_strict_planning,
     _strict_full_flow_action,
     _strict_full_flow_complete,
+    EpisodeFailure,
     app as llm_app,
     run_episode,
 )
@@ -284,6 +287,15 @@ def test_should_bypass_strict_planning_only_after_quote_is_parsed() -> None:
         )
         is False
     )
+
+
+def test_llm_harness_classifies_infrastructure_failures() -> None:
+    exc = EpisodeFailure("Episode failed: rate limit", transcript=[])
+    exc.__cause__ = RuntimeError("429 rate limit")
+
+    assert _is_infrastructure_failure_message("Provider timed out") is True
+    assert _is_infrastructure_failure_message("Schema mismatch") is False
+    assert _episode_failure_exit_code(exc) == 3
 
 
 def test_llm_cli_writes_summary_artifact(

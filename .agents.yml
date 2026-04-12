@@ -4,9 +4,9 @@ coverage:
   changed_lines: 0.90
 llm:
   cost_ceiling_usd: 3
-  latency_p95_ms: 3000
+  latency_p95_ms: 20000
   provider: openai
-  model: "gpt-5"
+  model: "gpt-5-mini"
   temperature: 0
   top_p: 1
   retry_attempts: 3

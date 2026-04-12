@@ -61,16 +61,27 @@ llm-live: $(SETUP_FULL_STAMP)
 	fi; \
 	if [ -n "$$VEI_LLM_LIVE_BYPASS" ]; then \
 		echo "VEI_LLM_LIVE_BYPASS=1 set; skipping llm-live checks."; \
-	elif [ -z "$$OPENAI_API_KEY" ]; then \
-		echo "OPENAI_API_KEY not set; cannot run llm-live target. Set the key or export VEI_LLM_LIVE_BYPASS=1 to skip in CI."; \
-		exit 4; \
 	else \
+		DEFAULTS="$$( $(VENV_BIN)/python scripts/resolve_llm_live_defaults.py )"; \
+		eval "$$DEFAULTS"; \
+		if [ -z "$$LLM_KEY_ENV" ]; then \
+			echo "Unsupported llm-live provider '$$LLM_PROVIDER'."; \
+			exit 4; \
+		fi; \
+		if [ -z "$${!LLM_KEY_ENV}" ]; then \
+			echo "$$LLM_KEY_ENV not set; cannot run llm-live target. Set the key or export VEI_LLM_LIVE_BYPASS=1 to skip in CI."; \
+			exit 4; \
+		fi; \
 		ART="$${VEI_LLM_ARTIFACTS_DIR:-_vei_out/llm_live/latest}"; \
 		mkdir -p "$$ART"; \
-		rm -f "$$ART/trace.jsonl" "$$ART/score.json" "$$ART/transcript.json" "$$ART/llm_transcript.jsonl" "$$ART/connector_receipts.jsonl"; \
+		rm -f "$$ART/trace.jsonl" "$$ART/score.json" "$$ART/summary.json" "$$ART/transcript.json" "$$ART/llm_metrics.json" "$$ART/llm_transcript.jsonl" "$$ART/connector_receipts.jsonl"; \
 		VEI_SCENARIO=$${VEI_SCENARIO:-multi_channel} \
-				$(VENV_BIN)/vei llm-test run --provider openai --model $${VEI_LLM_MODEL:-gpt-5} --max-steps $${VEI_LLM_MAX_STEPS:-18} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-full} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Run full procurement workflow: cite source, post Slack approval with budget amount, email vendor and parse price+ETA reply, log quote in Docs, update ticket, and log CRM activity.}" && \
-				$(VENV_BIN)/python -c 'import json,sys;from pathlib import Path;art=Path(sys.argv[1]);score=json.loads((art/"score.json").read_text(encoding="utf-8"));trace=art/"trace.jsonl";records=[json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines() if line.strip()] if trace.exists() else [];times=[int(r.get("time_ms",0)) for r in records if r.get("type")=="call"];lat=[max(0,b-a) for a,b in zip(times,times[1:])];p95=sorted(lat)[int(0.95*(len(lat)-1))] if lat else 0;passed=1 if bool(score.get("success")) else 0;failed=0 if passed else 1;actions=int(score.get("costs",{}).get("actions",len(times)));print(f"llm-live metrics: pass={passed} fail={failed} cost_usd=unknown p95_latency_ms={p95} actions={actions}")' "$$ART"; \
+				$(VENV_BIN)/vei llm-test run --provider "$$LLM_PROVIDER" --model "$$LLM_MODEL" --max-steps $${VEI_LLM_MAX_STEPS:-18} --step-timeout-s $${VEI_LLM_STEP_TIMEOUT_S:-180} --episode-timeout-s $${VEI_LLM_EPISODE_TIMEOUT_S:-900} --score-success-mode $${VEI_LLM_SUCCESS_MODE:-full} --require-success --no-print-transcript --artifacts "$$ART" --task "$${VEI_LLM_TASK:-Run full procurement workflow: cite source, post Slack approval with budget amount, email vendor and parse price+ETA reply, log quote in Docs, update ticket, and log CRM activity.}"; \
+		status=$$?; \
+		if [ "$$status" -ne 0 ]; then \
+			exit "$$status"; \
+		fi; \
+		$(VENV_BIN)/python scripts/validate_llm_live_metrics.py --artifacts "$$ART"; \
 	fi
 
 deps-audit: $(SETUP_FULL_STAMP)

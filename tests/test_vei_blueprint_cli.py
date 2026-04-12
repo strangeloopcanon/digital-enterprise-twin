@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+import pytest
 import typer.testing
 
 from vei.cli.vei_blueprint import app
+from vei.project_settings import default_model_for_provider
 
 
 def test_vei_blueprint_list_and_show_family() -> None:
@@ -141,3 +144,114 @@ def test_vei_blueprint_orient_command() -> None:
     assert payload["orientation"]["organization_name"] == "MacroCompute"
     assert payload["orientation"]["active_policies"][0]["policy_id"] == "POL-WAVE2"
     assert "identity_graph" in payload["capability_graphs"]["available_domains"]
+
+
+def test_vei_blueprint_generate_command_uses_stubbed_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_model = default_model_for_provider("openai")
+
+    def _fake_call_llm(prompt: str, *, provider: str, model: str) -> dict[str, object]:
+        assert "finance" in prompt.lower()
+        assert provider == "openai"
+        assert model == expected_model
+        return {
+            "company_name": "Northwind Finance",
+            "domain": "northwind.example",
+            "industry": "Finance",
+            "scenario_name": "finance_cutover",
+            "scenario_description": "Migrate a risky finance cutover.",
+            "surfaces_used": ["slack", "mail", "tickets", "docs", "identity"],
+            "actors": [
+                {
+                    "name": "Mina Patel",
+                    "email": "mina@northwind.example",
+                    "role": "IT Director",
+                    "department": "IT",
+                }
+            ],
+            "slack_channels": [
+                {
+                    "name": "#cutover",
+                    "messages": [
+                        {
+                            "user": "mina@northwind.example",
+                            "text": "Track the finance cutover here.",
+                        }
+                    ],
+                }
+            ],
+            "mail_threads": [],
+            "tickets": [],
+            "documents": [],
+            "causal_links": [],
+            "success_predicates": [{"name": "done", "description": "done"}],
+            "forbidden_predicates": [],
+        }
+
+    monkeypatch.setattr("vei.blueprint.llm_generate._call_llm", _fake_call_llm)
+
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "generate",
+            "--prompt",
+            "Build a finance cutover scenario",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["name"] == "finance_cutover.generated.blueprint"
+    assert payload["capability_graphs"]["organization_name"] == "Northwind Finance"
+
+
+def test_vei_blueprint_scaffold_command_writes_files(tmp_path: Path) -> None:
+    spec_path = tmp_path / "orders.openapi.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "openapi": "3.1.0",
+                "info": {"title": "Orders Service"},
+                "paths": {
+                    "/orders": {
+                        "get": {
+                            "operationId": "listOrders",
+                            "summary": "List orders",
+                            "responses": {"200": {"description": "ok"}},
+                        }
+                    }
+                },
+                "components": {
+                    "schemas": {
+                        "Order": {
+                            "type": "object",
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        }
+                    }
+                },
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "scaffold"
+    runner = typer.testing.CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "scaffold",
+            "--openapi",
+            str(spec_path),
+            "--output",
+            str(output_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (output_dir / "orders_service_blueprint.json").exists()
+    assert (output_dir / "orders_service_models.py").exists()
+    assert (output_dir / "orders_service_router.py").exists()

@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from vei.cli.vei import app as cli_app
 from vei.data.models import VEIDataset
 from vei.llm.providers import PlanResult, PlanUsage
+from vei.project_settings import default_model_for_provider
 from vei.twin import load_customer_twin
 from vei.whatif import (
     build_branch_point_benchmark,
@@ -1324,16 +1325,17 @@ def test_run_ranked_counterfactual_experiment_writes_artifacts_and_keeps_shadow_
     rosetta_dir = tmp_path / "rosetta"
     _write_rosetta_fixture(rosetta_dir)
     world = load_world(source="enron", rosetta_dir=rosetta_dir)
+    expected_model = default_model_for_provider("openai")
 
     def fake_run_llm_counterfactual(
         *_: object,
         prompt: str,
         provider: str = "openai",
-        model: str = "gpt-5-mini",
+        model: str = "gpt-5",
         seed: int = 42042,
     ) -> WhatIfLLMReplayResult:
         assert provider == "openai"
-        assert model == "gpt-5-mini"
+        assert model == expected_model
         if "internal" in prompt.lower():
             return _make_llm_replay_result(
                 prompt=prompt,
@@ -1545,7 +1547,7 @@ def test_run_research_pack_writes_artifacts_and_scores_all_backends(
         *_: object,
         prompt: str,
         provider: str = "openai",
-        model: str = "gpt-5-mini",
+        model: str = "gpt-5",
         seed: int = 42042,
     ) -> WhatIfLLMReplayResult:
         assert provider == "openai"

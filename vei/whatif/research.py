@@ -8,6 +8,8 @@ from math import sqrt
 from pathlib import Path
 from typing import Sequence
 
+from vei.project_settings import default_model_for_provider
+
 from .api import (
     forecast_episode,
     materialize_episode,
@@ -123,7 +125,7 @@ def run_research_pack(
     pack_id: str = "enron_research_v1",
     research_pack: WhatIfResearchPack | None = None,
     provider: str = "openai",
-    model: str = "gpt-5-mini",
+    model: str = default_model_for_provider("openai"),
     ejepa_epochs: int = 4,
     ejepa_batch_size: int = 64,
     ejepa_force_retrain: bool = False,

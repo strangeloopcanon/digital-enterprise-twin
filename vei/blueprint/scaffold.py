@@ -175,6 +175,7 @@ def _build_blueprint_asset(
         requested_facades=facade_list,
         capability_graphs=BlueprintCapabilityGraphsAsset(
             organization_name=name,
+            organization_domain=f"{slug}.local",
             work_graph=work_graph,
         ),
         metadata={

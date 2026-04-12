@@ -5,6 +5,7 @@ from typing import Optional
 
 import typer
 
+from vei.project_settings import default_model_for_provider, resolve_llm_defaults
 from vei.blueprint.api import (
     build_blueprint_asset_for_example,
     build_blueprint_asset_for_family,
@@ -304,7 +305,10 @@ def generate_command(
     provider: str = typer.Option(
         "openai", help="LLM provider: openai|anthropic|google"
     ),
-    model: str = typer.Option("gpt-4o", help="Model name"),
+    model: str | None = typer.Option(
+        default_model_for_provider("openai"),
+        help="Model name",
+    ),
     output: Optional[str] = typer.Option(
         None, help="Output path for the generated blueprint JSON"
     ),
@@ -315,7 +319,15 @@ def generate_command(
     from vei.blueprint.llm_generate import generate_blueprint_from_prompt
 
     try:
-        asset = generate_blueprint_from_prompt(prompt, provider=provider, model=model)
+        resolved_provider, resolved_model = resolve_llm_defaults(
+            provider=provider,
+            model=model,
+        )
+        asset = generate_blueprint_from_prompt(
+            prompt,
+            provider=resolved_provider,
+            model=resolved_model,
+        )
     except Exception as exc:
         raise typer.BadParameter(f"LLM generation failed: {exc}") from exc
 

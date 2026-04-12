@@ -1800,6 +1800,7 @@ def _build_benchmark_cases(
             branch_event=event_reference(branch_event),
             history_preview=[event_reference(event) for event in history_events[-6:]],
             candidates=case.candidates,
+            company_backdrop=world.company_backdrop,
         )
         case_dossier_root = dossier_root / benchmark_case.case_id
         case_dossier_root.mkdir(parents=True, exist_ok=True)
@@ -1908,6 +1909,8 @@ def _render_case_dossier(
     lines.extend(
         [
             "",
+            *_render_company_backdrop_lines(case),
+            "",
             "## Branch Event",
             f"- Event id: `{case.event_id}`",
             f"- Thread id: `{case.thread_id}`",
@@ -1940,6 +1943,25 @@ def _render_case_dossier(
             lines.append(f"- {objective_pack_id}: {label}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_company_backdrop_lines(case: WhatIfBenchmarkCase) -> list[str]:
+    company_backdrop = case.company_backdrop
+    if company_backdrop is None:
+        return []
+    lines = [
+        "## Public Company Backdrop",
+        f"- Email coverage: {company_backdrop.dataset_first_timestamp} to {company_backdrop.dataset_last_timestamp}",
+    ]
+    if company_backdrop.summary:
+        lines.append(f"- Summary: {company_backdrop.summary}")
+    for snapshot in company_backdrop.financial_snapshots[:4]:
+        lines.append(f"- Financial checkpoint {snapshot.as_of}: {snapshot.summary}")
+    for event in company_backdrop.public_news[:4]:
+        lines.append(
+            f"- Public event {event.timestamp}: {event.headline}. {event.summary}"
+        )
+    return lines
 
 
 def _build_pre_branch_contract(

@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
+from vei.project_settings import default_model_for_provider
 from vei.whatif import load_episode_manifest
 from vei.whatif.models import (
     WhatIfEventReference,
@@ -131,7 +132,7 @@ class WhatIfRunRequest(BaseModel):
     thread_id: str | None = None
     mode: WhatIfExperimentMode = "both"
     max_events: int | None = None
-    model: str = "gpt-5-mini"
+    model: str = Field(default_factory=lambda: default_model_for_provider("openai"))
     provider: str = "openai"
     ejepa_epochs: int = 4
     ejepa_batch_size: int = 64
@@ -153,7 +154,7 @@ class WhatIfRankRequest(BaseModel):
     thread_id: str | None = None
     rollout_count: int = 4
     max_events: int | None = None
-    model: str = "gpt-5-mini"
+    model: str = Field(default_factory=lambda: default_model_for_provider("openai"))
     provider: str = "openai"
     shadow_forecast_backend: str = "auto"
     ejepa_epochs: int = 4

@@ -22,6 +22,7 @@ import sys
 from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from vei.project_settings import default_model_for_provider
 from ._llm_loop import extract_plan  # robust JSON extraction (handles ```json blocks)
 
 app = typer.Typer(add_completion=False)
@@ -92,7 +93,10 @@ def run(
         help="'scripted' (no API key) or 'llm' (requires OPENAI_API_KEY)",
         show_default=True,
     ),
-    model: str = typer.Option("gpt-5", help="Model for LLM mode"),
+    model: str = typer.Option(
+        default_model_for_provider("openai"),
+        help="Model for LLM mode",
+    ),
     task: str | None = typer.Option(
         "Research specs, Slack approval < $3200, email vendor.", help="LLM task"
     ),

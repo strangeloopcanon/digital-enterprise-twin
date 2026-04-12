@@ -25,6 +25,14 @@ except Exception:  # pragma: no cover
     genai = None  # type: ignore
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+_OPENAI_DEFAULT_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-5": {"input": 1.25, "output": 10.0},
+    "gpt-5-mini": {"input": 0.25, "output": 2.0},
+    "gpt-5-nano": {"input": 0.05, "output": 0.4},
+    "gpt-5.4": {"input": 2.5, "output": 15.0},
+    "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
+    "gpt-5.4-nano": {"input": 0.2, "output": 1.25},
+}
 
 
 @dataclass
@@ -97,6 +105,24 @@ def _rate_from_env(provider: str, model: str, side: str) -> float | None:
     return None
 
 
+def _rate_from_defaults(provider: str, model: str, side: str) -> float | None:
+    if provider.strip().lower() != "openai":
+        return None
+    normalized_model = model.strip().lower()
+    normalized_side = side.strip().lower()
+    known_models = sorted(
+        _OPENAI_DEFAULT_PRICING_USD_PER_1M.items(),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    for known_model, rates in known_models:
+        if normalized_model == known_model or normalized_model.startswith(
+            f"{known_model}-"
+        ):
+            return rates.get(normalized_side)
+    return None
+
+
 def _build_usage(
     *,
     provider: str,
@@ -112,6 +138,10 @@ def _build_usage(
     )
     input_rate = _rate_from_env(provider, model, "INPUT")
     output_rate = _rate_from_env(provider, model, "OUTPUT")
+    if input_rate is None:
+        input_rate = _rate_from_defaults(provider, model, "input")
+    if output_rate is None:
+        output_rate = _rate_from_defaults(provider, model, "output")
     estimated_cost_usd: float | None = None
     if input_rate is not None and output_rate is not None:
         estimated_cost_usd = round(

@@ -6,6 +6,8 @@ from typing import Any, List, Dict
 from mcp.client.session import ClientSession
 from openai import AsyncOpenAI
 
+from vei.project_settings import default_model_for_provider
+
 SYSTEM_PROMPT_BASE = (
     "You are an assistant controlling tools via MCP in a synthetic enterprise world. "
     "Each step: first call 'vei.observe' to see the action_menu, then pick exactly one tool to call. "
@@ -50,7 +52,9 @@ async def observe_plan_act(
     messages.append({"role": "user", "content": user})
 
     chat = await client.chat.completions.create(
-        model="gpt-5", messages=messages, temperature=0
+        model=default_model_for_provider("openai"),
+        messages=messages,
+        temperature=0,
     )
     raw = chat.choices[0].message.content or "{}"
     plan = extract_plan(raw)

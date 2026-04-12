@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass, field
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -235,416 +236,639 @@ def validate_import_package(path: str | Path) -> NormalizationReport:
     return _build_report(package.name, issues, source_summaries, normalized_counts={})
 
 
+@dataclass
+class _ImportNormalizationState:
+    source_rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    source_summaries: list[ImportSourceSummary] = field(default_factory=list)
+    issues: list[MappingIssue] = field(default_factory=list)
+    redaction_reports: list[RedactionReport] = field(default_factory=list)
+    provenance: list[ProvenanceRecord] = field(default_factory=list)
+    users: list[BlueprintIdentityUserAsset] = field(default_factory=list)
+    groups: list[BlueprintIdentityGroupAsset] = field(default_factory=list)
+    apps: list[BlueprintIdentityApplicationAsset] = field(default_factory=list)
+    shares: list[BlueprintGoogleDriveShareAsset] = field(default_factory=list)
+    employees: list[BlueprintHrisEmployeeAsset] = field(default_factory=list)
+    tickets: list[BlueprintTicketAsset] = field(default_factory=list)
+    requests: list[BlueprintServiceRequestAsset] = field(default_factory=list)
+    policies: list[BlueprintIdentityPolicyAsset] = field(default_factory=list)
+    audit_events: list[dict[str, Any]] = field(default_factory=list)
+    deals: list[BlueprintCrmDealAsset] = field(default_factory=list)
+    contacts: list[BlueprintCrmContactAsset] = field(default_factory=list)
+    companies: list[BlueprintCrmCompanyAsset] = field(default_factory=list)
+    org_units: set[str] = field(default_factory=set)
+    policy_notes: list[str] = field(default_factory=list)
+
+
+def _normalize_import_source(
+    *,
+    root: Path,
+    source: ImportSourceManifest,
+    state: _ImportNormalizationState,
+) -> None:
+    rows = _load_source_rows(root, source)
+    state.source_rows[source.source_id] = rows
+    profile = get_mapping_profile(source.mapping_profile)
+    override = _load_source_override(root, source)
+    source_issues: list[MappingIssue] = []
+    normalized_count = 0
+    dropped_count = 0
+    unknown_fields: set[str] = set()
+
+    sample = rows[0] if rows else {}
+    redacted_fields = _detect_redacted_fields(sample)
+    state.redaction_reports.append(
+        _build_redaction_report(
+            source=source,
+            sample=sample,
+            redacted_fields=redacted_fields,
+        )
+    )
+
+    for index, row in enumerate(rows, start=1):
+        normalized, row_issues, row_unknown_fields = _normalize_import_source_row(
+            row=row,
+            root=root,
+            source=source,
+            profile=profile,
+            override=override,
+            row_number=index,
+        )
+        source_issues.extend(row_issues)
+        unknown_fields.update(row_unknown_fields)
+        if normalized is None:
+            dropped_count += 1
+            continue
+        _append_normalized_import_record(
+            state=state,
+            source=source,
+            normalized=normalized,
+            row_number=index,
+            redacted_fields=redacted_fields,
+        )
+        normalized_count += 1
+
+    state.issues.extend(source_issues)
+    state.source_summaries.append(
+        ImportSourceSummary(
+            source_id=source.source_id,
+            source_system=source.source_system,
+            mapping_profile=source.mapping_profile,
+            override_path=(
+                str(_override_path(root, source).relative_to(root))
+                if override is not None
+                else None
+            ),
+            override_applied=override is not None,
+            loaded_record_count=len(rows),
+            normalized_record_count=normalized_count,
+            dropped_record_count=dropped_count,
+            issue_count=len(source_issues),
+            unknown_fields=sorted(unknown_fields),
+            redaction_status=source.redaction_status,
+        )
+    )
+
+
+def _build_redaction_report(
+    *,
+    source: ImportSourceManifest,
+    sample: dict[str, Any],
+    redacted_fields: list[str],
+) -> RedactionReport:
+    return RedactionReport(
+        source_id=source.source_id,
+        status=source.redaction_status,
+        redacted_field_count=len(redacted_fields),
+        redacted_fields=redacted_fields,
+        sample_preview=redact_payload(sample) if sample else {},
+    )
+
+
+def _normalize_import_source_row(
+    *,
+    row: dict[str, Any],
+    root: Path,
+    source: ImportSourceManifest,
+    profile: Any,
+    override: MappingOverrideSpec | None,
+    row_number: int,
+) -> tuple[dict[str, Any] | None, list[MappingIssue], set[str]]:
+    del root
+    adjusted, source_issues = _apply_source_override(
+        row,
+        source=source,
+        override=override,
+        row_number=row_number,
+    )
+    preview_row = _apply_profile_alias_preview(adjusted, profile)
+    missing_fields = [
+        field_name
+        for field_name in profile.required_fields
+        if preview_row.get(field_name) in (None, "", [])
+    ]
+    if missing_fields:
+        source_issues.extend(
+            _missing_field_issues(
+                source=source,
+                preview_row=preview_row,
+                row_number=row_number,
+                missing_fields=missing_fields,
+            )
+        )
+        return None, source_issues, set()
+
+    ignored_fields = set(override.ignored_fields) if override is not None else set()
+    unknown_fields = set(preview_row) - set(profile.expected_fields) - ignored_fields
+    source_issues.extend(
+        _unknown_field_issues(
+            source=source,
+            adjusted=adjusted,
+            row_number=row_number,
+            unknown_fields=unknown_fields,
+        )
+    )
+    normalized, coercion_issues = _normalize_row(
+        adjusted,
+        source,
+        profile,
+        row_number,
+    )
+    source_issues.extend(coercion_issues)
+    return normalized, source_issues, unknown_fields
+
+
+def _missing_field_issues(
+    *,
+    source: ImportSourceManifest,
+    preview_row: dict[str, Any],
+    row_number: int,
+    missing_fields: list[str],
+) -> list[MappingIssue]:
+    return [
+        MappingIssue(
+            code="field.required",
+            severity="error",
+            source_id=source.source_id,
+            row_number=row_number,
+            field=field_name,
+            message=f"Missing required field: {field_name}",
+            record_key=_record_key(preview_row),
+        )
+        for field_name in missing_fields
+    ]
+
+
+def _unknown_field_issues(
+    *,
+    source: ImportSourceManifest,
+    adjusted: dict[str, Any],
+    row_number: int,
+    unknown_fields: set[str],
+) -> list[MappingIssue]:
+    return [
+        MappingIssue(
+            code="field.unknown",
+            severity="warning",
+            source_id=source.source_id,
+            row_number=row_number,
+            field=field_name,
+            message=f"Unknown field ignored: {field_name}",
+            record_key=_record_key(adjusted),
+        )
+        for field_name in sorted(unknown_fields)
+    ]
+
+
+def _append_normalized_import_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    handler = _PROFILE_RECORD_HANDLERS.get(source.mapping_profile)
+    if handler is None:
+        return
+    handler(
+        state=state,
+        source=source,
+        normalized=normalized,
+        row_number=row_number,
+        redacted_fields=redacted_fields,
+    )
+
+
+def _handle_okta_user_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintIdentityUserAsset.model_validate(
+        {
+            "user_id": normalized["user_id"],
+            "email": normalized["email"],
+            "login": normalized.get("login"),
+            "first_name": normalized["first_name"],
+            "last_name": normalized["last_name"],
+            "status": normalized["status"],
+            "department": normalized.get("department"),
+            "title": normalized.get("title"),
+            "manager": normalized.get("manager"),
+            "groups": normalized.get("group_ids", []),
+            "applications": normalized.get("application_ids", []),
+            "last_login_ms": normalized.get("last_login_ms"),
+        }
+    )
+    state.users.append(model)
+    if normalized.get("org_unit"):
+        state.org_units.add(str(normalized["org_unit"]))
+    state.provenance.append(
+        _provenance(
+            object_ref=f"identity_user:{model.user_id}",
+            label=model.email,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+            metadata={"email": model.email},
+        )
+    )
+
+
+def _handle_okta_group_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintIdentityGroupAsset.model_validate(
+        {
+            "group_id": normalized["group_id"],
+            "name": normalized["name"],
+            "description": normalized.get("description"),
+            "members": normalized.get("members", []),
+        }
+    )
+    state.groups.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"identity_group:{model.group_id}",
+            label=model.name,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_okta_app_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintIdentityApplicationAsset.model_validate(
+        {
+            "app_id": normalized["app_id"],
+            "label": normalized["label"],
+            "status": normalized["status"],
+            "description": normalized.get("description"),
+            "sign_on_mode": normalized.get("sign_on_mode") or "SAML_2_0",
+            "assignments": normalized.get("assignments", []),
+        }
+    )
+    state.apps.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"identity_application:{model.app_id}",
+            label=model.label,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_drive_share_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintGoogleDriveShareAsset.model_validate(
+        {
+            "doc_id": normalized["doc_id"],
+            "title": normalized["title"],
+            "owner": normalized["owner"],
+            "visibility": normalized["visibility"],
+            "classification": normalized.get("classification") or "internal",
+            "shared_with": normalized.get("shared_with", []),
+        }
+    )
+    state.shares.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"drive_share:{model.doc_id}",
+            label=model.title,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+            metadata={"shared_with": model.shared_with},
+        )
+    )
+
+
+def _handle_hris_employee_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintHrisEmployeeAsset.model_validate(
+        {
+            "employee_id": normalized["employee_id"],
+            "email": normalized["email"],
+            "display_name": normalized["display_name"],
+            "department": normalized["department"],
+            "manager": normalized["manager"],
+            "status": normalized["status"],
+            "cohort": normalized.get("cohort"),
+            "identity_conflict": normalized.get("identity_conflict", False),
+            "onboarded": normalized.get("onboarded", False),
+            "notes": normalized.get("notes", []),
+        }
+    )
+    state.employees.append(model)
+    if normalized.get("org_unit"):
+        state.org_units.add(str(normalized["org_unit"]))
+    state.provenance.append(
+        _provenance(
+            object_ref=f"hris_employee:{model.employee_id}",
+            label=model.display_name,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+            metadata={"email": model.email},
+        )
+    )
+
+
+def _handle_ticket_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintTicketAsset.model_validate(
+        {
+            "ticket_id": normalized["id"],
+            "title": normalized["title"],
+            "status": normalized["status"],
+            "assignee": normalized.get("assignee"),
+            "description": normalized.get("description"),
+        }
+    )
+    state.tickets.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"ticket:{model.ticket_id}",
+            label=model.title,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_service_request_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    model = BlueprintServiceRequestAsset.model_validate(
+        {
+            "request_id": normalized["request_id"],
+            "title": normalized["title"],
+            "status": normalized["status"],
+            "requester": normalized.get("requester"),
+            "description": normalized.get("description"),
+            "approvals": [
+                BlueprintApprovalAsset.model_validate(item)
+                for item in normalized.get("approvals", [])
+            ],
+        }
+    )
+    state.requests.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"service_request:{model.request_id}",
+            label=model.title,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_identity_policy_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    notes = list(normalized.get("notes", []))
+    if notes:
+        state.policy_notes.extend(str(item) for item in notes)
+    model = BlueprintIdentityPolicyAsset.model_validate(
+        {
+            "policy_id": normalized["policy_id"],
+            "title": normalized["title"],
+            "allowed_application_ids": normalized.get("allowed_application_ids", []),
+            "forbidden_share_domains": normalized.get("forbidden_share_domains", []),
+            "required_approval_stages": normalized.get("required_approval_stages", []),
+            "deadline_max_ms": normalized.get("deadline_max_ms"),
+            "metadata": {
+                "notes": notes,
+                "break_glass_requires_followup": normalized.get(
+                    "break_glass_requires_followup",
+                    False,
+                ),
+            },
+        }
+    )
+    state.policies.append(model)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"identity_policy:{model.policy_id}",
+            label=model.title,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_audit_event_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    state.audit_events.append(normalized)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"audit_event:{normalized['event_id']}",
+            label=normalized["event_type"],
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+def _handle_crm_deal_record(
+    *,
+    state: _ImportNormalizationState,
+    source: ImportSourceManifest,
+    normalized: dict[str, Any],
+    row_number: int,
+    redacted_fields: list[str],
+) -> None:
+    deal = BlueprintCrmDealAsset.model_validate(normalized)
+    state.deals.append(deal)
+    state.provenance.append(
+        _provenance(
+            object_ref=f"crm_deal:{deal.id}",
+            label=deal.name,
+            origin="imported",
+            source=source,
+            raw_record_ref=f"{source.relative_path}#{row_number}",
+            redacted_fields=redacted_fields,
+        )
+    )
+
+
+_PROFILE_RECORD_HANDLERS: dict[str, Any] = {
+    "okta_users_v1": _handle_okta_user_record,
+    "okta_users_live_v1": _handle_okta_user_record,
+    "okta_groups_v1": _handle_okta_group_record,
+    "okta_groups_live_v1": _handle_okta_group_record,
+    "okta_apps_v1": _handle_okta_app_record,
+    "okta_apps_live_v1": _handle_okta_app_record,
+    "google_drive_shares_v1": _handle_drive_share_record,
+    "hris_employees_v1": _handle_hris_employee_record,
+    "jira_issues_v1": _handle_ticket_record,
+    "approval_requests_v1": _handle_service_request_record,
+    "identity_policies_v1": _handle_identity_policy_record,
+    "audit_events_v1": _handle_audit_event_record,
+    "crm_deals_v1": _handle_crm_deal_record,
+}
+
+
 def normalize_identity_import_package(path: str | Path) -> ImportPackageArtifacts:
     root = _package_root(path)
     package = load_import_package(root)
-    source_rows: dict[str, list[dict[str, Any]]] = {}
-    source_summaries: list[ImportSourceSummary] = []
-    issues: list[MappingIssue] = []
-    redaction_reports: list[RedactionReport] = []
-    provenance: list[ProvenanceRecord] = []
-
-    users: list[BlueprintIdentityUserAsset] = []
-    groups: list[BlueprintIdentityGroupAsset] = []
-    apps: list[BlueprintIdentityApplicationAsset] = []
-    shares: list[BlueprintGoogleDriveShareAsset] = []
-    employees: list[BlueprintHrisEmployeeAsset] = []
-    tickets: list[BlueprintTicketAsset] = []
-    requests: list[BlueprintServiceRequestAsset] = []
-    policies: list[BlueprintIdentityPolicyAsset] = []
-    audit_events: list[dict[str, Any]] = []
-    deals: list[BlueprintCrmDealAsset] = []
-    contacts: list[BlueprintCrmContactAsset] = []
-    companies: list[BlueprintCrmCompanyAsset] = []
-    org_units: set[str] = set()
-    policy_notes: list[str] = []
-
+    state = _ImportNormalizationState()
     for source in package.sources:
-        rows = _load_source_rows(root, source)
-        source_rows[source.source_id] = rows
-        profile = get_mapping_profile(source.mapping_profile)
-        override = _load_source_override(root, source)
-        source_issues: list[MappingIssue] = []
-        normalized_count = 0
-        dropped_count = 0
-        unknown_fields: set[str] = set()
-        sample = rows[0] if rows else {}
-        redacted_fields = _detect_redacted_fields(sample)
-        redaction_reports.append(
-            RedactionReport(
-                source_id=source.source_id,
-                status=source.redaction_status,
-                redacted_field_count=len(redacted_fields),
-                redacted_fields=redacted_fields,
-                sample_preview=redact_payload(sample) if sample else {},
-            )
-        )
-
-        for index, row in enumerate(rows, start=1):
-            adjusted, override_issues = _apply_source_override(
-                row,
-                source=source,
-                override=override,
-                row_number=index,
-            )
-            source_issues.extend(override_issues)
-            preview_row = _apply_profile_alias_preview(adjusted, profile)
-            missing = [
-                field
-                for field in profile.required_fields
-                if preview_row.get(field) in (None, "", [])
-            ]
-            if missing:
-                for field in missing:
-                    source_issues.append(
-                        MappingIssue(
-                            code="field.required",
-                            severity="error",
-                            source_id=source.source_id,
-                            row_number=index,
-                            field=field,
-                            message=f"Missing required field: {field}",
-                            record_key=_record_key(preview_row),
-                        )
-                    )
-                dropped_count += 1
-                continue
-            extra = sorted(
-                set(preview_row)
-                - set(profile.expected_fields)
-                - (set(override.ignored_fields) if override is not None else set())
-            )
-            unknown_fields.update(extra)
-            for field in extra:
-                source_issues.append(
-                    MappingIssue(
-                        code="field.unknown",
-                        severity="warning",
-                        source_id=source.source_id,
-                        row_number=index,
-                        field=field,
-                        message=f"Unknown field ignored: {field}",
-                        record_key=_record_key(adjusted),
-                    )
-                )
-
-            normalized, coercion_issues = _normalize_row(
-                adjusted,
-                source,
-                profile,
-                index,
-            )
-            source_issues.extend(coercion_issues)
-            if source.mapping_profile in {"okta_users_v1", "okta_users_live_v1"}:
-                model = BlueprintIdentityUserAsset.model_validate(
-                    {
-                        "user_id": normalized["user_id"],
-                        "email": normalized["email"],
-                        "login": normalized.get("login"),
-                        "first_name": normalized["first_name"],
-                        "last_name": normalized["last_name"],
-                        "status": normalized["status"],
-                        "department": normalized.get("department"),
-                        "title": normalized.get("title"),
-                        "manager": normalized.get("manager"),
-                        "groups": normalized.get("group_ids", []),
-                        "applications": normalized.get("application_ids", []),
-                        "last_login_ms": normalized.get("last_login_ms"),
-                    }
-                )
-                users.append(model)
-                if normalized.get("org_unit"):
-                    org_units.add(str(normalized["org_unit"]))
-                provenance.append(
-                    _provenance(
-                        object_ref=f"identity_user:{model.user_id}",
-                        label=model.email,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                        metadata={"email": model.email},
-                    )
-                )
-            elif source.mapping_profile in {"okta_groups_v1", "okta_groups_live_v1"}:
-                model = BlueprintIdentityGroupAsset.model_validate(
-                    {
-                        "group_id": normalized["group_id"],
-                        "name": normalized["name"],
-                        "description": normalized.get("description"),
-                        "members": normalized.get("members", []),
-                    }
-                )
-                groups.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"identity_group:{model.group_id}",
-                        label=model.name,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile in {"okta_apps_v1", "okta_apps_live_v1"}:
-                model = BlueprintIdentityApplicationAsset.model_validate(
-                    {
-                        "app_id": normalized["app_id"],
-                        "label": normalized["label"],
-                        "status": normalized["status"],
-                        "description": normalized.get("description"),
-                        "sign_on_mode": normalized.get("sign_on_mode") or "SAML_2_0",
-                        "assignments": normalized.get("assignments", []),
-                    }
-                )
-                apps.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"identity_application:{model.app_id}",
-                        label=model.label,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile == "google_drive_shares_v1":
-                model = BlueprintGoogleDriveShareAsset.model_validate(
-                    {
-                        "doc_id": normalized["doc_id"],
-                        "title": normalized["title"],
-                        "owner": normalized["owner"],
-                        "visibility": normalized["visibility"],
-                        "classification": normalized.get("classification")
-                        or "internal",
-                        "shared_with": normalized.get("shared_with", []),
-                    }
-                )
-                shares.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"drive_share:{model.doc_id}",
-                        label=model.title,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                        metadata={"shared_with": model.shared_with},
-                    )
-                )
-            elif source.mapping_profile == "hris_employees_v1":
-                model = BlueprintHrisEmployeeAsset.model_validate(
-                    {
-                        "employee_id": normalized["employee_id"],
-                        "email": normalized["email"],
-                        "display_name": normalized["display_name"],
-                        "department": normalized["department"],
-                        "manager": normalized["manager"],
-                        "status": normalized["status"],
-                        "cohort": normalized.get("cohort"),
-                        "identity_conflict": normalized.get("identity_conflict", False),
-                        "onboarded": normalized.get("onboarded", False),
-                        "notes": normalized.get("notes", []),
-                    }
-                )
-                employees.append(model)
-                if normalized.get("org_unit"):
-                    org_units.add(str(normalized["org_unit"]))
-                provenance.append(
-                    _provenance(
-                        object_ref=f"hris_employee:{model.employee_id}",
-                        label=model.display_name,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                        metadata={"email": model.email},
-                    )
-                )
-            elif source.mapping_profile == "jira_issues_v1":
-                model = BlueprintTicketAsset.model_validate(
-                    {
-                        "ticket_id": normalized["id"],
-                        "title": normalized["title"],
-                        "status": normalized["status"],
-                        "assignee": normalized.get("assignee"),
-                        "description": normalized.get("description"),
-                    }
-                )
-                tickets.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"ticket:{model.ticket_id}",
-                        label=model.title,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile == "approval_requests_v1":
-                model = BlueprintServiceRequestAsset.model_validate(
-                    {
-                        "request_id": normalized["request_id"],
-                        "title": normalized["title"],
-                        "status": normalized["status"],
-                        "requester": normalized.get("requester"),
-                        "description": normalized.get("description"),
-                        "approvals": [
-                            BlueprintApprovalAsset.model_validate(item)
-                            for item in normalized.get("approvals", [])
-                        ],
-                    }
-                )
-                requests.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"service_request:{model.request_id}",
-                        label=model.title,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile == "identity_policies_v1":
-                notes = list(normalized.get("notes", []))
-                if notes:
-                    policy_notes.extend(str(item) for item in notes)
-                model = BlueprintIdentityPolicyAsset.model_validate(
-                    {
-                        "policy_id": normalized["policy_id"],
-                        "title": normalized["title"],
-                        "allowed_application_ids": normalized.get(
-                            "allowed_application_ids", []
-                        ),
-                        "forbidden_share_domains": normalized.get(
-                            "forbidden_share_domains", []
-                        ),
-                        "required_approval_stages": normalized.get(
-                            "required_approval_stages", []
-                        ),
-                        "deadline_max_ms": normalized.get("deadline_max_ms"),
-                        "metadata": {
-                            "notes": notes,
-                            "break_glass_requires_followup": normalized.get(
-                                "break_glass_requires_followup", False
-                            ),
-                        },
-                    }
-                )
-                policies.append(model)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"identity_policy:{model.policy_id}",
-                        label=model.title,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile == "audit_events_v1":
-                audit_events.append(normalized)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"audit_event:{normalized['event_id']}",
-                        label=normalized["event_type"],
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            elif source.mapping_profile == "crm_deals_v1":
-                deal = BlueprintCrmDealAsset.model_validate(normalized)
-                deals.append(deal)
-                provenance.append(
-                    _provenance(
-                        object_ref=f"crm_deal:{deal.id}",
-                        label=deal.name,
-                        origin="imported",
-                        source=source,
-                        raw_record_ref=f"{source.relative_path}#{index}",
-                        redacted_fields=redacted_fields,
-                    )
-                )
-            normalized_count += 1
-
-        issues.extend(source_issues)
-        source_summaries.append(
-            ImportSourceSummary(
-                source_id=source.source_id,
-                source_system=source.source_system,
-                mapping_profile=source.mapping_profile,
-                override_path=(
-                    str(_override_path(root, source).relative_to(root))
-                    if override is not None
-                    else None
-                ),
-                override_applied=override is not None,
-                loaded_record_count=len(rows),
-                normalized_record_count=normalized_count,
-                dropped_record_count=dropped_count,
-                issue_count=len(source_issues),
-                unknown_fields=sorted(unknown_fields),
-                redaction_status=source.redaction_status,
-            )
-        )
+        _normalize_import_source(root=root, source=source, state=state)
 
     derived_support_records = _supplement_identity_context(
         package=package,
-        users=users,
-        apps=apps,
-        shares=shares,
-        employees=employees,
-        tickets=tickets,
-        requests=requests,
-        policies=policies,
-        org_units=org_units,
+        users=state.users,
+        apps=state.apps,
+        shares=state.shares,
+        employees=state.employees,
+        tickets=state.tickets,
+        requests=state.requests,
+        policies=state.policies,
+        org_units=state.org_units,
     )
-    provenance.extend(derived_support_records)
-    issues.extend(_cross_validate_identity(users, apps, employees, requests, policies))
+    state.provenance.extend(derived_support_records)
+    state.issues.extend(
+        _cross_validate_identity(
+            state.users,
+            state.apps,
+            state.employees,
+            state.requests,
+            state.policies,
+        )
+    )
     reconciliation_summary, reconciliation_issues, reconciliation_provenance = (
         reconcile_identity_sources(
-            users=users,
-            employees=employees,
-            shares=shares,
-            tickets=tickets,
-            requests=requests,
+            users=state.users,
+            employees=state.employees,
+            shares=state.shares,
+            tickets=state.tickets,
+            requests=state.requests,
             organization_domain=package.organization_domain,
         )
     )
-    issues.extend(reconciliation_issues)
-    provenance.extend(reconciliation_provenance)
+    state.issues.extend(reconciliation_issues)
+    state.provenance.extend(reconciliation_provenance)
     primary = _select_primary_context(
-        users, employees, shares, tickets, requests, deals, policies, audit_events
+        state.users,
+        state.employees,
+        state.shares,
+        state.tickets,
+        state.requests,
+        state.deals,
+        state.policies,
+        state.audit_events,
     )
     bundle: IdentityGovernanceBundle | None
     generated: list[GeneratedScenarioCandidate]
     try:
         bundle = _build_identity_bundle(
             package=package,
-            users=users,
-            groups=groups,
-            apps=apps,
-            shares=shares,
-            employees=employees,
-            tickets=tickets,
-            requests=requests,
-            policies=policies,
-            deals=deals,
-            contacts=contacts,
-            companies=companies,
+            users=state.users,
+            groups=state.groups,
+            apps=state.apps,
+            shares=state.shares,
+            employees=state.employees,
+            tickets=state.tickets,
+            requests=state.requests,
+            policies=state.policies,
+            deals=state.deals,
+            contacts=state.contacts,
+            companies=state.companies,
             primary=primary,
-            policy_notes=policy_notes,
-            audit_events=audit_events,
-            org_units=sorted(org_units),
-            source_summaries=source_summaries,
-            issues=issues,
+            policy_notes=state.policy_notes,
+            audit_events=state.audit_events,
+            org_units=sorted(state.org_units),
+            source_summaries=state.source_summaries,
+            issues=state.issues,
         )
     except ValueError as exc:
-        issues.append(
+        state.issues.append(
             MappingIssue(
                 code="bundle.incomplete",
                 severity="error",
@@ -654,23 +878,23 @@ def normalize_identity_import_package(path: str | Path) -> ImportPackageArtifact
         bundle = None
         generated = []
     else:
-        generated = generate_identity_scenario_candidates(bundle, provenance)
-        provenance.extend(build_generated_scenario_provenance(bundle, generated))
+        generated = generate_identity_scenario_candidates(bundle, state.provenance)
+        state.provenance.extend(build_generated_scenario_provenance(bundle, generated))
     report = _build_report(
         package.name,
-        issues,
-        source_summaries,
+        state.issues,
+        state.source_summaries,
         normalized_counts={
-            "identity_users": len(users),
-            "identity_groups": len(groups),
-            "identity_applications": len(apps),
-            "hris_employees": len(employees),
-            "drive_shares": len(shares),
-            "tickets": len(tickets),
-            "service_requests": len(requests),
-            "identity_policies": len(policies),
-            "audit_events": len(audit_events),
-            "crm_deals": len(deals),
+            "identity_users": len(state.users),
+            "identity_groups": len(state.groups),
+            "identity_applications": len(state.apps),
+            "hris_employees": len(state.employees),
+            "drive_shares": len(state.shares),
+            "tickets": len(state.tickets),
+            "service_requests": len(state.requests),
+            "identity_policies": len(state.policies),
+            "audit_events": len(state.audit_events),
+            "crm_deals": len(state.deals),
             "generated_scenarios": len(generated),
         },
         identity_reconciliation=reconciliation_summary,
@@ -679,8 +903,8 @@ def normalize_identity_import_package(path: str | Path) -> ImportPackageArtifact
         package=package,
         normalized_bundle=bundle,
         normalization_report=report,
-        provenance=provenance,
-        redaction_reports=redaction_reports,
+        provenance=state.provenance,
+        redaction_reports=state.redaction_reports,
         generated_scenarios=generated,
     )
 
@@ -860,18 +1084,18 @@ def _apply_override_preview(
     adjusted = dict(row)
     if override is None:
         return adjusted
-    for field in override.ignored_fields:
-        adjusted.pop(field, None)
+    for ignored_field in override.ignored_fields:
+        adjusted.pop(ignored_field, None)
     for raw_field, canonical_field in override.field_aliases.items():
         if raw_field in adjusted:
             adjusted[canonical_field] = adjusted.pop(raw_field)
-    for field, value in override.default_values.items():
-        if adjusted.get(field) in (None, "", []):
-            adjusted[field] = deepcopy(value)
-    for field, aliases in override.value_aliases.items():
-        value = adjusted.get(field)
+    for default_field, value in override.default_values.items():
+        if adjusted.get(default_field) in (None, "", []):
+            adjusted[default_field] = deepcopy(value)
+    for alias_field, aliases in override.value_aliases.items():
+        value = adjusted.get(alias_field)
         if value in aliases:
-            adjusted[field] = aliases[value]
+            adjusted[alias_field] = aliases[value]
     return adjusted
 
 
@@ -887,17 +1111,17 @@ def _apply_source_override(
     if override is None:
         return adjusted, issues
 
-    for field in override.ignored_fields:
-        if field in adjusted:
-            adjusted.pop(field, None)
+    for ignored_field in override.ignored_fields:
+        if ignored_field in adjusted:
+            adjusted.pop(ignored_field, None)
             issues.append(
                 MappingIssue(
                     code="field.ignored",
                     severity="info",
                     source_id=source.source_id,
                     row_number=row_number,
-                    field=field,
-                    message=f"Ignored field via override: {field}",
+                    field=ignored_field,
+                    message=f"Ignored field via override: {ignored_field}",
                     record_key=_record_key(row),
                 )
             )
@@ -920,33 +1144,33 @@ def _apply_source_override(
             )
         )
 
-    for field, value in override.default_values.items():
-        if adjusted.get(field) in (None, "", []):
-            adjusted[field] = deepcopy(value)
+    for default_field, value in override.default_values.items():
+        if adjusted.get(default_field) in (None, "", []):
+            adjusted[default_field] = deepcopy(value)
             issues.append(
                 MappingIssue(
                     code="field.default_applied",
                     severity="info",
                     source_id=source.source_id,
                     row_number=row_number,
-                    field=field,
-                    message=f"Applied default value for {field}",
+                    field=default_field,
+                    message=f"Applied default value for {default_field}",
                     record_key=_record_key(row),
                 )
             )
 
-    for field, aliases in override.value_aliases.items():
-        value = adjusted.get(field)
+    for alias_field, aliases in override.value_aliases.items():
+        value = adjusted.get(alias_field)
         if value in aliases:
-            adjusted[field] = deepcopy(aliases[value])
+            adjusted[alias_field] = deepcopy(aliases[value])
             issues.append(
                 MappingIssue(
                     code="field.value_alias_applied",
                     severity="info",
                     source_id=source.source_id,
                     row_number=row_number,
-                    field=field,
-                    message=f"Mapped value for {field} via override",
+                    field=alias_field,
+                    message=f"Mapped value for {alias_field} via override",
                     record_key=_record_key(row),
                     raw_value=value,
                 )
@@ -979,14 +1203,14 @@ def _normalize_row(
 ) -> tuple[dict[str, Any], list[MappingIssue]]:
     normalized = _apply_profile_alias_preview(row, profile)
     issues: list[MappingIssue] = []
-    for field in profile.list_fields:
-        value = normalized.get(field)
+    for list_field in profile.list_fields:
+        value = normalized.get(list_field)
         if value in (None, ""):
-            normalized[field] = []
+            normalized[list_field] = []
         elif isinstance(value, list):
-            normalized[field] = value
+            normalized[list_field] = value
         elif isinstance(value, str):
-            normalized[field] = [
+            normalized[list_field] = [
                 item.strip() for item in value.split(";") if item.strip()
             ]
             if ";" in value or "," in value:
@@ -996,41 +1220,41 @@ def _normalize_row(
                         severity="info",
                         source_id=source.source_id,
                         row_number=row_number,
-                        field=field,
-                        message=f"Coerced delimited string to list for {field}",
+                        field=list_field,
+                        message=f"Coerced delimited string to list for {list_field}",
                         record_key=_record_key(row),
                     )
                 )
         else:
-            normalized[field] = [value]
-    for field in profile.bool_fields:
-        value = normalized.get(field)
+            normalized[list_field] = [value]
+    for bool_field in profile.bool_fields:
+        value = normalized.get(bool_field)
         if isinstance(value, bool):
             continue
         if isinstance(value, str):
             lowered = value.strip().lower()
             if lowered in {"true", "false", "yes", "no", "1", "0"}:
-                normalized[field] = lowered in {"true", "yes", "1"}
+                normalized[bool_field] = lowered in {"true", "yes", "1"}
                 issues.append(
                     MappingIssue(
                         code="field.coerced_bool",
                         severity="info",
                         source_id=source.source_id,
                         row_number=row_number,
-                        field=field,
-                        message=f"Coerced string to boolean for {field}",
+                        field=bool_field,
+                        message=f"Coerced string to boolean for {bool_field}",
                         record_key=_record_key(row),
                     )
                 )
-    for field in profile.int_fields:
-        value = normalized.get(field)
+    for int_field in profile.int_fields:
+        value = normalized.get(int_field)
         if value in (None, ""):
-            normalized[field] = None
+            normalized[int_field] = None
             continue
         if isinstance(value, int):
             continue
         try:
-            normalized[field] = int(value)
+            normalized[int_field] = int(value)
         except (TypeError, ValueError):
             issues.append(
                 MappingIssue(
@@ -1038,13 +1262,13 @@ def _normalize_row(
                     severity="warning",
                     source_id=source.source_id,
                     row_number=row_number,
-                    field=field,
-                    message=f"Could not coerce {field} to int",
+                    field=int_field,
+                    message=f"Could not coerce {int_field} to int",
                     record_key=_record_key(row),
                     raw_value=value,
                 )
             )
-            normalized[field] = None
+            normalized[int_field] = None
     status = normalized.get("status")
     if isinstance(status, str):
         upper = status.strip().upper()
@@ -1066,12 +1290,12 @@ def _normalize_row(
 
 def _apply_profile_alias_preview(row: dict[str, Any], profile) -> dict[str, Any]:
     normalized = dict(row)
-    for field, alias in getattr(profile, "field_aliases", {}).items():
-        if normalized.get(field) not in (None, "", []):
+    for field_name, alias in getattr(profile, "field_aliases", {}).items():
+        if normalized.get(field_name) not in (None, "", []):
             continue
         value = _value_from_path(row, alias)
         if value not in (None, "", []):
-            normalized[field] = value
+            normalized[field_name] = value
     return normalized
 
 
