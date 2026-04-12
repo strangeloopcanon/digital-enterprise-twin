@@ -2631,6 +2631,22 @@ body.developer-mode .studio-nav-button.developer-only {
   justify-content: space-between;
 }
 
+.whatif-public-grid,
+.whatif-public-list {
+  display: grid;
+  gap: 10px;
+}
+
+.whatif-public-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.whatif-public-item {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
 .whatif-event-list {
   display: grid;
   gap: 10px;
@@ -2745,6 +2761,10 @@ body.developer-mode .studio-nav-button.developer-only {
   }
 
   .whatif-scene-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .whatif-public-grid {
     grid-template-columns: 1fr;
   }
 

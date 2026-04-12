@@ -13,6 +13,23 @@ Each model sees only:
 
 The benchmark does not give the model generated rollout messages or any post-branch summary fields.
 
+The held-out Enron dossiers can include a separate public-company context section with dated financial checkpoints and public news items. VEI filters that section to facts already known by the branch date. That public context is for dossier-based judging and audit review. It does not change the model input schema or the training rows in this pass.
+
+## Combined source data
+
+The current Enron benchmark build joins two repo-owned inputs:
+
+- the Rosetta email archive for branch history and observed futures
+- the packaged public-company context fixture under `vei/whatif/fixtures/enron_public_context`
+
+That public-context fixture currently contains:
+
+- 7 dated financial checkpoints
+- 7 dated public news events
+- 7 archived public source files
+
+Its public dates span December 31, 1998 through December 2, 2001.
+
 ## What comes out
 
 The model predicts later email evidence that can actually be read from the archive:
@@ -65,12 +82,12 @@ The default held-out pack is `enron_business_outcome_v1`.
 
 It contains 24 fixed Enron branch points across these case families:
 
-- sensitive outside sharing
-- legal review and contract control
-- commercial counterpart handling
-- executive and regulatory pressure
-- internal coordination strain
-- personnel and organizational heat
+- `outside_sharing`
+- `legal_contract`
+- `commercial_counterparty`
+- `executive_regulatory`
+- `coordination_strain`
+- `org_heat`
 
 Each held-out case has 4 candidate actions.
 
@@ -92,6 +109,10 @@ Counterfactual ranking uses a locked LLM judge over case dossiers only:
 - one pairwise ranking pass over the candidate set
 - one saved judged ranking
 - one audit queue for low-confidence or sampled cases
+
+Each dossier now carries the same branch-filtered Enron public-company backdrop used by the replay flow.
+
+That means the held-out judge sees the same dated public-company slice that the Studio decision scene shows for the same branch point.
 
 The judge does not see rollout futures.
 

@@ -12,6 +12,7 @@ from .models import (
     WhatIfForecastResult,
     WhatIfLLMReplayResult,
     WhatIfPackRunResult,
+    WhatIfPublicContext,
     WhatIfRankedExperimentResult,
     WhatIfReplaySummary,
     WhatIfResult,
@@ -24,6 +25,29 @@ def _preview(text: str, *, limit: int = 280) -> str:
     if len(stripped) <= limit:
         return stripped
     return stripped[: limit - 3].rstrip() + "..."
+
+
+def _public_context_lines(
+    context: WhatIfPublicContext | None,
+    *,
+    max_financial: int = 2,
+    max_news: int = 2,
+) -> list[str]:
+    if context is None:
+        return []
+    if not context.financial_snapshots and not context.public_news_events:
+        return []
+
+    lines = [
+        "## Public Company Context",
+        f"- Financial checkpoints: {len(context.financial_snapshots)}",
+        f"- Public news events: {len(context.public_news_events)}",
+    ]
+    for snapshot in context.financial_snapshots[-max(1, max_financial) :]:
+        lines.append(f"- {snapshot.as_of[:10]} {snapshot.label}")
+    for event in context.public_news_events[-max(1, max_news) :]:
+        lines.append(f"- {event.timestamp[:10]} {event.headline}")
+    return ["", *lines]
 
 
 def render_world_summary(world: WhatIfWorld) -> str:
@@ -43,6 +67,9 @@ def render_world_summary(world: WhatIfWorld) -> str:
             ]
         )
     else:
+        lines.append("")
+    lines.extend(_public_context_lines(world.public_context))
+    if lines[-1] != "":
         lines.append("")
     lines.append("## Supported Scenarios")
     for scenario in world.scenarios:
@@ -130,6 +157,7 @@ def render_episode(materialization: WhatIfEpisodeMaterialization) -> str:
         f"- Scheduled future events: {materialization.future_event_count}",
         f"- Forecast risk score: {materialization.forecast.risk_score}",
     ]
+    lines.extend(_public_context_lines(materialization.public_context))
     if materialization.baseline_future_preview:
         lines.extend(["", "## Baseline Future Preview"])
         for event in materialization.baseline_future_preview[:3]:
@@ -432,6 +460,9 @@ def render_benchmark_build(result: WhatIfBenchmarkBuildResult) -> str:
                 f"  Event `{case.event_id}` in thread `{case.thread_id}`",
                 f"  Family: {case.case_family}",
                 f"  Candidates: {', '.join(candidate.label for candidate in case.candidates)}",
+                "  Public context: "
+                f"{len(case.public_context.financial_snapshots) if case.public_context else 0} financial, "
+                f"{len(case.public_context.public_news_events) if case.public_context else 0} news",
             ]
         )
     lines.extend(

@@ -52,6 +52,8 @@ from vei.whatif.models import (
     WhatIfForecast,
     WhatIfJudgedPairwiseComparison,
     WhatIfJudgedRanking,
+    WhatIfPublicContext,
+    WhatIfPublicFinancialSnapshot,
 )
 
 
@@ -102,6 +104,72 @@ def _write_rosetta_fixture(root: Path) -> None:
     content_rows = [
         {"event_id": "evt-001", "content": "External draft attached for review."},
         {"event_id": "evt-002", "content": "Assigning ops review before we proceed."},
+    ]
+    pq.write_table(
+        pa.Table.from_pylist(metadata_rows),
+        root / "enron_rosetta_events_metadata.parquet",
+    )
+    pq.write_table(
+        pa.Table.from_pylist(content_rows),
+        root / "enron_rosetta_events_content.parquet",
+    )
+
+
+def _write_public_context_rosetta_fixture(root: Path) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    metadata_rows = [
+        {
+            "event_id": "evt-200",
+            "timestamp": "2001-04-17T14:00:00Z",
+            "actor_id": "vince.kaminski@enron.com",
+            "target_id": "sara.shackleton@enron.com",
+            "event_type": "message",
+            "thread_task_id": "thr-public-context",
+            "artifacts": json.dumps(
+                {
+                    "subject": "Q1 numbers follow-up",
+                    "to_recipients": ["sara.shackleton@enron.com"],
+                    "to_count": 1,
+                }
+            ),
+        },
+        {
+            "event_id": "evt-201",
+            "timestamp": "2001-05-03T09:00:00Z",
+            "actor_id": "jeff.skilling@enron.com",
+            "target_id": "outside@lawfirm.com",
+            "event_type": "message",
+            "thread_task_id": "thr-public-context",
+            "artifacts": json.dumps(
+                {
+                    "subject": "Draft term sheet",
+                    "to_recipients": ["outside@lawfirm.com"],
+                    "to_count": 1,
+                    "has_attachment_reference": True,
+                }
+            ),
+        },
+        {
+            "event_id": "evt-202",
+            "timestamp": "2001-05-03T11:00:00Z",
+            "actor_id": "sara.shackleton@enron.com",
+            "target_id": "jeff.skilling@enron.com",
+            "event_type": "reply",
+            "thread_task_id": "thr-public-context",
+            "artifacts": json.dumps(
+                {
+                    "subject": "Draft term sheet",
+                    "to_recipients": ["jeff.skilling@enron.com"],
+                    "to_count": 1,
+                    "is_reply": True,
+                }
+            ),
+        },
+    ]
+    content_rows = [
+        {"event_id": "evt-200", "content": "Flagging the quarter numbers for review."},
+        {"event_id": "evt-201", "content": "Sending the outside draft today."},
+        {"event_id": "evt-202", "content": "Replying with legal concerns."},
     ]
     pq.write_table(
         pa.Table.from_pylist(metadata_rows),
@@ -175,7 +243,12 @@ def _write_benchmark_audit_fixture(
     dossier_root.mkdir(parents=True, exist_ok=True)
     dossier_path = dossier_root / "minimize_enterprise_risk.md"
     dossier_path.write_text(
-        "# Master Agreement\n\nReview the internal hold against the external send.",
+        (
+            "# Master Agreement\n\n"
+            "Review the internal hold against the external send.\n\n"
+            "## Public Company Context\n"
+            "- 1999-12-31 FY1999 selected financial data: Operating revenue was $40.11B and net income was $893M.\n"
+        ),
         encoding="utf-8",
     )
 
@@ -211,6 +284,21 @@ def _write_benchmark_audit_fixture(
                     thread_id="thr_master_agreement",
                     subject="Master Agreement",
                     snippet="Attached for your review is a draft Master Agreement.",
+                ),
+                public_context=WhatIfPublicContext(
+                    pack_name="enron_public_context",
+                    organization_name="Enron Corporation",
+                    organization_domain="enron.com",
+                    financial_snapshots=[
+                        WhatIfPublicFinancialSnapshot(
+                            snapshot_id="fy1999_selected_financial_data",
+                            as_of="1999-12-31T00:00:00Z",
+                            kind="annual",
+                            label="FY1999 selected financial data",
+                            summary="Operating revenue was $40.11B and net income was $893M.",
+                        )
+                    ],
+                    public_news_events=[],
                 ),
                 objective_dossier_paths={"minimize_enterprise_risk": str(dossier_path)},
                 candidates=[
@@ -517,6 +605,39 @@ def test_ui_api_whatif_scene_route_returns_playable_enron_decision(
     assert payload["future_event_count"] == 2
     assert len(payload["candidate_options"]) == 3
     assert payload["candidate_options"][0]["label"] == "Hold for internal review"
+    assert payload["public_context"]["financial_snapshots"] == []
+    assert payload["public_context"]["public_news_events"] == []
+
+
+def test_ui_api_whatif_scene_route_returns_branch_filtered_public_context(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "workspace"
+    create_workspace_from_template(
+        root=root,
+        source_kind="example",
+        source_ref="acquired_user_cutover",
+    )
+    rosetta_dir = tmp_path / "rosetta"
+    _write_public_context_rosetta_fixture(rosetta_dir)
+    monkeypatch.setenv("VEI_WHATIF_ROSETTA_DIR", str(rosetta_dir))
+
+    client = TestClient(ui_api.create_ui_app(root))
+    response = client.post(
+        "/api/workspace/whatif/scene",
+        json={"source": "enron", "event_id": "evt-201"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["thread_id"] == "thr-public-context"
+    assert [
+        item["snapshot_id"] for item in payload["public_context"]["financial_snapshots"]
+    ] == ["q1_2001_earnings_release"]
+    assert [
+        item["event_id"] for item in payload["public_context"]["public_news_events"]
+    ] == ["cliff_baxter_resignation"]
 
 
 def test_ui_api_whatif_scene_route_supports_generic_mail_archive(
@@ -1491,6 +1612,7 @@ def test_ui_api_supports_benchmark_audit_root(tmp_path: Path) -> None:
     assert audit_payload["total"] == 1
     assert audit_payload["items"][0]["case_id"] == "case_master_agreement"
     assert "Master Agreement" in audit_payload["items"][0]["dossier_text"]
+    assert "Public Company Context" in audit_payload["items"][0]["dossier_text"]
 
 
 def test_ui_api_returns_empty_audit_queue_until_judge_results_exist(

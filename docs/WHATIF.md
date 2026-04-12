@@ -112,6 +112,27 @@ The forecast bundle is written as `whatif_ejepa_result.json` when the real JEPA 
 
 This makes it easy to inspect the result in Studio later, compare runs, or hand the output to another tool.
 
+For Enron, VEI also ships a packaged public-company context fixture under `vei/whatif/fixtures/enron_public_context`. Refresh it with `python scripts/prepare_enron_public_context.py`. The current fixture carries 7 dated financial checkpoints and 7 dated public news events from 7 archived public source files, spanning December 31, 1998 through December 2, 2001. VEI slices that fixture to the active Enron email window and then to the chosen branch date before it is shown in Studio, written into the saved episode manifest, added to the LLM counterfactual prompt, or attached to benchmark dossiers.
+
+## Current Studio flow
+
+The current combined Enron setup has two repo-owned inputs:
+
+- the Rosetta mail archive for branch history and recorded futures
+- the packaged public-company context fixture for dated financial and public-news facts
+
+The screenshots below were refreshed from the real local Enron archive. The search example uses the `Master Agreement` thread. The decision-scene example uses the July 12, 2001 `FW: Confidentiality Agreement` branch (`enron_e9dc5f3ac8e91c03`), which is late enough to show both financial checkpoints and public news.
+
+![Enron historical what-if flow](assets/enron-whatif/enron-whatif-flow.gif)
+
+![Enron search results](assets/enron-whatif/enron-search-results.png)
+
+![Enron decision scene with public context](assets/enron-whatif/enron-decision-scene-top.png)
+
+The public-company panel is its own dated slice. Earlier branches only show the rows that were already public at that time. If nothing public had landed yet, the panel stays visible and says so. Later 2001 branches show both columns.
+
+![Enron public company context panel](assets/enron-whatif/enron-public-context.png)
+
 ## Live Enron display in Studio
 
 Use the saved Enron workspace directly when you want the screen to show Enron itself.
@@ -160,6 +181,8 @@ All trained model families use the same boundary for this benchmark:
 - pre-branch thread history only
 - structured candidate action only
 
+The held-out Enron dossiers now include dated public financial checkpoints and public news items that were already known by the branch date. That public context helps the judge and the audit workflow. It does not change the model-training contract in this pass.
+
 The matched-input benchmark study now gives `jepa_latent` and `full_context_transformer` the same pre-branch event sequence, summary features, and action schema. That makes the main rerun a clean model comparison instead of a mixed input comparison.
 
 ### Benchmark commands
@@ -198,6 +221,7 @@ vei whatif benchmark study \
   --seed 42042 \
   --seed 42043 \
   --seed 42044 \
+  --judged-rankings-path _vei_out/whatif_benchmarks/branch_point_ranking_v2/enron_business_outcome_reset/judge_result.json \
   --epochs 2
 ```
 

@@ -167,10 +167,46 @@ class WhatIfWorld(BaseModel):
     threads: list[WhatIfThreadSummary] = Field(default_factory=list)
     events: list[WhatIfEvent] = Field(default_factory=list)
     metadata: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    public_context: WhatIfPublicContext | None = None
 
     @property
     def rosetta_dir(self) -> Path:
         return self.source_dir
+
+
+class WhatIfPublicFinancialSnapshot(BaseModel):
+    snapshot_id: str
+    as_of: str
+    kind: str
+    label: str
+    source_ids: list[str] = Field(default_factory=list)
+    summary: str = ""
+    metrics: dict[str, int | float | str] = Field(default_factory=dict)
+
+
+class WhatIfPublicNewsEvent(BaseModel):
+    event_id: str
+    timestamp: str
+    category: str
+    headline: str
+    summary: str = ""
+    source_ids: list[str] = Field(default_factory=list)
+
+
+class WhatIfPublicContext(BaseModel):
+    version: str = "1"
+    pack_name: str = ""
+    organization_name: str = ""
+    organization_domain: str = ""
+    prepared_at: str = ""
+    integration_hint: str = ""
+    window_start: str = ""
+    window_end: str = ""
+    branch_timestamp: str = ""
+    financial_snapshots: list[WhatIfPublicFinancialSnapshot] = Field(
+        default_factory=list
+    )
+    public_news_events: list[WhatIfPublicNewsEvent] = Field(default_factory=list)
 
 
 class WhatIfActorImpact(BaseModel):
@@ -277,6 +313,7 @@ class WhatIfEpisodeManifest(BaseModel):
     actor_ids: list[str] = Field(default_factory=list)
     baseline_future_preview: list[WhatIfEventReference] = Field(default_factory=list)
     forecast: WhatIfForecast = Field(default_factory=WhatIfForecast)
+    public_context: WhatIfPublicContext | None = None
 
 
 class WhatIfEpisodeMaterialization(BaseModel):
@@ -294,6 +331,7 @@ class WhatIfEpisodeMaterialization(BaseModel):
     future_event_count: int = 0
     baseline_future_preview: list[WhatIfEventReference] = Field(default_factory=list)
     forecast: WhatIfForecast = Field(default_factory=WhatIfForecast)
+    public_context: WhatIfPublicContext | None = None
 
 
 class WhatIfReplaySummary(BaseModel):
@@ -447,6 +485,7 @@ class WhatIfDecisionScene(BaseModel):
     history_preview: list[WhatIfEventReference] = Field(default_factory=list)
     historical_future_preview: list[WhatIfEventReference] = Field(default_factory=list)
     candidate_options: list[WhatIfDecisionOption] = Field(default_factory=list)
+    public_context: WhatIfPublicContext | None = None
 
 
 class WhatIfOutcomeSignals(BaseModel):
@@ -860,6 +899,7 @@ class WhatIfBenchmarkCase(BaseModel):
     history_preview: list[WhatIfEventReference] = Field(default_factory=list)
     objective_dossier_paths: dict[str, str] = Field(default_factory=dict)
     candidates: list[WhatIfBenchmarkCandidate] = Field(default_factory=list)
+    public_context: WhatIfPublicContext | None = None
 
 
 class WhatIfPanelJudgment(BaseModel):

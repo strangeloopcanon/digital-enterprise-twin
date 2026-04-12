@@ -66,6 +66,92 @@ function whatIfDefaultSceneOption() {
   return options[0] || null;
 }
 
+function whatIfSupportsPublicContext(context) {
+  if (!context || typeof context !== "object") {
+    return false;
+  }
+  const hasFinancial =
+    Array.isArray(context.financial_snapshots) &&
+    context.financial_snapshots.length > 0;
+  const hasNews =
+    Array.isArray(context.public_news_events) &&
+    context.public_news_events.length > 0;
+  return Boolean(
+    hasFinancial ||
+      hasNews ||
+      context.pack_name ||
+      context.organization_name ||
+      context.organization_domain ||
+      context.window_start ||
+      context.window_end ||
+      context.branch_timestamp,
+  );
+}
+
+function renderWhatIfPublicContext(context) {
+  if (!whatIfSupportsPublicContext(context)) {
+    return "";
+  }
+  const financial = Array.isArray(context?.financial_snapshots)
+    ? context.financial_snapshots
+    : [];
+  const news = Array.isArray(context?.public_news_events)
+    ? context.public_news_events
+    : [];
+  return `
+    <div class="whatif-scene-panel">
+      <div class="whatif-thread-head">
+        <div>
+          <p class="eyebrow">Public Company Context</p>
+          <strong>Only public facts known by this branch date are shown here</strong>
+        </div>
+        <div class="whatif-chip-row">
+          <span class="whatif-chip">${escapeHtml(financial.length)} financial</span>
+          <span class="whatif-chip">${escapeHtml(news.length)} news</span>
+        </div>
+      </div>
+      <div class="whatif-public-grid">
+        <div class="whatif-public-list">
+          <strong>Financial checkpoints</strong>
+          ${
+            financial.length
+              ? financial
+                  .map(
+                    (item) => `
+                      <div class="whatif-public-item">
+                        <span class="whatif-result-meta">${escapeHtml((item.as_of || "").slice(0, 10))}</span>
+                        <strong>${escapeHtml(item.label || item.snapshot_id || "Financial checkpoint")}</strong>
+                        <span class="whatif-result-caption">${escapeHtml(item.summary || "")}</span>
+                      </div>
+                    `,
+                  )
+                  .join("")
+              : `<div class="whatif-empty">No dated financial checkpoints fall before this branch point.</div>`
+          }
+        </div>
+        <div class="whatif-public-list">
+          <strong>Public news</strong>
+          ${
+            news.length
+              ? news
+                  .map(
+                    (item) => `
+                      <div class="whatif-public-item">
+                        <span class="whatif-result-meta">${escapeHtml((item.timestamp || "").slice(0, 10))}</span>
+                        <strong>${escapeHtml(item.headline || item.event_id || "Public event")}</strong>
+                        <span class="whatif-result-caption">${escapeHtml(item.summary || "")}</span>
+                      </div>
+                    `,
+                  )
+                  .join("")
+              : `<div class="whatif-empty">No dated public-news checkpoints fall before this branch point.</div>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function whatIfCustomOption() {
   const prompt = whatIfCustomMovePrompt();
   if (!prompt) {
@@ -275,13 +361,14 @@ function renderWhatIfScene(scene) {
               : ""
           }
         </div>
-        <div class="whatif-scene-panel">
-          <p class="eyebrow">What Actually Happened</p>
-          <strong>${escapeHtml(scene.historical_action_summary || "")}</strong>
-          <span>${escapeHtml(scene.historical_outcome_summary || "")}</span>
-          <span class="metric-detail">${escapeHtml(scene.stakes_summary || "")}</span>
-        </div>
+      <div class="whatif-scene-panel">
+        <p class="eyebrow">What Actually Happened</p>
+        <strong>${escapeHtml(scene.historical_action_summary || "")}</strong>
+        <span>${escapeHtml(scene.historical_outcome_summary || "")}</span>
+        <span class="metric-detail">${escapeHtml(scene.stakes_summary || "")}</span>
       </div>
+      </div>
+      ${renderWhatIfPublicContext(scene.public_context)}
       <div class="whatif-scene-panel whatif-thread-panel">
         <div class="whatif-thread-head">
           <div>

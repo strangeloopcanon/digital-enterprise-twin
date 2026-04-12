@@ -30,6 +30,8 @@ The first version of that flow is mail-first:
 - that workspace replays real past messages up to just before the chosen event and schedules the chosen event plus the later historical messages as the baseline future
 - only after that branch point does VEI run counterfactual continuation logic
 
+For Enron, that mail-first branch point can also carry a packaged public-company backdrop. VEI ships 7 dated public financial checkpoints and 7 dated public news events from 7 archived public source files, filters them to the loaded Enron email window, then filters them again to the branch date. The same pre-branch slice flows into the saved episode manifest, Studio decision scene, bounded LLM prompt, and benchmark dossiers.
+
 Two compare paths exist today:
 
 - **LLM actor continuation** — bounded email-only continuation on the affected thread
@@ -116,6 +118,8 @@ A single-page Studio interface with three main views:
 - **Company view** — "Living company" panels showing every surface (Slack, Mail, Docs, Tickets, CRM, etc.) updating in real time as the simulation runs. A cascade replay system auto-plays changes panel by panel. Changed systems are highlighted. When governor mode is active, a **mode indicator banner** appears ("Governor demo" or the live connector mode) and the **Control Plane panel** shows registered agents, policy badges, connector status, an approval queue, inline agent controls, and a readable activity log.
 - **Crisis view** — Structured analysis of what went wrong and why it matters, with crisis description, impact assessment, and failure consequences.
 - **Outcome view** — Contract evaluation (pass/fail, success checks, policy overrides), decision audit trail, and a **Compare Paths** button that opens a side-by-side view of how two runs differ. The **Snapshots** card shows every world-state checkpoint with **"Fork from here"** buttons for branching a new playable mission from any historical state. A **Compare snapshots** button compares the selected snapshot pair and shows what changed between them, grouped by domain with humanized labels. For `service_ops`, a **`Try Different Policy`** flow opens a compact what-if form, replays from the same starting snapshot, and lands directly in compare mode.
+
+For Enron workspaces, the Studio what-if view now also shows the dated public-company slice beside the branch event and recorded future when public facts were known by that date.
 - **Connect panel** — Shows which live data sources are configured with status indicators and one-click capture.
 
 Run pickers for path comparison are always visible. Fork-from-here and snapshot inspection are accessible to all users, not gated behind a developer toggle.

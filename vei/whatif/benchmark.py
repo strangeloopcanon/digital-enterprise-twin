@@ -69,6 +69,7 @@ from .models import (
     WhatIfAuditSummary,
 )
 from .research import get_research_pack
+from .public_context import slice_public_context_to_branch
 
 _BENCHMARK_MODELS: tuple[WhatIfBenchmarkModelId, ...] = (
     "jepa_latent",
@@ -1790,6 +1791,10 @@ def _build_benchmark_cases(
             action_schema=historical_action,
             notes=["Held-out branch-point base contract."],
         )
+        branch_public_context = slice_public_context_to_branch(
+            world.public_context,
+            branch_timestamp=branch_event.timestamp,
+        )
         benchmark_case = WhatIfBenchmarkCase(
             case_id=case.case_id,
             title=case.title,
@@ -1800,6 +1805,7 @@ def _build_benchmark_cases(
             branch_event=event_reference(branch_event),
             history_preview=[event_reference(event) for event in history_events[-6:]],
             candidates=case.candidates,
+            public_context=branch_public_context,
         )
         case_dossier_root = dossier_root / benchmark_case.case_id
         case_dossier_root.mkdir(parents=True, exist_ok=True)
@@ -1923,6 +1929,22 @@ def _render_case_dossier(
         lines.append(
             f"- `{event.event_id}` {event.timestamp} {event.event_type} from `{event.actor_id}`: {event.subject}"
         )
+    lines.extend(["", "## Public Company Context"])
+    if case.public_context and case.public_context.financial_snapshots:
+        lines.append("### Financial Checkpoints")
+        for snapshot in case.public_context.financial_snapshots:
+            lines.append(
+                f"- {snapshot.as_of[:10]} {snapshot.label}: {snapshot.summary}"
+            )
+    if case.public_context and case.public_context.public_news_events:
+        lines.append("### Public News")
+        for event in case.public_context.public_news_events:
+            lines.append(f"- {event.timestamp[:10]} {event.headline}: {event.summary}")
+    if not case.public_context or (
+        not case.public_context.financial_snapshots
+        and not case.public_context.public_news_events
+    ):
+        lines.append("- No public company context attached.")
     lines.extend(["", "## Candidate Decisions"])
     for candidate in case.candidates:
         lines.extend(
